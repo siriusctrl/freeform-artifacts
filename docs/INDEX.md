@@ -28,6 +28,9 @@ Read these when the task matches:
   - browser proof recording
   - GIF output expectations
   - screenshot and manifest inspection
+- `skill/freeform-artifact-builder/SKILL.md`
+  - project-local skill for creating, registering, laying out, and verifying
+    canvas artifacts
   - handoff evidence format
 
 Code orientation:
@@ -52,6 +55,8 @@ Code orientation:
 - `scripts/record-proof.mjs` records the browser proof WebM, converts it to
   GIF, and writes manifest, screenshot, contact-sheet, and inspection
   artifacts.
+- `skill/freeform-artifact-builder/` contains the project-local Codex skill and
+  references for future artifact-building agents.
 
 Keep README user-facing. Keep maintainer-only workflows in docs and link them
 from `AGENTS.md`.

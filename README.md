@@ -55,6 +55,26 @@ artifacts/verification/<timestamp>/
 
 Those artifacts are ignored by git and are meant for local handoff evidence.
 
+## Project Skill
+
+This repo includes a project-local Codex skill for future agents:
+
+```text
+skill/freeform-artifact-builder/
+```
+
+Use it when adding or revising canvas artifacts:
+
+```sh
+npx skills use ./skill --skill freeform-artifact-builder --full-depth
+```
+
+To confirm the package exposes the skill to the current `skills` CLI:
+
+```sh
+npx skills add . --list --full-depth
+```
+
 ## Interactive Canvas
 
 Current controls:
@@ -209,6 +229,7 @@ Implemented:
 - Hardened pointer dragging that suppresses browser text selection and native
   drag behavior during canvas moves.
 - Handoff docs for the next Codex session.
+- Project-local `freeform-artifact-builder` skill for future artifact work.
 
 TODO:
 

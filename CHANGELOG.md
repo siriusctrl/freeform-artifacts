@@ -20,6 +20,8 @@ All notable user-facing changes to this project should be documented here.
   inspection artifacts.
 - Internal proof contact sheet generation for keyframe inspection.
 - README, AGENTS, architecture, testing, and visual-verification handoff docs.
+- Project-local `freeform-artifact-builder` skill for future agents creating
+  compliant artifacts and canvas layouts.
 
 ### Fixed
 

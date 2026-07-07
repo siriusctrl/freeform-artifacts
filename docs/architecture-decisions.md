@@ -324,3 +324,48 @@ keeps the canvas runtime in charge.
 Revisit if ECharts bundle size becomes unacceptable, if the product needs a
 more constrained declarative grammar such as Vega-Lite, or if untrusted runtime
 code loading requires iframe or worker-based sandboxing.
+
+## ADR-0006: Ship a project-local artifact builder skill
+
+Status: Accepted
+
+Date: 2026-07-07
+
+### Context
+
+Future agents need to add artifacts without rediscovering the renderer split,
+ECharts lifecycle boundary, registry wiring, layout expectations, and visual
+proof process. README and architecture docs are useful for humans, but a new
+agent benefits from a directly invokable skill with concise procedural rules.
+
+### Decision
+
+Add `skill/freeform-artifact-builder/` as a project-local skill:
+
+- `SKILL.md` gives the short artifact-building workflow and hard rules.
+- `references/artifact-contract.md` contains TypeScript artifact patterns.
+- `references/layout-verification.md` contains initial canvas layout and proof
+  review guidance.
+- `agents/openai.yaml` provides UI metadata for skill lists.
+
+The skill is intentionally repo-local so it evolves with the artifact contract.
+
+### Why this route
+
+The artifact interface is a product boundary, not just documentation. Keeping a
+skill in the repository gives future agents a compact operational entry point
+that can be indexed or invoked by skill tooling while staying versioned with the
+code it describes.
+
+### Tradeoffs
+
+- The skill must be maintained whenever artifact contracts or verification
+  expectations change.
+- The current `skills` CLI discovers this nested location with full-depth scans
+  such as `npx skills add . --list --full-depth`.
+- Duplicating small amounts of guidance across docs and skill references is
+  acceptable when it keeps agent behavior reliable.
+
+Revisit if the artifact contract stabilizes enough to publish this as a shared
+external skill package, or if skill tooling standardizes on a different project
+layout.

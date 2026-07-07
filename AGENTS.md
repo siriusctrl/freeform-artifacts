@@ -50,6 +50,8 @@ workflow-specific docs.
 
 ### Read these docs when the task matches
 
+- Creating, editing, registering, or laying out canvas artifacts:
+  - Use `skill/freeform-artifact-builder/SKILL.md`.
 - Architecture, canvas state, artifact runtime, data transforms, or renderer
   boundaries:
   - Read `docs/architecture.md`.
@@ -75,6 +77,8 @@ workflow-specific docs.
 - Keep custom lifecycle-heavy artifacts trusted and compiled until a sandbox is
   implemented.
 - Prefer typed interfaces before adding new runtime behavior.
+- Keep `skill/freeform-artifact-builder` updated when artifact contracts,
+  renderer policy, layout expectations, or proof requirements change.
 - Update `README.md` when user-visible behavior or commands change.
 - Update `docs/architecture.md` when the artifact contract, data pipeline, or
   canvas runtime boundary changes.
