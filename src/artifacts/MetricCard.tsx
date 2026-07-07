@@ -1,11 +1,5 @@
 import type { ArtifactDefinition } from "./types";
-
-interface MetricData {
-  label: string;
-  value: number;
-  delta: number;
-  caption: string;
-}
+import { metricDataSchema, type MetricData } from "./schemas";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -24,6 +18,7 @@ export const metricCardArtifact: ArtifactDefinition<MetricData> = {
     type: "object",
     required: ["label", "value", "delta", "caption"],
   },
+  dataValidator: metricDataSchema,
   render: ({ data }) => (
     <article className="artifact metric-card">
       <div className="artifact-kicker">{data.label}</div>

@@ -1,16 +1,5 @@
 import type { ArtifactDefinition } from "./types";
-
-interface FlowStep {
-  label: string;
-  detail: string;
-  metric: string;
-}
-
-interface FlowDiagramData {
-  title: string;
-  summary: string;
-  steps: FlowStep[];
-}
+import { flowDiagramDataSchema, type FlowDiagramData } from "./schemas";
 
 export const flowDiagramArtifact: ArtifactDefinition<FlowDiagramData> = {
   id: "flow-diagram",
@@ -21,6 +10,7 @@ export const flowDiagramArtifact: ArtifactDefinition<FlowDiagramData> = {
     type: "object",
     required: ["title", "summary", "steps"],
   },
+  dataValidator: flowDiagramDataSchema,
   render: ({ data }) => (
     <article className="artifact flow-diagram">
       <div className="flow-header">

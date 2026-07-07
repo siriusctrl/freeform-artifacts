@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { EChartsOption } from "echarts";
+import type { ZodType } from "zod";
 
 export type JsonObject = Record<string, unknown>;
 
@@ -32,6 +33,8 @@ interface ArtifactBase<TData = unknown, TConfig = JsonObject> {
   };
   dataSchema?: JsonObject;
   configSchema?: JsonObject;
+  dataValidator?: ZodType<TData>;
+  configValidator?: ZodType<TConfig>;
 }
 
 export interface ReactArtifactDefinition<TData = unknown, TConfig = JsonObject> extends ArtifactBase<TData, TConfig> {

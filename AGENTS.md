@@ -94,10 +94,12 @@ workflow-specific docs.
 
 - Run `npm run check`.
 - Run `npm run verify:ui` when interaction or rendering behavior changes.
+- Run `npm run verify:preview` when runtime, bundling, imports, persistence, or
+  production-facing behavior changes.
 - Run `npm run verify:proof` when a user-facing visual interaction changes.
 - Inspect the generated GIF and contact-sheet keyframes yourself before
-  reporting completion. Use the final screenshot only as a supplementary static
-  check.
+  reporting completion. Use `frame-check.json` and the final screenshot as
+  supplementary checks.
 - Report the absolute path to the latest proof directory in the final summary.
 - If Playwright cannot launch Chromium, run `npm run setup:browsers` and retry.
 - If GIF generation fails, check that `/usr/bin/ffmpeg` or another `ffmpeg`

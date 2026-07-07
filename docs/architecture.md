@@ -69,6 +69,10 @@ store stable artifact positions independent of the user's current zoom.
 The current runtime exposes `window.__FREEFORM_STATE__` only for browser
 verification. Do not build product features on that debug handle.
 
+Canvas board state is serialized as a versioned JSON object in local storage.
+The persisted shape includes nodes, viewport, selected node, and theme mode.
+Artifact render data remains serializable and is validated when rendered.
+
 ## Artifact Registry
 
 Artifact definitions live behind this interface:
@@ -84,6 +88,8 @@ interface ArtifactBase<TData = unknown, TConfig = JsonObject> {
   };
   dataSchema?: JsonObject;
   configSchema?: JsonObject;
+  dataValidator?: ZodType<TData>;
+  configValidator?: ZodType<TConfig>;
 }
 
 interface ReactArtifactDefinition<TData = unknown, TConfig = JsonObject>
@@ -114,6 +120,11 @@ This keeps AI generation bounded:
 - The runtime can validate and register that module.
 - The canvas can place the artifact without knowing internal render details.
 
+Artifacts keep lightweight JSON-schema-shaped hints for handoff and future
+tooling, and current runtime validation uses Zod validators attached to artifact
+definitions. If validation fails, the canvas renders an invalid-artifact
+fallback instead of letting an artifact crash the board.
+
 Use `renderer: "echarts"` for normal chart families. In that path, artifacts
 provide `buildOption` and the ECharts host owns lifecycle, resize behavior, and
 the concrete SVG/canvas renderer. ECharts artifacts are non-interactive by
@@ -140,6 +151,7 @@ Transform rules:
 - Keep raw database rows out of render components unless the artifact explicitly
   declares a row-oriented shape.
 - Name transforms and make them testable.
+- Register reusable transforms in `src/data/transforms.ts`.
 - Prefer stable normalized data over implicit database column assumptions.
 - Keep network fetches outside artifact render functions.
 

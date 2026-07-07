@@ -42,6 +42,7 @@ For user-facing visual or interaction changes, run:
 ```sh
 npm run check
 npm run verify:ui
+npm run verify:preview
 npm run verify:proof
 ```
 
@@ -49,6 +50,7 @@ npm run verify:proof
 
 - `proof.gif` for user-facing review.
 - `contact-sheet.png` for internal keyframe review.
+- `frame-check.json` for sampled blank-frame statistics.
 - `final-screenshot.png` for supplementary static inspection.
 - `manifest.json` and `inspection.txt` for handoff details.
 
@@ -62,5 +64,6 @@ Inspect the GIF and `contact-sheet.png` before reporting completion. Look for:
 - zoom controls or inspector covering essential content;
 - unreadable text in light or dark mode.
 
-In final user replies, include the GIF path and summarize verification. Do not
-surface `contact-sheet.png` unless asked.
+Also inspect `frame-check.json`; `blankFrameCount` should be 0. In final user
+replies, include the GIF path and summarize verification. Do not surface
+`contact-sheet.png` unless asked.

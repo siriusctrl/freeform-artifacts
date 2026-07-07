@@ -369,3 +369,46 @@ code it describes.
 Revisit if the artifact contract stabilizes enough to publish this as a shared
 external skill package, or if skill tooling standardizes on a different project
 layout.
+
+## ADR-0007: Add runtime persistence, transforms, and validation before sandboxing
+
+Status: Accepted
+
+Date: 2026-07-07
+
+### Context
+
+The first canvas proved drag, pan, zoom, theme switching, and managed ECharts
+artifacts. The next risk was not more visual examples. The next risk was whether
+the board could preserve user work and whether database-shaped inputs could
+enter artifacts through a repeatable, validated path.
+
+### Decision
+
+Implement the next productization layer before untrusted-code sandboxing:
+
+- persist board state as versioned local-storage JSON;
+- add selected-card resize handles;
+- route imported query rows through `src/data/transforms.ts`;
+- attach Zod validators to artifact definitions;
+- render an invalid-artifact fallback when payload validation fails;
+- add production preview verification;
+- add lightweight sampled-frame checks to proof recording.
+
+### Why this route
+
+This keeps the demo focused on the artifact runtime boundary. AI-generated
+cards still cannot mutate canvas state directly, but the app can now save a
+board, restore it, validate artifact payloads, and prove production output in a
+browser.
+
+### Tradeoffs
+
+- Local storage is not collaboration or durable backend persistence.
+- Zod adds bundle weight, but catches invalid payloads at the runtime boundary.
+- The import path currently uses a checked fixture instead of a live database or
+  arbitrary file import.
+- Frame checks catch blank-like frames, not all visual regressions.
+
+Revisit when board JSON import/export needs migration tooling, when real data
+connectors arrive, or when untrusted generated code loading begins.

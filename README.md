@@ -39,6 +39,7 @@ Run deterministic checks:
 ```sh
 npm run check
 npm run verify:ui
+npm run verify:preview
 ```
 
 Create a shareable browser proof GIF:
@@ -80,16 +81,22 @@ npx skills add . --list --full-depth
 Current controls:
 
 - Drag an artifact card to move it.
+- Drag the selected card's bottom-right handle to resize it.
 - Drag empty canvas space to pan.
 - Scroll over the canvas to zoom around the pointer.
 - Use the bottom-left zoom controls to zoom or reset the view.
 - Toggle light/dark mode from the top toolbar.
+- Import a sample query result from the data toolbar button; this runs raw rows
+  through the transform registry before updating cards.
+- Export the current board as JSON from the toolbar.
 - Click **Add artifact** to insert a registry-backed example card.
 
 The canvas stores nodes in world coordinates. The viewport stores screen offset
 and scale. Rendering converts world coordinates into a single transformed DOM
 layer, which keeps artifact components as normal React/DOM content instead of
 forcing them into a low-level drawing API.
+
+Board state is automatically saved in local storage and restored on reload.
 
 ## Artifact Runtime
 
@@ -111,6 +118,8 @@ export interface ReactArtifactDefinition<TData = unknown, TConfig = JsonObject> 
   };
   dataSchema?: JsonObject;
   configSchema?: JsonObject;
+  dataValidator?: ZodType<TData>;
+  configValidator?: ZodType<TConfig>;
   render: (props: ArtifactRenderProps<TData, TConfig>) => React.ReactNode;
 }
 ```
@@ -132,6 +141,8 @@ export interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject
   };
   dataSchema?: JsonObject;
   configSchema?: JsonObject;
+  dataValidator?: ZodType<TData>;
+  configValidator?: ZodType<TConfig>;
   buildOption: (props: ArtifactRenderProps<TData, TConfig>) => EChartsOption;
 }
 ```
@@ -172,6 +183,7 @@ AI-generated artifacts should follow these rules:
 - Receive all display input through `data`, `config`, `theme`, and `emit`.
 - Keep database-specific logic outside the render component.
 - Put data shaping in a named transform before artifact rendering.
+- Add a Zod `dataValidator` for runtime payload validation.
 - Use deterministic layout; do not depend on global timers, random values, or
   network fetches during render.
 - Declare default width and height so the canvas can place the artifact before
@@ -220,11 +232,16 @@ Implemented:
 - React/TypeScript/Vite demo app.
 - Pannable and zoomable dotted canvas.
 - Draggable artifact nodes.
+- Resizable selected artifact nodes.
 - Selection inspector.
+- Persistent board serialization in local storage and JSON export.
+- Transform registry with fixtures for raw query rows.
+- Zod-backed artifact payload validation with invalid-card fallback rendering.
 - Registry-backed metric, table, flow-diagram, probability chart, and Sankey
   artifacts.
 - Playwright UI smoke test.
 - Browser proof GIF recorder.
+- Lightweight proof frame checks and production preview verification.
 - Light/dark theme support.
 - Hardened pointer dragging that suppresses browser text selection and native
   drag behavior during canvas moves.
@@ -233,15 +250,11 @@ Implemented:
 
 TODO:
 
-- Add resize handles for cards.
 - Add multi-select and z-order controls.
-- Add JSON-schema or Zod-backed validation for AI-generated artifact modules.
 - Add sandbox strategy before loading untrusted generated code.
-- Add persistent board serialization.
-- Add import path for real database query results.
-- Add transform registry with test fixtures.
-- Add visual diff thresholds for proof recordings.
-- Add a production build preview verification path.
+- Add file/API import for arbitrary database query result JSON.
+- Add richer visual diff thresholds beyond the current blank-frame checks.
+- Add board JSON import.
 
 ## Documentation
 

@@ -1,4 +1,5 @@
-import { latestRevenueSummary, revenueRows } from "../data/sampleDatabase";
+import { revenueRows } from "../data/sampleDatabase";
+import { revenueSummaryTransform, revenueTableTransform } from "../data/transforms";
 import { flowDiagramArtifact } from "./FlowDiagram";
 import { inflectionProbabilityArtifact } from "./InflectionProbability";
 import { metricCardArtifact } from "./MetricCard";
@@ -26,7 +27,11 @@ export const initialNodes: CanvasNode[] = [
     width: 280,
     height: 170,
     zIndex: 2,
-    data: latestRevenueSummary(),
+    data: revenueSummaryTransform.apply(revenueRows),
+    dataBinding: {
+      sourceId: "sample-revenue",
+      transformId: revenueSummaryTransform.id,
+    },
     config: {},
   },
   {
@@ -142,21 +147,11 @@ export const initialNodes: CanvasNode[] = [
     width: 430,
     height: 260,
     zIndex: 3,
-    data: {
-      title: "revenue_rows",
-      columns: [
-        { key: "month", label: "Month" },
-        { key: "revenue", label: "Revenue" },
-        { key: "customers", label: "Customers" },
-        { key: "churn", label: "Churn" },
-      ],
-      rows: revenueRows.slice(-4).map((row) => ({
-        month: row.month,
-        revenue: `$${Math.round(row.revenue / 1000)}k`,
-        customers: row.customers,
-        churn: `${Math.round(row.churn * 1000) / 10}%`,
-      })),
+    dataBinding: {
+      sourceId: "sample-revenue",
+      transformId: revenueTableTransform.id,
     },
+    data: revenueTableTransform.apply(revenueRows),
     config: {},
   },
 ];

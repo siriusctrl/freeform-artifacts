@@ -1,31 +1,11 @@
 import type { EChartsArtifactDefinition } from "./types";
-
-interface InflectionPoint {
-  quarter: string;
-  probabilityAt: number;
-  probabilityBy: number;
-}
-
-interface InflectionData {
-  title: string;
-  note: {
-    what: string;
-    read: string;
-    logic: string;
-  };
-  points: InflectionPoint[];
-  markers: {
-    p25: string;
-    p50: string;
-    p75: string;
-  };
-}
+import { inflectionProbabilityDataSchema, type InflectionProbabilityData } from "./schemas";
 
 function pct(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-export const inflectionProbabilityArtifact: EChartsArtifactDefinition<InflectionData> = {
+export const inflectionProbabilityArtifact: EChartsArtifactDefinition<InflectionProbabilityData> = {
   id: "inflection-probability",
   renderer: "echarts",
   chartRenderer: "svg",
@@ -36,6 +16,7 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
     type: "object",
     required: ["title", "note", "points", "markers"],
   },
+  dataValidator: inflectionProbabilityDataSchema,
   buildOption: ({ data, theme }) => {
     const isDark = theme.mode === "dark";
     const text = isDark ? "#eef3f3" : "#171717";

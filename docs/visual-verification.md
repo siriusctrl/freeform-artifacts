@@ -19,6 +19,7 @@ writes:
 - `recording.webm` as the original Playwright recording.
 - `final-screenshot.png` for static inspection.
 - `contact-sheet.png` for internal keyframe inspection across the GIF timeline.
+- `frame-check.json` with sampled frame statistics for blank-like frame checks.
 - `manifest.json` with action list and final debug state.
 - `inspection.txt` with a short human-readable checklist.
 
@@ -43,7 +44,7 @@ Playwright.
 ## Manual Review
 
 Inspect the GIF and `contact-sheet.png` before reporting completion. Use the
-final screenshot only as a supplementary static check. Look for:
+final screenshot and `frame-check.json` as supplementary checks. Look for:
 
 - blank canvas on startup;
 - missing cards;

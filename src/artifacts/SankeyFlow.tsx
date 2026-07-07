@@ -1,23 +1,7 @@
 import type { EChartsArtifactDefinition } from "./types";
+import { sankeyFlowDataSchema, type SankeyFlowData } from "./schemas";
 
-interface SankeyNode {
-  name: string;
-}
-
-interface SankeyLink {
-  source: string;
-  target: string;
-  value: number;
-}
-
-interface SankeyData {
-  title: string;
-  subtitle: string;
-  nodes: SankeyNode[];
-  links: SankeyLink[];
-}
-
-export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyData> = {
+export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
   id: "sankey-flow",
   renderer: "echarts",
   chartRenderer: "svg",
@@ -28,6 +12,7 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyData> = {
     type: "object",
     required: ["title", "subtitle", "nodes", "links"],
   },
+  dataValidator: sankeyFlowDataSchema,
   buildOption: ({ data, theme }) => {
     const isDark = theme.mode === "dark";
     const text = isDark ? "#eef3f3" : "#171717";

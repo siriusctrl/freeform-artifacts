@@ -15,12 +15,69 @@ const gifPath = path.join(outputDir, "proof.gif");
 const contactSheetPath = path.join(outputDir, "contact-sheet.png");
 const manifestPath = path.join(outputDir, "manifest.json");
 const inspectionPath = path.join(outputDir, "inspection.txt");
+const frameCheckPath = path.join(outputDir, "frame-check.json");
 const port = Number(process.env.FREEFORM_PORT ?? 4177);
 const host = "127.0.0.1";
 const url = `http://${host}:${port}`;
-const proofTrimStartSeconds = process.env.FREEFORM_PROOF_TRIM_START ?? "1.5";
+const proofTrimStartSeconds = process.env.FREEFORM_PROOF_TRIM_START ?? "2.4";
 
 mkdirSync(videoDir, { recursive: true });
+
+function checkSampledFrames(gifFile) {
+  const width = 64;
+  const height = 40;
+  const channels = 3;
+  const frameSize = width * height * channels;
+  const sample = spawnSync(
+    "ffmpeg",
+    ["-i", gifFile, "-vf", `fps=1,scale=${width}:${height}:flags=bilinear`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+    { encoding: "buffer", maxBuffer: 20 * 1024 * 1024 },
+  );
+
+  if (sample.status !== 0) {
+    throw new Error(`ffmpeg failed to sample GIF frames: ${sample.stderr.toString()}`);
+  }
+
+  const frames = [];
+  for (let offset = 0; offset + frameSize <= sample.stdout.length; offset += frameSize) {
+    let sum = 0;
+    let sumSq = 0;
+    for (let index = offset; index < offset + frameSize; index += channels) {
+      const r = sample.stdout[index];
+      const g = sample.stdout[index + 1];
+      const b = sample.stdout[index + 2];
+      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      sum += luma;
+      sumSq += luma * luma;
+    }
+    const count = width * height;
+    const mean = sum / count;
+    const variance = Math.max(0, sumSq / count - mean * mean);
+    frames.push({
+      index: frames.length,
+      mean: Number(mean.toFixed(2)),
+      deviation: Number(Math.sqrt(variance).toFixed(2)),
+      blankLike: Math.sqrt(variance) < 2.8,
+    });
+  }
+
+  const blankFrames = frames.filter((frame) => frame.blankLike);
+  const report = {
+    frameCount: frames.length,
+    blankFrameCount: blankFrames.length,
+    frames,
+  };
+
+  if (frames.length < 4) {
+    throw new Error("GIF frame check found too few sampled frames");
+  }
+
+  if (blankFrames.length > 0) {
+    throw new Error(`GIF frame check found blank-like frames: ${blankFrames.map((frame) => frame.index).join(", ")}`);
+  }
+
+  return report;
+}
 
 function waitForServer(targetUrl, timeoutMs = 120_000) {
   const startedAt = Date.now();
@@ -78,6 +135,8 @@ try {
   const page = await context.newPage();
 
   await page.goto(url);
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.waitForTimeout(700);
 
@@ -102,6 +161,21 @@ try {
   await page.mouse.move(stageBox.x + 690, stageBox.y + 390);
   await page.mouse.wheel(0, -520);
   await page.waitForTimeout(450);
+
+  await page.getByTestId("import-data").click();
+  await page.waitForTimeout(450);
+
+  await page.getByTestId("node-node-probability").click({ position: { x: 120, y: 18 } });
+  await page.waitForTimeout(150);
+  const resizeBox = await page.getByTestId("resize-node-probability").boundingBox();
+  if (!resizeBox) {
+    throw new Error("Probability resize handle was not visible enough to record proof");
+  }
+  await page.mouse.move(resizeBox.x + 8, resizeBox.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(resizeBox.x + 72, resizeBox.y + 42, { steps: 16 });
+  await page.mouse.up();
+  await page.waitForTimeout(350);
 
   await page.getByTestId("theme-toggle").click();
   await page.waitForTimeout(350);
@@ -161,6 +235,9 @@ try {
     throw new Error(`ffmpeg failed to create contact sheet: ${contactSheet.stderr.toString()}`);
   }
 
+  const frameCheck = checkSampledFrames(gifPath);
+  writeFileSync(frameCheckPath, `${JSON.stringify(frameCheck, null, 2)}\n`);
+
   const manifest = {
     url,
     createdAt: new Date().toISOString(),
@@ -169,6 +246,8 @@ try {
       "drag node",
       "pan canvas",
       "wheel zoom",
+      "import query result",
+      "resize chart artifact",
       "toggle dark mode",
       "add artifact",
       "capture screenshot",
@@ -178,6 +257,7 @@ try {
       webm: webmPath,
       screenshot: screenshotPath,
       contactSheet: contactSheetPath,
+      frameCheck: frameCheckPath,
     },
     finalState: state,
   };
@@ -192,14 +272,18 @@ try {
       "- Mouse drag moved a canvas node.",
       "- Blank-stage drag panned the canvas viewport.",
       "- Wheel input changed zoom.",
+      "- Import data transformed raw rows into metric and table artifacts.",
+      "- Resize handle changed an artifact card size.",
       "- Theme toggle switched the app into dark mode.",
       "- Add artifact inserted and selected a new registry-backed node.",
       "- Internal frame contact sheet was generated for temporal visual inspection.",
+      "- Lightweight frame check passed for sampled blank-like frames.",
       "",
       `GIF: ${gifPath}`,
       `WebM: ${webmPath}`,
       `Screenshot: ${screenshotPath}`,
       `Contact sheet: ${contactSheetPath}`,
+      `Frame check: ${frameCheckPath}`,
       "",
     ].join("\n"),
   );
@@ -208,6 +292,7 @@ try {
   console.log(`Recording: ${webmPath}`);
   console.log(`Screenshot: ${screenshotPath}`);
   console.log(`Contact sheet: ${contactSheetPath}`);
+  console.log(`Frame check: ${frameCheckPath}`);
 } finally {
   if (browser) {
     await browser.close();

@@ -1,0 +1,89 @@
+import { chromium } from "@playwright/test";
+import { spawn, spawnSync } from "node:child_process";
+import http from "node:http";
+import process from "node:process";
+
+const root = process.cwd();
+const port = Number(process.env.FREEFORM_PREVIEW_PORT ?? 4178);
+const host = "127.0.0.1";
+const url = `http://${host}:${port}`;
+
+function waitForServer(targetUrl, timeoutMs = 120_000) {
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      const request = http.get(targetUrl, (response) => {
+        response.resume();
+        if (response.statusCode && response.statusCode < 500) {
+          resolve();
+          return;
+        }
+        retry();
+      });
+
+      request.on("error", retry);
+      request.setTimeout(2_000, () => {
+        request.destroy();
+        retry();
+      });
+    };
+
+    const retry = () => {
+      if (Date.now() - startedAt > timeoutMs) {
+        reject(new Error(`Timed out waiting for ${targetUrl}`));
+        return;
+      }
+      setTimeout(check, 500);
+    };
+
+    check();
+  });
+}
+
+const build = spawnSync("npm", ["run", "build"], {
+  cwd: root,
+  stdio: "inherit",
+});
+
+if (build.status !== 0) {
+  process.exit(build.status ?? 1);
+}
+
+const server = spawn("npm", ["exec", "vite", "--", "preview", "--host", host, "--port", String(port)], {
+  cwd: root,
+  detached: true,
+  stdio: "ignore",
+});
+
+let browser;
+
+try {
+  await waitForServer(url);
+  browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+  await page.goto(url);
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("node-node-probability").waitFor({ state: "visible" });
+  await page.getByTestId("import-data").click();
+  await page.getByText("$232,400").waitFor({ state: "visible" });
+  await page.getByTestId("theme-toggle").click();
+  const state = await page.evaluate(() => window.__FREEFORM_STATE__);
+
+  if (state?.themeMode !== "dark" || state?.status !== "Imported query result") {
+    throw new Error("Preview state did not reflect import and theme interactions");
+  }
+
+  console.log(`Preview verification passed: ${url}`);
+} finally {
+  if (browser) {
+    await browser.close();
+  }
+  if (server.pid) {
+    try {
+      process.kill(-server.pid, "SIGTERM");
+    } catch {
+      server.kill("SIGTERM");
+    }
+  }
+}

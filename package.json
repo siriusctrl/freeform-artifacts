@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit && vite build",
+    "verify:preview": "node scripts/verify-preview.mjs",
     "setup:browsers": "playwright install chromium",
     "verify:ui": "playwright test",
     "verify:proof": "node scripts/record-proof.mjs"
@@ -17,7 +18,8 @@
     "echarts": "^6.1.0",
     "lucide-react": "^1.23.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

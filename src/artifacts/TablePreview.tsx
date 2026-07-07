@@ -1,17 +1,7 @@
 import type { ArtifactDefinition } from "./types";
+import { tablePreviewDataSchema, type TablePreviewData } from "./schemas";
 
-interface TableColumn {
-  key: string;
-  label: string;
-}
-
-interface TableData {
-  title: string;
-  columns: TableColumn[];
-  rows: Record<string, string | number>[];
-}
-
-export const tablePreviewArtifact: ArtifactDefinition<TableData> = {
+export const tablePreviewArtifact: ArtifactDefinition<TablePreviewData> = {
   id: "table-preview",
   title: "Table Preview",
   version: "0.1.0",
@@ -20,6 +10,7 @@ export const tablePreviewArtifact: ArtifactDefinition<TableData> = {
     type: "object",
     required: ["title", "columns", "rows"],
   },
+  dataValidator: tablePreviewDataSchema,
   render: ({ data }) => (
     <article className="artifact table-card">
       <div className="table-title">{data.title}</div>

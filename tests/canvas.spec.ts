@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 test("freeform canvas supports pan, zoom, node drag, select, and add artifact", async ({ page }) => {
   await page.goto("/");
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
 
   const stage = page.getByTestId("canvas-stage");
   const revenueNode = page.getByTestId("node-node-revenue");
@@ -46,6 +48,21 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
     return state.nodes.find((node) => node.id === "node-probability")?.x;
   }).not.toBe(initial.nodes.find((node) => node.id === "node-probability")?.x);
 
+  const resizeHandle = page.getByTestId("resize-node-probability");
+  await expect(resizeHandle).toBeVisible();
+  const resizeBox = await resizeHandle.boundingBox();
+  expect(resizeBox).not.toBeNull();
+
+  await page.mouse.move(resizeBox!.x + 8, resizeBox!.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(resizeBox!.x + 78, resizeBox!.y + 48, { steps: 8 });
+  await page.mouse.up();
+
+  await expect.poll(async () => {
+    const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
+    return state.nodes.find((node) => node.id === "node-probability")?.width;
+  }).toBeGreaterThan(initial.nodes.find((node) => node.id === "node-probability")!.width);
+
   const panStart = { x: stageBox!.x + 100, y: stageBox!.y + stageBox!.height - 120 };
   await page.mouse.move(panStart.x, panStart.y);
   await page.mouse.down();
@@ -75,6 +92,10 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   await page.getByTestId("theme-toggle").click();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
 
+  await page.getByTestId("import-data").click();
+  await expect(page.getByText("$232,400")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Imported query result");
+
   await page.getByTestId("add-artifact").click();
   await expect(page.getByText("AI generated card")).toBeVisible();
 
@@ -82,4 +103,9 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   expect(finalState.nodes.length).toBe(initial.nodes.length + 1);
   expect(finalState.selectedNodeId).toMatch(/^node-ai-/);
   expect(finalState.themeMode).toBe("dark");
+
+  await page.reload();
+  await expect(page.getByText("AI generated card")).toBeVisible();
+  await expect(page.getByText("$232,400")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
 });

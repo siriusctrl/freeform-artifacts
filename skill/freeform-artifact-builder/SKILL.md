@@ -24,10 +24,11 @@ canvas.
    data through `CanvasNode.data`.
 6. Register the artifact in `src/artifacts/registry.ts` and add or update
    `initialNodes` only when the demo should show it by default.
-7. Run `npm run check`, `npm run verify:ui`, and `npm run verify:proof` for
-   user-facing visual or interaction changes.
-8. Inspect the generated GIF and internal `contact-sheet.png`; report only the
-   GIF proof path to the user unless they ask for more.
+7. Run `npm run check`, `npm run verify:ui`, `npm run verify:preview`, and
+   `npm run verify:proof` for user-facing visual or interaction changes.
+8. Inspect the generated GIF, internal `contact-sheet.png`, and
+   `frame-check.json`; report only the GIF proof path to the user unless they
+   ask for more.
 
 ## Hard Rules
 
@@ -39,6 +40,7 @@ canvas.
 - Add `interactive: true` only when chart-level hover, tooltip, click, or brush
   behavior is required.
 - Keep text readable in both light and dark mode.
+- Attach a Zod `dataValidator` to new artifacts.
 - Do not rely on random values, timers, network fetches, or mutable globals
   during render.
 - Keep generated code trusted and compiled until a sandbox is implemented.

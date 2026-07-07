@@ -13,65 +13,51 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { artifactRegistry, initialNodes } from "./artifacts/registry";
 import { EChartsArtifactHost } from "./artifacts/EChartsArtifactHost";
-import type { CanvasNode, CanvasTheme, CanvasViewport } from "./artifacts/types";
+import { artifactRegistry, initialNodes } from "./artifacts/registry";
+import type { CanvasNode, CanvasViewport } from "./artifacts/types";
+import { validateArtifactPayload } from "./artifacts/validation";
+import { clearBoardState, createBoardState, downloadBoardState, loadBoardState, saveBoardState } from "./canvas/board";
+import { INITIAL_VIEWPORT, themeFor, type ThemeMode } from "./canvas/constants";
+import { createMetricNode } from "./canvas/nodeFactory";
+import { importedRevenueRows } from "./data/transformFixtures";
+import { revenueSummaryTransform, revenueTableTransform, runTransform } from "./data/transforms";
 import { screenToWorld, zoomAt } from "./lib/geometry";
-
-type ThemeMode = "light" | "dark";
 
 type DragState =
   | { type: "pan"; startX: number; startY: number; viewport: CanvasViewport }
-  | { type: "node"; nodeId: string; startWorldX: number; startWorldY: number; nodeX: number; nodeY: number };
-
-const INITIAL_VIEWPORT: CanvasViewport = { x: 80, y: 80, scale: 1 };
-
-function themeFor(mode: ThemeMode): CanvasTheme {
-  if (mode === "dark") {
-    return {
-      mode,
-      accent: "#35c8dc",
-      surface: "#171b1d",
-      text: "#eef3f3",
+  | { type: "node"; nodeId: string; startWorldX: number; startWorldY: number; nodeX: number; nodeY: number }
+  | {
+      type: "resize";
+      nodeId: string;
+      startWorldX: number;
+      startWorldY: number;
+      startWidth: number;
+      startHeight: number;
     };
-  }
 
-  return {
-    mode,
-    accent: "#0098b8",
-    surface: "#ffffff",
-    text: "#171717",
-  };
-}
+const MIN_NODE_SIZE = { width: 180, height: 130 };
 
-function createMetricNode(index: number, position: { x: number; y: number }): CanvasNode {
-  return {
-    id: `node-ai-${Date.now()}`,
-    artifactId: "metric-card",
-    title: "AI Generated Metric",
-    x: Math.round(position.x + index * 18),
-    y: Math.round(position.y + index * 14),
-    width: 280,
-    height: 170,
-    zIndex: 10 + index,
-    data: {
-      label: "AI generated card",
-      value: 224_800 + index * 4_200,
-      delta: 0.12,
-      caption: "Created from registry contract",
-    },
-    config: {},
-  };
+function InvalidArtifactCard({ message }: { message?: string }) {
+  return (
+    <article className="artifact invalid-artifact">
+      <div className="artifact-kicker">invalid artifact</div>
+      <strong>Schema validation failed</strong>
+      <span>{message ?? "The artifact data or config did not match its contract."}</span>
+    </article>
+  );
 }
 
 export default function App() {
+  const [savedBoard] = useState(() => loadBoardState());
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
-  const [nodes, setNodes] = useState<CanvasNode[]>(initialNodes);
-  const [viewport, setViewport] = useState<CanvasViewport>(INITIAL_VIEWPORT);
-  const [selectedNodeId, setSelectedNodeId] = useState<string>("node-revenue");
+  const [nodes, setNodes] = useState<CanvasNode[]>(() => savedBoard?.nodes ?? initialNodes);
+  const [viewport, setViewport] = useState<CanvasViewport>(() => savedBoard?.viewport ?? INITIAL_VIEWPORT);
+  const [selectedNodeId, setSelectedNodeId] = useState<string>(() => savedBoard?.selectedNodeId ?? "node-revenue");
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [themeMode, setThemeMode] = useState<ThemeMode>("light");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => savedBoard?.themeMode ?? "light");
+  const [status, setStatus] = useState(savedBoard ? "Restored saved board" : "Autosave ready");
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const canvasTheme = useMemo(() => themeFor(themeMode), [themeMode]);
@@ -88,6 +74,8 @@ export default function App() {
   }, [drag]);
 
   useEffect(() => {
+    const board = createBoardState({ nodes, viewport, selectedNodeId, themeMode });
+    saveBoardState(board);
     window.__FREEFORM_STATE__ = {
       get nodes() {
         return nodes;
@@ -101,8 +89,11 @@ export default function App() {
       get themeMode() {
         return themeMode;
       },
+      get status() {
+        return status;
+      },
     };
-  }, [nodes, viewport, selectedNodeId, themeMode]);
+  }, [nodes, viewport, selectedNodeId, themeMode, status]);
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
@@ -123,9 +114,20 @@ export default function App() {
       }
 
       const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
-      const nextX = currentDrag.nodeX + world.x - currentDrag.startWorldX;
-      const nextY = currentDrag.nodeY + world.y - currentDrag.startWorldY;
-      updateNodePosition(currentDrag.nodeId, nextX, nextY);
+      if (currentDrag.type === "resize") {
+        updateNodeSize(
+          currentDrag.nodeId,
+          currentDrag.startWidth + world.x - currentDrag.startWorldX,
+          currentDrag.startHeight + world.y - currentDrag.startWorldY,
+        );
+        return;
+      }
+
+      updateNodePosition(
+        currentDrag.nodeId,
+        currentDrag.nodeX + world.x - currentDrag.startWorldX,
+        currentDrag.nodeY + world.y - currentDrag.startWorldY,
+      );
     }
 
     function handlePointerUp() {
@@ -165,6 +167,20 @@ export default function App() {
   function updateNodePosition(nodeId: string, x: number, y: number) {
     setNodes((current) =>
       current.map((node) => (node.id === nodeId ? { ...node, x: Math.round(x), y: Math.round(y) } : node)),
+    );
+  }
+
+  function updateNodeSize(nodeId: string, width: number, height: number) {
+    setNodes((current) =>
+      current.map((node) =>
+        node.id === nodeId
+          ? {
+              ...node,
+              width: Math.max(MIN_NODE_SIZE.width, Math.round(width)),
+              height: Math.max(MIN_NODE_SIZE.height, Math.round(height)),
+            }
+          : node,
+      ),
     );
   }
 
@@ -221,6 +237,26 @@ export default function App() {
     });
   }
 
+  function handleResizePointerDown(event: React.PointerEvent<HTMLButtonElement>, node: CanvasNode) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
+    setSelectedNodeId(node.id);
+    bringToFront(node.id);
+    startDrag({
+      type: "resize",
+      nodeId: node.id,
+      startWorldX: world.x,
+      startWorldY: world.y,
+      startWidth: node.width,
+      startHeight: node.height,
+    });
+  }
+
   function changeZoom(factor: number) {
     const rect = stageRef.current?.getBoundingClientRect();
     const center = rect
@@ -238,10 +274,57 @@ export default function App() {
     const next = createMetricNode(nodes.length, world);
     setNodes((current) => [...current, next]);
     setSelectedNodeId(next.id);
+    setStatus("Added registry artifact");
+  }
+
+  function importData() {
+    const summary = runTransform(revenueSummaryTransform, importedRevenueRows);
+    const table = runTransform(revenueTableTransform, importedRevenueRows);
+    if (!summary.ok || !table.ok) {
+      setStatus(`Import failed: ${summary.ok ? table.message : summary.message}`);
+      return;
+    }
+
+    setNodes((current) =>
+      current.map((node) => {
+        if (node.id === "node-revenue") {
+          return {
+            ...node,
+            data: summary.data,
+            dataBinding: { sourceId: "imported-revenue", transformId: revenueSummaryTransform.id },
+          };
+        }
+        if (node.id === "node-table") {
+          return {
+            ...node,
+            data: table.data,
+            dataBinding: { sourceId: "imported-revenue", transformId: revenueTableTransform.id },
+          };
+        }
+        return node;
+      }),
+    );
+    setSelectedNodeId("node-revenue");
+    setStatus("Imported query result");
+  }
+
+  function exportBoard() {
+    downloadBoardState(createBoardState({ nodes, viewport, selectedNodeId, themeMode }));
+    setStatus("Exported board JSON");
+  }
+
+  function resetBoard() {
+    clearBoardState();
+    setNodes(initialNodes);
+    setViewport(INITIAL_VIEWPORT);
+    setSelectedNodeId("node-revenue");
+    setThemeMode("light");
+    setStatus("Reset board");
   }
 
   function resetView() {
     setViewport(INITIAL_VIEWPORT);
+    setStatus("Reset view");
   }
 
   return (
@@ -256,13 +339,13 @@ export default function App() {
             <button type="button" className="icon-button active" title="Select">
               <MousePointer2 size={20} />
             </button>
-            <button type="button" className="icon-button" title="Grid">
+            <button type="button" className="icon-button" title="Reset board" onClick={resetBoard} data-testid="reset-board">
               <Grid3X3 size={20} />
             </button>
-            <button type="button" className="icon-button" title="Import data">
+            <button type="button" className="icon-button" title="Import data" onClick={importData} data-testid="import-data">
               <Database size={20} />
             </button>
-            <button type="button" className="icon-button" title="Export proof">
+            <button type="button" className="icon-button" title="Export board" onClick={exportBoard} data-testid="export-board">
               <ArrowDownToLine size={20} />
             </button>
             <button
@@ -276,10 +359,15 @@ export default function App() {
               <span>{themeMode === "light" ? "Dark" : "Light"}</span>
             </button>
           </div>
-          <button type="button" className="primary-action" onClick={addArtifact} data-testid="add-artifact">
-            <Plus size={18} />
-            <span>Add artifact</span>
-          </button>
+          <div className="topbar-actions">
+            <div className="status-pill" data-testid="board-status">
+              {status}
+            </div>
+            <button type="button" className="primary-action" onClick={addArtifact} data-testid="add-artifact">
+              <Plus size={18} />
+              <span>Add artifact</span>
+            </button>
+          </div>
         </header>
 
         <div
@@ -301,6 +389,7 @@ export default function App() {
           >
             {nodes.map((node) => {
               const artifact = artifactRegistry[node.artifactId];
+              const validation = validateArtifactPayload(node, artifact);
               const isSelected = node.id === selectedNodeId;
 
               return (
@@ -324,7 +413,9 @@ export default function App() {
                     <span>{node.title}</span>
                   </div>
                   <div className="node-body">
-                    {artifact.renderer === "echarts" ? (
+                    {!validation.ok || !artifact ? (
+                      <InvalidArtifactCard message={validation.message} />
+                    ) : artifact.renderer === "echarts" ? (
                       <EChartsArtifactHost
                         artifact={artifact}
                         renderProps={{
@@ -343,6 +434,15 @@ export default function App() {
                       })
                     )}
                   </div>
+                  {isSelected ? (
+                    <button
+                      type="button"
+                      className="resize-handle"
+                      data-testid={`resize-${node.id}`}
+                      title="Resize artifact"
+                      onPointerDown={(event) => handleResizePointerDown(event, node)}
+                    />
+                  ) : null}
                 </div>
               );
             })}
@@ -395,6 +495,12 @@ export default function App() {
                       {selectedNode.width} x {selectedNode.height}
                     </dd>
                   </div>
+                  {selectedNode.dataBinding ? (
+                    <div>
+                      <dt>Source</dt>
+                      <dd>{selectedNode.dataBinding.sourceId}</dd>
+                    </div>
+                  ) : null}
                 </dl>
               </>
             ) : (
@@ -414,6 +520,7 @@ declare global {
       readonly viewport: CanvasViewport;
       readonly selectedNodeId: string;
       readonly themeMode: ThemeMode;
+      readonly status: string;
     };
   }
 }

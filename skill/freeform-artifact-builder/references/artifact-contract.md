@@ -8,6 +8,7 @@ Use this reference when creating or editing artifact modules.
 - Export one named artifact constant, for example `revenueBridgeArtifact`.
 - Import and register it in `src/artifacts/registry.ts`.
 - Keep reusable data transforms outside render/build functions.
+- Put reusable Zod data schemas in `src/artifacts/schemas.ts`.
 
 ## Renderer Choice
 
@@ -19,11 +20,7 @@ flows, mixed UI, controls, or non-chart composition.
 
 ```ts
 import type { ArtifactDefinition } from "./types";
-
-interface ExampleData {
-  title: string;
-  value: number;
-}
+import { exampleDataSchema, type ExampleData } from "./schemas";
 
 export const exampleArtifact: ArtifactDefinition<ExampleData> = {
   id: "example-artifact",
@@ -34,6 +31,7 @@ export const exampleArtifact: ArtifactDefinition<ExampleData> = {
     type: "object",
     required: ["title", "value"],
   },
+  dataValidator: exampleDataSchema,
   render: ({ data, theme }) => (
     <article className="artifact">
       <h2>{data.title}</h2>
@@ -47,11 +45,7 @@ export const exampleArtifact: ArtifactDefinition<ExampleData> = {
 
 ```ts
 import type { EChartsArtifactDefinition } from "./types";
-
-interface ChartData {
-  title: string;
-  points: Array<{ label: string; value: number }>;
-}
+import { exampleChartDataSchema, type ChartData } from "./schemas";
 
 export const exampleChartArtifact: EChartsArtifactDefinition<ChartData> = {
   id: "example-chart",
@@ -64,6 +58,7 @@ export const exampleChartArtifact: EChartsArtifactDefinition<ChartData> = {
     type: "object",
     required: ["title", "points"],
   },
+  dataValidator: exampleChartDataSchema,
   buildOption: ({ data, theme }) => {
     const isDark = theme.mode === "dark";
     const text = isDark ? "#eef3f3" : "#171717";
@@ -108,8 +103,9 @@ Keep the host generic. Do not add artifact-specific lifecycle code there.
 ## Data Rules
 
 - Use serializable `data` and `config`.
-- Keep `dataSchema` and `configSchema` as useful hints, even before strict
-  validation exists.
+- Keep `dataSchema` and `configSchema` as useful hints.
+- Add Zod `dataValidator` and `configValidator` when introducing new artifact
+  payload shapes.
 - Use stable IDs with lowercase words and hyphens.
 - Use `CanvasTheme` values for theme-sensitive colors.
 - Avoid inline layout that can overflow the card at the declared `defaultSize`.

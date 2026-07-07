@@ -15,10 +15,16 @@ All notable user-facing changes to this project should be documented here.
 - Probability chart and Sankey examples backed by ECharts options.
 - Self-hosted Geist Sans and Geist Mono typography.
 - Sample database rows and transform helpers.
+- Persistent board autosave/restore and board JSON export.
+- Selected-card resize handles.
+- Transform registry with checked raw-row fixtures.
+- Zod-backed artifact payload validation with invalid-artifact fallback UI.
 - Playwright browser smoke test for core canvas interactions.
+- Production build preview verification.
 - Browser proof recorder that writes WebM, GIF, screenshot, manifest, and
   inspection artifacts.
 - Internal proof contact sheet generation for keyframe inspection.
+- Lightweight proof frame checks for blank-like sampled frames.
 - README, AGENTS, architecture, testing, and visual-verification handoff docs.
 - Project-local `freeform-artifact-builder` skill for future agents creating
   compliant artifacts and canvas layouts.
@@ -32,6 +38,8 @@ All notable user-facing changes to this project should be documented here.
 - Centered the add-artifact action content optically.
 - Kept static ECharts artifacts from refreshing or entering hover states during
   canvas drag, pan, and zoom.
+- Refactored board, transform, and node creation boundaries out of the main app
+  component.
 
 ### Removed
 
