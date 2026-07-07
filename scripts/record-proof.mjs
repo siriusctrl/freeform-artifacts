@@ -104,11 +104,6 @@ try {
   await page.getByTestId("theme-toggle").click();
   await page.waitForTimeout(350);
 
-  await page.getByTestId("toggle-sidebar").click();
-  await page.waitForTimeout(350);
-  await page.getByTestId("toggle-sidebar").click();
-  await page.waitForTimeout(350);
-
   await page.getByTestId("add-artifact").click();
   await page.waitForTimeout(500);
   await page.screenshot({ path: screenshotPath, fullPage: false });
@@ -149,8 +144,6 @@ try {
       "pan canvas",
       "wheel zoom",
       "toggle dark mode",
-      "collapse sidebar",
-      "open sidebar",
       "add artifact",
       "capture screenshot",
     ],
@@ -173,7 +166,6 @@ try {
       "- Blank-stage drag panned the canvas viewport.",
       "- Wheel input changed zoom.",
       "- Theme toggle switched the app into dark mode.",
-      "- Sidebar collapsed and reopened.",
       "- Add artifact inserted and selected a new registry-backed node.",
       "",
       `GIF: ${gifPath}`,

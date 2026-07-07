@@ -211,3 +211,44 @@ when the pointer leaves the original card or stage bounds.
 
 Revisit when artifacts support editable text, embedded inputs, or nested
 interactive widgets that need their own pointer semantics.
+
+## ADR-0004: Remove the sidebar from the initial demo surface
+
+Status: Accepted
+
+Date: 2026-07-07
+
+### Context
+
+The first demo briefly included a Freeform-like board sidebar. It showed board
+labels, data sources, and AI drafts, but those controls were not connected to
+real navigation or multi-board state.
+
+The primary product question is whether the canvas can host AI-generated
+database artifacts with clear drag, pan, zoom, theme, and verification behavior.
+
+### Decision
+
+Remove the sidebar for now. Keep the first screen focused on:
+
+- the canvas;
+- the top toolbar;
+- theme switching;
+- artifact insertion;
+- zoom controls;
+- selection inspection.
+
+### Why this route
+
+The sidebar consumed horizontal space without proving a meaningful product
+capability. Removing it makes the demo cleaner, gives artifacts more room, and
+reduces handoff surface area for the next implementation pass.
+
+### Tradeoffs
+
+- There is no visible multi-board navigation yet.
+- Future data-source and AI-draft management will need another surface.
+- A future sidebar can return when it has real state and workflows behind it.
+
+Revisit when boards, source connections, artifact library browsing, or AI draft
+management become real product features rather than decorative navigation.

@@ -53,7 +53,6 @@ Inspect the GIF or screenshot before reporting completion. Look for:
 - wheel zoom jumping away from the pointer;
 - top toolbar zoom controls not changing scale;
 - light/dark mode leaving illegible cards or panels;
-- sidebar collapse/open controls not changing layout;
 - added artifacts appearing outside the visible canvas;
 - text overflow in buttons, cards, or inspector panels.
 

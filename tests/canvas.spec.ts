@@ -29,9 +29,10 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   }).not.toBe(initial.nodes.find((node) => node.id === "node-revenue")?.x);
   await expect.poll(async () => page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
 
-  await page.mouse.move(stageBox!.x + 820, stageBox!.y + 570);
+  const panStart = { x: stageBox!.x + 100, y: stageBox!.y + stageBox!.height - 120 };
+  await page.mouse.move(panStart.x, panStart.y);
   await page.mouse.down();
-  await page.mouse.move(stageBox!.x + 700, stageBox!.y + 490, { steps: 8 });
+  await page.mouse.move(panStart.x + 120, panStart.y - 80, { steps: 8 });
   await page.mouse.up();
 
   await expect.poll(async () => {
@@ -57,11 +58,6 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   await page.getByTestId("theme-toggle").click();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
 
-  await page.getByTestId("toggle-sidebar").click();
-  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.sidebarOpen)).toBe(false);
-  await page.getByTestId("toggle-sidebar").click();
-  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.sidebarOpen)).toBe(true);
-
   await page.getByTestId("add-artifact").click();
   await expect(page.getByText("AI generated card")).toBeVisible();
 
@@ -69,17 +65,4 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   expect(finalState.nodes.length).toBe(4);
   expect(finalState.selectedNodeId).toMatch(/^node-ai-/);
   expect(finalState.themeMode).toBe("dark");
-  expect(finalState.sidebarOpen).toBe(true);
-});
-
-test("sidebar can reopen on narrow screens", async ({ page }) => {
-  await page.setViewportSize({ width: 640, height: 820 });
-  await page.goto("/");
-
-  await page.getByTestId("collapse-sidebar").click();
-  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.sidebarOpen)).toBe(false);
-
-  await page.getByTestId("open-sidebar").click();
-  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.sidebarOpen)).toBe(true);
-  await expect(page.getByText("Artifact Canvas")).toBeVisible();
 });

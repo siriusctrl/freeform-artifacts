@@ -5,15 +5,10 @@ import {
   Database,
   Frame,
   Grid3X3,
-  Menu,
   Minus,
   Moon,
   MousePointer2,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelsTopLeft,
   Plus,
-  Sparkles,
   Sun,
   ZoomIn,
   ZoomOut,
@@ -27,6 +22,8 @@ type ThemeMode = "light" | "dark";
 type DragState =
   | { type: "pan"; startX: number; startY: number; viewport: CanvasViewport }
   | { type: "node"; nodeId: string; startWorldX: number; startWorldY: number; nodeX: number; nodeY: number };
+
+const INITIAL_VIEWPORT: CanvasViewport = { x: 80, y: 80, scale: 1 };
 
 function themeFor(mode: ThemeMode): CanvasTheme {
   if (mode === "dark") {
@@ -70,11 +67,10 @@ export default function App() {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const [nodes, setNodes] = useState<CanvasNode[]>(initialNodes);
-  const [viewport, setViewport] = useState<CanvasViewport>({ x: 360, y: 92, scale: 1 });
+  const [viewport, setViewport] = useState<CanvasViewport>(INITIAL_VIEWPORT);
   const [selectedNodeId, setSelectedNodeId] = useState<string>("node-revenue");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const canvasTheme = useMemo(() => themeFor(themeMode), [themeMode]);
@@ -104,11 +100,8 @@ export default function App() {
       get themeMode() {
         return themeMode;
       },
-      get sidebarOpen() {
-        return sidebarOpen;
-      },
     };
-  }, [nodes, viewport, selectedNodeId, themeMode, sidebarOpen]);
+  }, [nodes, viewport, selectedNodeId, themeMode]);
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
@@ -135,7 +128,7 @@ export default function App() {
     }
 
     function handlePointerUp() {
-      setDrag(null);
+      endDrag();
     }
 
     window.addEventListener("pointermove", handlePointerMove, { passive: false });
@@ -181,6 +174,16 @@ export default function App() {
     });
   }
 
+  function startDrag(nextDrag: DragState) {
+    dragRef.current = nextDrag;
+    setDrag(nextDrag);
+  }
+
+  function endDrag() {
+    dragRef.current = null;
+    setDrag(null);
+  }
+
   function handleStagePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     const target = event.target instanceof Element ? event.target : null;
     if (event.button !== 0 || target?.closest(".canvas-node, button, a, input, textarea, select")) {
@@ -189,7 +192,7 @@ export default function App() {
 
     event.preventDefault();
     setSelectedNodeId("");
-    setDrag({
+    startDrag({
       type: "pan",
       startX: event.clientX,
       startY: event.clientY,
@@ -207,7 +210,7 @@ export default function App() {
     const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
     setSelectedNodeId(node.id);
     bringToFront(node.id);
-    setDrag({
+    startDrag({
       type: "node",
       nodeId: node.id,
       startWorldX: world.x,
@@ -237,73 +240,14 @@ export default function App() {
   }
 
   function resetView() {
-    setViewport({ x: 360, y: 92, scale: 1 });
+    setViewport(INITIAL_VIEWPORT);
   }
 
   return (
-    <main
-      className={`app-shell ${sidebarOpen ? "sidebar-open" : "sidebar-collapsed"}`}
-      data-theme={themeMode}
-      data-sidebar-open={sidebarOpen}
-    >
-      <aside className="sidebar" aria-label="Boards">
-        <div className="sidebar-header">
-          <div className="window-dots" aria-hidden="true">
-            <span className="dot red" />
-            <span className="dot yellow" />
-            <span className="dot green" />
-          </div>
-          <button
-            type="button"
-            className="sidebar-toggle"
-            onClick={() => setSidebarOpen(false)}
-            title="Collapse sidebar"
-            data-testid="collapse-sidebar"
-          >
-            <PanelLeftClose size={18} />
-          </button>
-        </div>
-        <div className="sidebar-title">Boards</div>
-        <nav className="board-list">
-          <button className="board-item active">
-            <PanelsTopLeft size={18} />
-            <span>Artifact Canvas</span>
-            <strong>{nodes.length}</strong>
-          </button>
-          <button className="board-item">
-            <Database size={18} />
-            <span>Data Sources</span>
-            <strong>2</strong>
-          </button>
-          <button className="board-item">
-            <Sparkles size={18} />
-            <span>AI Drafts</span>
-            <strong>1</strong>
-          </button>
-        </nav>
-      </aside>
-
+    <main className="app-shell" data-theme={themeMode}>
       <section className="workspace">
         <header className="topbar">
           <div className="title-block">
-            <button
-              type="button"
-              className="icon-button sidebar-open-button"
-              onClick={() => setSidebarOpen((current) => !current)}
-              title={sidebarOpen ? "Collapse sidebar" : "Open sidebar"}
-              data-testid="toggle-sidebar"
-            >
-              {sidebarOpen ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
-            </button>
-            <button
-              type="button"
-              className="icon-button mobile-menu-button"
-              onClick={() => setSidebarOpen(true)}
-              title="Open sidebar"
-              data-testid="open-sidebar"
-            >
-              <Menu size={20} />
-            </button>
             <Frame size={22} />
             <span>Freeform Artifacts</span>
           </div>
@@ -456,7 +400,6 @@ declare global {
       readonly viewport: CanvasViewport;
       readonly selectedNodeId: string;
       readonly themeMode: ThemeMode;
-      readonly sidebarOpen: boolean;
     };
   }
 }
