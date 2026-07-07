@@ -113,6 +113,57 @@ The registry is layered:
 - `src/canvas/seeds/demoBoard.ts` chooses which artifacts appear on the default
   demo board.
 
+## Adding A Customized Artifact
+
+There are two trusted-code paths.
+
+### Repo-Compiled TSX
+
+Use this when Codex or Claude can write into the app repo and the app can be
+rebuilt.
+
+1. Create `src/artifacts/generated/my-artifact.artifact.tsx`.
+2. Export `artifact`, `default`, or `artifacts`.
+3. The generated registry auto-discovers `*.artifact.tsx` files with Vite
+   `import.meta.glob`.
+4. If the artifact should appear on the default board, add a `CanvasNode` in
+   `src/canvas/seeds/demoBoard.ts`.
+5. Run the verification commands.
+
+### Runtime External ESM
+
+Use this when the deployed app owner wants to drop trusted JavaScript modules
+under `public/` without rebuilding the main app.
+
+1. Add a compiled ESM file such as:
+
+```text
+public/artifacts/generated/my-artifact.js
+```
+
+2. Add it to:
+
+```text
+public/artifacts/generated/manifest.json
+```
+
+```json
+{
+  "artifacts": [
+    { "module": "/artifacts/generated/my-artifact.js" }
+  ]
+}
+```
+
+3. Export `artifact`, `default`, or `artifacts` from the module.
+
+External runtime modules are trusted self-hosted code. They execute in the page,
+are not sandboxed, and should be treated as "take your own risk" plugins.
+The loader fetches these files and imports them as Blob-backed browser modules,
+so keep runtime modules self-contained instead of using relative imports.
+Runtime React artifacts can use `window.React.createElement`; runtime `.js`
+files cannot contain raw JSX unless they are compiled first.
+
 An artifact is a typed object with an id, version, default size, optional data
 schema hints, optional config schema hints, and a renderer-specific body.
 
@@ -252,6 +303,8 @@ Implemented:
   artifacts.
 - Layered artifact registries for core, example, and future generated
   artifacts.
+- Auto-discovered repo-generated TSX artifacts and trusted runtime ESM artifact
+  loading through `/artifacts/generated/manifest.json`.
 - Playwright UI smoke test.
 - Browser proof GIF recorder.
 - Lightweight proof frame checks and production preview verification.

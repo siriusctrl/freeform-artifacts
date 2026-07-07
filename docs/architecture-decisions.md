@@ -453,3 +453,50 @@ mount point with separate policy and validation.
 
 Revisit if generated artifacts move into a sandboxed package boundary or if
 core artifacts become a separately versioned artifact SDK.
+
+## ADR-0009: Support trusted dynamic generated artifacts
+
+Status: Accepted
+
+Date: 2026-07-07
+
+### Context
+
+The generated artifact entry point should support user workflows where Codex or
+Claude writes an artifact file and the self-hosted app owner wants to see it
+without manually editing the central registry. The owner controls deployment and
+accepts the risk of running generated code.
+
+### Decision
+
+Support two trusted loading paths:
+
+- repo-compiled generated modules discovered from
+  `src/artifacts/generated/**/*.artifact.tsx` with Vite `import.meta.glob`;
+- runtime external ESM modules listed in
+  `public/artifacts/generated/manifest.json` and imported with
+  `import(/* @vite-ignore */ moduleUrl)`.
+
+External modules can export `artifact`, `default`, or `artifacts`. The runtime
+merges them into the in-memory artifact registry after startup.
+
+### Why this route
+
+This gives a low-friction self-hosted workflow without adding a browser-side
+TypeScript compiler or iframe sandbox. TSX artifacts stay convenient during
+repo development, while deployed owners can drop compiled ESM modules under
+`public/` and update the manifest.
+
+### Tradeoffs
+
+- Runtime ESM artifacts are trusted page code and are not sandboxed.
+- External modules must be browser-ready JavaScript, not raw TSX.
+- External modules are fetched and imported as Blob-backed modules, so they
+  should be self-contained and avoid relative imports.
+- Production deployments need a writable/public artifact directory if users add
+  artifacts after build.
+- Artifact data validation still happens at the host boundary, but lifecycle and
+  global JS side effects remain trusted-code risks.
+
+Revisit when generated code should be accepted from untrusted users, or when the
+product needs a server-side compiler/bundler for uploaded TSX artifacts.

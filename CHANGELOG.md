@@ -30,6 +30,9 @@ All notable user-facing changes to this project should be documented here.
   compliant artifacts and canvas layouts.
 - Layered artifact directories and registries for core, examples, and generated
   artifacts.
+- Auto-discovery for repo-generated `*.artifact.tsx` modules.
+- Trusted runtime ESM artifact loading through
+  `/artifacts/generated/manifest.json`.
 
 ### Fixed
 

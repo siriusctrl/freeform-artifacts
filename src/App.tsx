@@ -14,7 +14,9 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { EChartsArtifactHost } from "./artifacts/EChartsArtifactHost";
+import { loadExternalArtifactRegistry } from "./artifacts/generated/externalLoader";
 import { artifactRegistry } from "./artifacts/registry";
+import type { RegisteredArtifact } from "./artifacts/registryTypes";
 import type { CanvasNode, CanvasViewport } from "./artifacts/types";
 import { validateArtifactPayload } from "./artifacts/validation";
 import { clearBoardState, createBoardState, downloadBoardState, loadBoardState, saveBoardState } from "./canvas/board";
@@ -59,9 +61,33 @@ export default function App() {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => savedBoard?.themeMode ?? "light");
   const [status, setStatus] = useState(savedBoard ? "Restored saved board" : "Autosave ready");
+  const [runtimeArtifactRegistry, setRuntimeArtifactRegistry] =
+    useState<Record<string, RegisteredArtifact>>(artifactRegistry);
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const canvasTheme = useMemo(() => themeFor(themeMode), [themeMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadExternalArtifactRegistry()
+      .then((externalRegistry) => {
+        if (cancelled || Object.keys(externalRegistry).length === 0) {
+          return;
+        }
+        setRuntimeArtifactRegistry((current) => ({ ...current, ...externalRegistry }));
+        setStatus(`Loaded ${Object.keys(externalRegistry).length} external artifact`);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setStatus(error instanceof Error ? error.message : "External artifact load failed");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     dragRef.current = drag;
@@ -93,8 +119,11 @@ export default function App() {
       get status() {
         return status;
       },
+      get artifactIds() {
+        return Object.keys(runtimeArtifactRegistry);
+      },
     };
-  }, [nodes, viewport, selectedNodeId, themeMode, status]);
+  }, [nodes, viewport, selectedNodeId, themeMode, status, runtimeArtifactRegistry]);
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
@@ -389,7 +418,7 @@ export default function App() {
             }}
           >
             {nodes.map((node) => {
-              const artifact = artifactRegistry[node.artifactId];
+              const artifact = runtimeArtifactRegistry[node.artifactId];
               const validation = validateArtifactPayload(node, artifact);
               const isSelected = node.id === selectedNodeId;
 
@@ -522,6 +551,7 @@ declare global {
       readonly selectedNodeId: string;
       readonly themeMode: ThemeMode;
       readonly status: string;
+      readonly artifactIds: string[];
     };
   }
 }

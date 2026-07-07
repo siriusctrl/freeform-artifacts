@@ -51,7 +51,9 @@ Code orientation:
 - `src/artifacts/core/` contains platform-provided artifact modules.
 - `src/artifacts/examples/` contains demo and verification artifact modules.
 - `src/artifacts/generated/` is the reserved entry point for future user or
-  AI-generated artifacts.
+  AI-generated repo-compiled artifacts.
+- `public/artifacts/generated/manifest.json` lists trusted runtime ESM
+  artifacts loaded without rebuilding the main app.
 - `src/canvas/seeds/demoBoard.ts` defines the default demo board nodes.
 - `src/data/sampleDatabase.ts` contains sample database rows.
 - `src/data/transforms.ts` contains transform registry entries.

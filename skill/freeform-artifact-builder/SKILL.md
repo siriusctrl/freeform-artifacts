@@ -22,11 +22,17 @@ canvas.
      express cleanly.
 5. Keep database shaping outside artifact render/build functions. Pass normalized
    data through `CanvasNode.data`.
-6. Register the artifact in the right registry layer and add or update
+6. For repo-compiled generated artifacts, create
+   `src/artifacts/generated/<name>.artifact.tsx`; the generated registry
+   auto-discovers that filename pattern.
+7. For runtime external artifacts, create a compiled ESM file under
+   `public/artifacts/generated/` and list it in
+   `public/artifacts/generated/manifest.json`.
+8. Register core/example artifacts in the right registry layer and add or update
    `src/canvas/seeds/demoBoard.ts` only when the demo should show it by default.
-7. Run `npm run check`, `npm run verify:ui`, `npm run verify:preview`, and
+9. Run `npm run check`, `npm run verify:ui`, `npm run verify:preview`, and
    `npm run verify:proof` for user-facing visual or interaction changes.
-8. Inspect the generated GIF, internal `contact-sheet.png`, and
+10. Inspect the generated GIF, internal `contact-sheet.png`, and
    `frame-check.json`; report only the GIF proof path to the user unless they
    ask for more.
 
@@ -41,6 +47,8 @@ canvas.
   behavior is required.
 - Keep text readable in both light and dark mode.
 - Attach a Zod `dataValidator` to new artifacts.
+- Treat runtime external ESM artifacts as trusted self-hosted code, not
+  sandboxed plugins.
 - Do not rely on random values, timers, network fetches, or mutable globals
   during render.
 - Keep generated code trusted and compiled until a sandbox is implemented.

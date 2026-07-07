@@ -18,6 +18,10 @@ Principles for agents contributing to this repository.
    - Prefer managed ECharts artifacts for standard charts.
    - Use custom React artifacts when ECharts cannot express the visual or
      interaction cleanly.
+   - Put repo-compiled generated artifacts in
+     `src/artifacts/generated/*.artifact.tsx`.
+   - Put runtime ESM artifacts under `public/artifacts/generated/` and list
+     them in `manifest.json`.
 
 3. **DOM artifacts are intentional**
    - The current renderer uses React/DOM nodes inside a transformed world layer.

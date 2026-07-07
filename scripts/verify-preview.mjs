@@ -65,12 +65,13 @@ try {
   await page.goto(url);
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.getByTestId("node-node-probability").waitFor({ state: "visible" });
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.artifactIds?.includes("runtime-margin-chart"));
   await page.getByTestId("import-data").click();
   await page.getByText("$232,400").waitFor({ state: "visible" });
   await page.getByTestId("theme-toggle").click();
   const state = await page.evaluate(() => window.__FREEFORM_STATE__);
 
-  if (state?.themeMode !== "dark" || state?.status !== "Imported query result") {
+  if (state?.themeMode !== "dark" || !state?.artifactIds?.includes("runtime-margin-chart")) {
     throw new Error("Preview state did not reflect import and theme interactions");
   }
 

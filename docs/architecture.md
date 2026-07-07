@@ -118,10 +118,23 @@ The registry is layered:
 
 - `core` artifacts are platform-provided primitives.
 - `examples` artifacts are demo and verification fixtures.
-- `generated` artifacts are the future user/AI extension point.
+- `generated` artifacts are the user/AI extension point.
 
 The default demo board lives in `src/canvas/seeds/demoBoard.ts` so example
 layout does not become part of the registry contract.
+
+Generated artifacts have two trusted loading paths:
+
+- repo-compiled `src/artifacts/generated/**/*.artifact.tsx`, discovered by
+  Vite `import.meta.glob`;
+- runtime external ESM modules listed in
+  `/artifacts/generated/manifest.json`, fetched and imported as Blob-backed
+  modules.
+
+External ESM modules are not sandboxed. They are intended for self-hosted
+deployments where the owner accepts the risk of running their own generated
+code. Runtime modules should be self-contained browser JavaScript because Blob
+module URLs do not provide a stable relative import base.
 
 This keeps AI generation bounded:
 

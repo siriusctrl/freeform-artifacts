@@ -15,6 +15,9 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   await expect(probabilityNode).toBeVisible();
   await expect(probabilityChart).toBeVisible();
   await expect(page.getByText("Monthly revenue")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.artifactIds)).toContain(
+    "runtime-margin-chart",
+  );
 
   const initial = await page.evaluate(() => window.__FREEFORM_STATE__!);
 

@@ -6,8 +6,10 @@ Use this reference when creating or editing artifact modules.
 
 - Put platform-provided artifacts in `src/artifacts/core/`.
 - Put demo or verification-only artifacts in `src/artifacts/examples/`.
-- Put future user/AI-generated artifact entry points under
-  `src/artifacts/generated/`.
+- Put repo-compiled user/AI-generated artifacts under
+  `src/artifacts/generated/` with the filename pattern `*.artifact.tsx`.
+- Put runtime external ESM artifacts under `public/artifacts/generated/` and
+  list them in `public/artifacts/generated/manifest.json`.
 - Export one named artifact constant, for example `revenueBridgeArtifact`.
 - Import and register it in the matching layer registry.
 - Let `src/artifacts/registry.ts` only merge registry layers.
@@ -21,6 +23,45 @@ Use this reference when creating or editing artifact modules.
 Prefer ECharts for line, bar, scatter, heatmap, treemap, graph, Sankey, and
 other standard chart families. Use React for bespoke cards, tables, compact
 flows, mixed UI, controls, or non-chart composition.
+
+## Generated Loading Paths
+
+Repo-compiled generated artifacts can export `artifact`, `default`, or
+`artifacts`:
+
+```ts
+export const artifact = exampleArtifact;
+```
+
+Runtime external artifacts use compiled browser ESM:
+
+```js
+export const artifact = {
+  id: "runtime-margin-chart",
+  renderer: "echarts",
+  chartRenderer: "svg",
+  title: "Runtime Margin Chart",
+  version: "0.1.0",
+  defaultSize: { width: 520, height: 320 },
+  buildOption: ({ data, theme }) => ({ backgroundColor: "transparent", series: [] }),
+};
+```
+
+Manifest:
+
+```json
+{
+  "artifacts": [
+    { "module": "/artifacts/generated/runtime-margin-chart.js" }
+  ]
+}
+```
+
+External ESM modules are trusted self-hosted code. They are not sandboxed. Keep
+them self-contained browser JavaScript; do not rely on relative imports from a
+Blob-backed runtime module.
+Runtime React artifacts can use `window.React.createElement`; runtime `.js`
+files cannot contain raw JSX unless they are compiled first.
 
 ## React Artifact Shape
 
