@@ -26,8 +26,12 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - the canvas renders;
 - the initial artifact nodes are visible;
 - dragging a card changes its world coordinates;
+- dragging a card does not create a browser text selection;
 - dragging empty canvas space changes the viewport offset;
 - wheel input changes zoom scale;
+- zoom controls change zoom scale;
+- theme toggle switches light/dark mode;
+- sidebar controls collapse and reopen the board list;
 - adding an artifact inserts and selects a registry-backed node.
 
 The main test lives in `tests/canvas.spec.ts`.

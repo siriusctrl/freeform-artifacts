@@ -101,6 +101,14 @@ try {
   await page.mouse.wheel(0, -520);
   await page.waitForTimeout(450);
 
+  await page.getByTestId("theme-toggle").click();
+  await page.waitForTimeout(350);
+
+  await page.getByTestId("toggle-sidebar").click();
+  await page.waitForTimeout(350);
+  await page.getByTestId("toggle-sidebar").click();
+  await page.waitForTimeout(350);
+
   await page.getByTestId("add-artifact").click();
   await page.waitForTimeout(500);
   await page.screenshot({ path: screenshotPath, fullPage: false });
@@ -136,7 +144,16 @@ try {
   const manifest = {
     url,
     createdAt: new Date().toISOString(),
-    actions: ["drag node", "pan canvas", "wheel zoom", "add artifact", "capture screenshot"],
+    actions: [
+      "drag node",
+      "pan canvas",
+      "wheel zoom",
+      "toggle dark mode",
+      "collapse sidebar",
+      "open sidebar",
+      "add artifact",
+      "capture screenshot",
+    ],
     files: {
       gif: gifPath,
       webm: webmPath,
@@ -155,6 +172,8 @@ try {
       "- Mouse drag moved a canvas node.",
       "- Blank-stage drag panned the canvas viewport.",
       "- Wheel input changed zoom.",
+      "- Theme toggle switched the app into dark mode.",
+      "- Sidebar collapsed and reopened.",
       "- Add artifact inserted and selected a new registry-backed node.",
       "",
       `GIF: ${gifPath}`,

@@ -62,6 +62,8 @@ Current controls:
 - Drag empty canvas space to pan.
 - Scroll over the canvas to zoom around the pointer.
 - Use the bottom-left zoom controls to zoom or reset the view.
+- Toggle light/dark mode from the top toolbar.
+- Collapse or reopen the sidebar from the top-left controls.
 - Click **Add artifact** to insert a registry-backed example card.
 
 The canvas stores nodes in world coordinates. The viewport stores screen offset
@@ -170,6 +172,10 @@ Implemented:
 - Registry-backed metric, table, and trend artifacts.
 - Playwright UI smoke test.
 - Browser proof GIF recorder.
+- Light/dark theme support.
+- Collapsible sidebar.
+- Hardened pointer dragging that suppresses browser text selection and native
+  drag behavior during canvas moves.
 - Handoff docs for the next Codex session.
 
 TODO:

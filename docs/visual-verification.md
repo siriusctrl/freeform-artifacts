@@ -48,8 +48,12 @@ Inspect the GIF or screenshot before reporting completion. Look for:
 - unexpected card clipping;
 - zoom controls covering card content;
 - card drag not moving the selected node;
+- browser text selection appearing during card drag;
 - canvas pan moving the wrong layer;
 - wheel zoom jumping away from the pointer;
+- top toolbar zoom controls not changing scale;
+- light/dark mode leaving illegible cards or panels;
+- sidebar collapse/open controls not changing layout;
 - added artifacts appearing outside the visible canvas;
 - text overflow in buttons, cards, or inspector panels.
 

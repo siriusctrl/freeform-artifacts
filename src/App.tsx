@@ -1,32 +1,50 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AppWindow,
   ArrowDownToLine,
   Database,
   Frame,
   Grid3X3,
+  Menu,
   Minus,
+  Moon,
   MousePointer2,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelsTopLeft,
   Plus,
   Sparkles,
+  Sun,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
 import { artifactRegistry, initialNodes } from "./artifacts/registry";
-import type { CanvasNode, CanvasViewport } from "./artifacts/types";
-import { clampScale, screenToWorld, zoomAt } from "./lib/geometry";
+import type { CanvasNode, CanvasTheme, CanvasViewport } from "./artifacts/types";
+import { screenToWorld, zoomAt } from "./lib/geometry";
+
+type ThemeMode = "light" | "dark";
 
 type DragState =
   | { type: "pan"; startX: number; startY: number; viewport: CanvasViewport }
   | { type: "node"; nodeId: string; startWorldX: number; startWorldY: number; nodeX: number; nodeY: number };
 
-const canvasTheme = {
-  mode: "light" as const,
-  accent: "#0098b8",
-  surface: "#ffffff",
-  text: "#171717",
-};
+function themeFor(mode: ThemeMode): CanvasTheme {
+  if (mode === "dark") {
+    return {
+      mode,
+      accent: "#35c8dc",
+      surface: "#171b1d",
+      text: "#eef3f3",
+    };
+  }
+
+  return {
+    mode,
+    accent: "#0098b8",
+    surface: "#ffffff",
+    text: "#171717",
+  };
+}
 
 function createMetricNode(index: number, position: { x: number; y: number }): CanvasNode {
   return {
@@ -50,14 +68,29 @@ function createMetricNode(index: number, position: { x: number; y: number }): Ca
 
 export default function App() {
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<DragState | null>(null);
   const [nodes, setNodes] = useState<CanvasNode[]>(initialNodes);
   const [viewport, setViewport] = useState<CanvasViewport>({ x: 360, y: 92, scale: 1 });
   const [selectedNodeId, setSelectedNodeId] = useState<string>("node-revenue");
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [themeMode, setThemeMode] = useState<ThemeMode>("light");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
+  const canvasTheme = useMemo(() => themeFor(themeMode), [themeMode]);
 
-  useMemo(() => {
+  useEffect(() => {
+    dragRef.current = drag;
+    document.body.classList.toggle("dragging-canvas", Boolean(drag));
+
+    return () => {
+      if (!dragRef.current) {
+        document.body.classList.remove("dragging-canvas");
+      }
+    };
+  }, [drag]);
+
+  useEffect(() => {
     window.__FREEFORM_STATE__ = {
       get nodes() {
         return nodes;
@@ -68,8 +101,72 @@ export default function App() {
       get selectedNodeId() {
         return selectedNodeId;
       },
+      get themeMode() {
+        return themeMode;
+      },
+      get sidebarOpen() {
+        return sidebarOpen;
+      },
     };
-  }, [nodes, viewport, selectedNodeId]);
+  }, [nodes, viewport, selectedNodeId, themeMode, sidebarOpen]);
+
+  useEffect(() => {
+    function handlePointerMove(event: PointerEvent) {
+      const currentDrag = dragRef.current;
+      if (!currentDrag) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (currentDrag.type === "pan") {
+        setViewport({
+          ...currentDrag.viewport,
+          x: currentDrag.viewport.x + event.clientX - currentDrag.startX,
+          y: currentDrag.viewport.y + event.clientY - currentDrag.startY,
+        });
+        return;
+      }
+
+      const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
+      const nextX = currentDrag.nodeX + world.x - currentDrag.startWorldX;
+      const nextY = currentDrag.nodeY + world.y - currentDrag.startWorldY;
+      updateNodePosition(currentDrag.nodeId, nextX, nextY);
+    }
+
+    function handlePointerUp() {
+      setDrag(null);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [viewport]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) {
+      return;
+    }
+
+    function handleWheel(event: WheelEvent) {
+      event.preventDefault();
+      const delta = event.deltaY > 0 ? 0.9 : 1.1;
+      setViewport((current) => zoomAt(current, { x: event.clientX, y: event.clientY }, current.scale * delta));
+    }
+
+    stage.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      stage.removeEventListener("wheel", handleWheel);
+    };
+  }, []);
 
   function updateNodePosition(nodeId: string, x: number, y: number) {
     setNodes((current) =>
@@ -86,11 +183,11 @@ export default function App() {
 
   function handleStagePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     const target = event.target instanceof Element ? event.target : null;
-    if (event.button !== 0 || target?.closest(".canvas-node")) {
+    if (event.button !== 0 || target?.closest(".canvas-node, button, a, input, textarea, select")) {
       return;
     }
 
-    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
     setSelectedNodeId("");
     setDrag({
       type: "pan",
@@ -105,8 +202,8 @@ export default function App() {
       return;
     }
 
+    event.preventDefault();
     event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
     const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
     setSelectedNodeId(node.id);
     bringToFront(node.id);
@@ -118,34 +215,6 @@ export default function App() {
       nodeX: node.x,
       nodeY: node.y,
     });
-  }
-
-  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (!drag) {
-      return;
-    }
-
-    if (drag.type === "pan") {
-      setViewport({
-        ...drag.viewport,
-        x: drag.viewport.x + event.clientX - drag.startX,
-        y: drag.viewport.y + event.clientY - drag.startY,
-      });
-      return;
-    }
-
-    const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
-    updateNodePosition(drag.nodeId, drag.nodeX + world.x - drag.startWorldX, drag.nodeY + world.y - drag.startWorldY);
-  }
-
-  function endDrag() {
-    setDrag(null);
-  }
-
-  function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const delta = event.deltaY > 0 ? 0.92 : 1.08;
-    setViewport((current) => zoomAt(current, { x: event.clientX, y: event.clientY }, current.scale * delta));
   }
 
   function changeZoom(factor: number) {
@@ -172,12 +241,27 @@ export default function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main
+      className={`app-shell ${sidebarOpen ? "sidebar-open" : "sidebar-collapsed"}`}
+      data-theme={themeMode}
+      data-sidebar-open={sidebarOpen}
+    >
       <aside className="sidebar" aria-label="Boards">
-        <div className="window-dots" aria-hidden="true">
-          <span className="dot red" />
-          <span className="dot yellow" />
-          <span className="dot green" />
+        <div className="sidebar-header">
+          <div className="window-dots" aria-hidden="true">
+            <span className="dot red" />
+            <span className="dot yellow" />
+            <span className="dot green" />
+          </div>
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={() => setSidebarOpen(false)}
+            title="Collapse sidebar"
+            data-testid="collapse-sidebar"
+          >
+            <PanelLeftClose size={18} />
+          </button>
         </div>
         <div className="sidebar-title">Boards</div>
         <nav className="board-list">
@@ -202,6 +286,24 @@ export default function App() {
       <section className="workspace">
         <header className="topbar">
           <div className="title-block">
+            <button
+              type="button"
+              className="icon-button sidebar-open-button"
+              onClick={() => setSidebarOpen((current) => !current)}
+              title={sidebarOpen ? "Collapse sidebar" : "Open sidebar"}
+              data-testid="toggle-sidebar"
+            >
+              {sidebarOpen ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
+            </button>
+            <button
+              type="button"
+              className="icon-button mobile-menu-button"
+              onClick={() => setSidebarOpen(true)}
+              title="Open sidebar"
+              data-testid="open-sidebar"
+            >
+              <Menu size={20} />
+            </button>
             <Frame size={22} />
             <span>Freeform Artifacts</span>
           </div>
@@ -218,6 +320,15 @@ export default function App() {
             <button type="button" className="icon-button" title="Export proof">
               <ArrowDownToLine size={20} />
             </button>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setThemeMode((current) => (current === "light" ? "dark" : "light"))}
+              title={themeMode === "light" ? "Switch to dark mode" : "Switch to light mode"}
+              data-testid="theme-toggle"
+            >
+              {themeMode === "light" ? <Moon size={20} /> : <Sun size={20} />}
+            </button>
           </div>
           <button type="button" className="primary-action" onClick={addArtifact} data-testid="add-artifact">
             <Plus size={18} />
@@ -232,10 +343,7 @@ export default function App() {
           data-scale={viewport.scale.toFixed(3)}
           data-selected-node={selectedNodeId}
           onPointerDown={handleStagePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          onWheel={handleWheel}
+          onDragStart={(event) => event.preventDefault()}
         >
           <div className="grid-plane" />
           <div
@@ -255,6 +363,7 @@ export default function App() {
                   className={`canvas-node ${isSelected ? "selected" : ""}`}
                   data-testid={`node-${node.id}`}
                   data-node-id={node.id}
+                  draggable={false}
                   style={{
                     width: node.width,
                     height: node.height,
@@ -262,6 +371,7 @@ export default function App() {
                     zIndex: node.zIndex,
                   }}
                   onPointerDown={(event) => handleNodePointerDown(event, node)}
+                  onDragStart={(event) => event.preventDefault()}
                 >
                   <div className="node-chrome">
                     <AppWindow size={14} />
@@ -281,11 +391,23 @@ export default function App() {
           </div>
 
           <div className="zoom-controls" aria-label="Zoom controls">
-            <button type="button" className="icon-button" onClick={() => changeZoom(0.9)} title="Zoom out">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => changeZoom(0.85)}
+              title="Zoom out"
+              data-testid="zoom-out"
+            >
               <ZoomOut size={19} />
             </button>
             <span data-testid="zoom-level">{Math.round(viewport.scale * 100)}%</span>
-            <button type="button" className="icon-button" onClick={() => changeZoom(1.1)} title="Zoom in">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => changeZoom(1.15)}
+              title="Zoom in"
+              data-testid="zoom-in"
+            >
               <ZoomIn size={19} />
             </button>
             <button type="button" className="icon-button" onClick={resetView} title="Reset view">
@@ -333,6 +455,8 @@ declare global {
       readonly nodes: CanvasNode[];
       readonly viewport: CanvasViewport;
       readonly selectedNodeId: string;
+      readonly themeMode: ThemeMode;
+      readonly sidebarOpen: boolean;
     };
   }
 }

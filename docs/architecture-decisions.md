@@ -169,3 +169,45 @@ Use Playwright Chromium for browser verification and recording:
 
 Revisit if local visual differences become important enough to require headed
 Xvfb recordings or multi-browser evidence.
+
+## ADR-0003: Own pointer interaction in the canvas shell
+
+Status: Accepted
+
+Date: 2026-07-07
+
+### Context
+
+The canvas must support card drag, blank-stage pan, and wheel zoom without the
+browser interpreting the same gesture as text selection, native element drag, or
+page-level scrolling/zooming.
+
+The first prototype used React pointer handlers attached mostly to the stage and
+nodes. That worked in automated happy paths but could let browser selection
+behavior leak in during longer real drags.
+
+### Decision
+
+The canvas shell owns pointer interaction during active gestures:
+
+- pointer movement and pointer release are handled at `window` scope;
+- active drags add `body.dragging-canvas`;
+- drag targets call `preventDefault`;
+- canvas nodes are marked `draggable={false}`;
+- the stage disables user selection and touch browser gestures;
+- wheel zoom uses a non-passive DOM listener on the stage.
+
+### Why this route
+
+This keeps interaction ownership inside the canvas runtime instead of relying on
+the browser's default text/element drag behavior. It also makes drags resilient
+when the pointer leaves the original card or stage bounds.
+
+### Tradeoffs
+
+- The canvas becomes responsible for restoring global drag state correctly.
+- Future text-editing artifacts will need an explicit edit mode or an opt-out
+  region so text can be selected inside a card intentionally.
+
+Revisit when artifacts support editable text, embedded inputs, or nested
+interactive widgets that need their own pointer semantics.
