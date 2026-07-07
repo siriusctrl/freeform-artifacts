@@ -1,0 +1,8 @@
+node_modules/
+dist/
+playwright-report/
+test-results/
+artifacts/verification/
+.vite/
+.DS_Store
+*.log

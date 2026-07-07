@@ -1,0 +1,61 @@
+# Visual Verification
+
+User-facing canvas changes should leave browser evidence, not just command
+output.
+
+## Browser Recording
+
+Use:
+
+```sh
+npm run verify:proof
+```
+
+The helper starts the local Vite server, opens Chromium through Playwright,
+performs a fixed interaction script, captures video, converts it to GIF, and
+writes:
+
+- `proof.gif` for quick user-facing review.
+- `recording.webm` as the original Playwright recording.
+- `final-screenshot.png` for static inspection.
+- `manifest.json` with action list and final debug state.
+- `inspection.txt` with a short human-readable checklist.
+
+The output directory is:
+
+```text
+artifacts/verification/<timestamp>/
+```
+
+That directory is ignored by git. Keep the latest path in final summaries or
+handoff notes when the visual behavior changed.
+
+## Required Local Tools
+
+- Node.js and npm.
+- Playwright Chromium installed by `npm run setup:browsers`.
+- `ffmpeg` available on `PATH`.
+
+This server currently has `ffmpeg`; browser installation is project-local via
+Playwright.
+
+## Manual Review
+
+Inspect the GIF or screenshot before reporting completion. Look for:
+
+- blank canvas on startup;
+- missing cards;
+- unexpected card clipping;
+- zoom controls covering card content;
+- card drag not moving the selected node;
+- canvas pan moving the wrong layer;
+- wheel zoom jumping away from the pointer;
+- added artifacts appearing outside the visible canvas;
+- text overflow in buttons, cards, or inspector panels.
+
+## Future Improvements
+
+- Add frame-diff checks for blank frames.
+- Add visible-latency metrics for drag and zoom.
+- Add production preview proof after `npm run build`.
+- Add mobile viewport proof once touch gestures are implemented.
