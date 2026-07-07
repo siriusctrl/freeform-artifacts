@@ -1,5 +1,5 @@
-import type { ArtifactDefinition } from "./types";
-import { flowDiagramDataSchema, type FlowDiagramData } from "./schemas";
+import type { ArtifactDefinition } from "../types";
+import { flowDiagramDataSchema, type FlowDiagramData } from "../schemas";
 
 export const flowDiagramArtifact: ArtifactDefinition<FlowDiagramData> = {
   id: "flow-diagram",

@@ -28,6 +28,8 @@ All notable user-facing changes to this project should be documented here.
 - README, AGENTS, architecture, testing, and visual-verification handoff docs.
 - Project-local `freeform-artifact-builder` skill for future agents creating
   compliant artifacts and canvas layouts.
+- Layered artifact directories and registries for core, examples, and generated
+  artifacts.
 
 ### Fixed
 
@@ -40,6 +42,7 @@ All notable user-facing changes to this project should be documented here.
   canvas drag, pan, and zoom.
 - Refactored board, transform, and node creation boundaries out of the main app
   component.
+- Split demo artifact seeds away from the artifact registry.
 
 ### Removed
 

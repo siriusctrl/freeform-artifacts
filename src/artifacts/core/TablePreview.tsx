@@ -1,5 +1,5 @@
-import type { ArtifactDefinition } from "./types";
-import { tablePreviewDataSchema, type TablePreviewData } from "./schemas";
+import type { ArtifactDefinition } from "../types";
+import { tablePreviewDataSchema, type TablePreviewData } from "../schemas";
 
 export const tablePreviewArtifact: ArtifactDefinition<TablePreviewData> = {
   id: "table-preview",

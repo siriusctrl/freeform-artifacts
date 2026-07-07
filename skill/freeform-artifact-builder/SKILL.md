@@ -22,8 +22,8 @@ canvas.
      express cleanly.
 5. Keep database shaping outside artifact render/build functions. Pass normalized
    data through `CanvasNode.data`.
-6. Register the artifact in `src/artifacts/registry.ts` and add or update
-   `initialNodes` only when the demo should show it by default.
+6. Register the artifact in the right registry layer and add or update
+   `src/canvas/seeds/demoBoard.ts` only when the demo should show it by default.
 7. Run `npm run check`, `npm run verify:ui`, `npm run verify:preview`, and
    `npm run verify:proof` for user-facing visual or interaction changes.
 8. Inspect the generated GIF, internal `contact-sheet.png`, and

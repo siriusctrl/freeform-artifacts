@@ -412,3 +412,44 @@ browser.
 
 Revisit when board JSON import/export needs migration tooling, when real data
 connectors arrive, or when untrusted generated code loading begins.
+
+## ADR-0008: Split artifact registries by ownership
+
+Status: Accepted
+
+Date: 2026-07-07
+
+### Context
+
+The early demo artifacts were all stored in one flat artifact folder and one
+registry. That was enough while every artifact was hand-written by the project,
+but it blurred three different ownership classes:
+
+- platform-provided primitives;
+- demo and verification examples;
+- future user or AI-generated artifacts.
+
+### Decision
+
+Split artifacts by ownership:
+
+- `src/artifacts/core/` for platform-provided artifacts;
+- `src/artifacts/examples/` for demo and verification artifacts;
+- `src/artifacts/generated/` as the future user/AI extension point;
+- `src/artifacts/registry.ts` only merges registry layers;
+- `src/canvas/seeds/demoBoard.ts` owns the default demo layout.
+
+### Why this route
+
+This prevents example artifacts from becoming accidental product API. Tests can
+continue to use rich examples, while future generated artifacts get a dedicated
+mount point with separate policy and validation.
+
+### Tradeoffs
+
+- More files and import paths.
+- Very small projects may not need this separation.
+- Moving examples requires keeping docs and skills current.
+
+Revisit if generated artifacts move into a sandboxed package boundary or if
+core artifacts become a separately versioned artifact SDK.

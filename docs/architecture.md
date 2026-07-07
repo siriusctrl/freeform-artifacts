@@ -114,6 +114,15 @@ type ArtifactDefinition<TData = unknown, TConfig = JsonObject> =
 The registry maps `artifactId` to an `ArtifactDefinition`. Canvas nodes store
 only the `artifactId`, placement data, config, and normalized render data.
 
+The registry is layered:
+
+- `core` artifacts are platform-provided primitives.
+- `examples` artifacts are demo and verification fixtures.
+- `generated` artifacts are the future user/AI extension point.
+
+The default demo board lives in `src/canvas/seeds/demoBoard.ts` so example
+layout does not become part of the registry contract.
+
 This keeps AI generation bounded:
 
 - AI can propose a new artifact module.

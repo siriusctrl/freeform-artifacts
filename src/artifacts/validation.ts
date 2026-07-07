@@ -1,5 +1,5 @@
 import type { CanvasNode } from "./types";
-import type { RegisteredArtifact } from "./registry";
+import type { RegisteredArtifact } from "./registryTypes";
 
 export interface ArtifactValidationResult {
   ok: boolean;

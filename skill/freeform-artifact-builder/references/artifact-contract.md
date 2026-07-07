@@ -4,9 +4,15 @@ Use this reference when creating or editing artifact modules.
 
 ## File Placement
 
-- Put artifact modules in `src/artifacts/<PascalName>.tsx`.
+- Put platform-provided artifacts in `src/artifacts/core/`.
+- Put demo or verification-only artifacts in `src/artifacts/examples/`.
+- Put future user/AI-generated artifact entry points under
+  `src/artifacts/generated/`.
 - Export one named artifact constant, for example `revenueBridgeArtifact`.
-- Import and register it in `src/artifacts/registry.ts`.
+- Import and register it in the matching layer registry.
+- Let `src/artifacts/registry.ts` only merge registry layers.
+- Add default board placement in `src/canvas/seeds/demoBoard.ts`, not in the
+  artifact registry.
 - Keep reusable data transforms outside render/build functions.
 - Put reusable Zod data schemas in `src/artifacts/schemas.ts`.
 
@@ -19,8 +25,8 @@ flows, mixed UI, controls, or non-chart composition.
 ## React Artifact Shape
 
 ```ts
-import type { ArtifactDefinition } from "./types";
-import { exampleDataSchema, type ExampleData } from "./schemas";
+import type { ArtifactDefinition } from "../types";
+import { exampleDataSchema, type ExampleData } from "../schemas";
 
 export const exampleArtifact: ArtifactDefinition<ExampleData> = {
   id: "example-artifact",
@@ -44,8 +50,8 @@ export const exampleArtifact: ArtifactDefinition<ExampleData> = {
 ## ECharts Artifact Shape
 
 ```ts
-import type { EChartsArtifactDefinition } from "./types";
-import { exampleChartDataSchema, type ChartData } from "./schemas";
+import type { EChartsArtifactDefinition } from "../types";
+import { exampleChartDataSchema, type ChartData } from "../schemas";
 
 export const exampleChartArtifact: EChartsArtifactDefinition<ChartData> = {
   id: "example-chart",

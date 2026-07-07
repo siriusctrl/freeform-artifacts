@@ -1,5 +1,5 @@
-import type { ArtifactDefinition } from "./types";
-import { metricDataSchema, type MetricData } from "./schemas";
+import type { ArtifactDefinition } from "../types";
+import { metricDataSchema, type MetricData } from "../schemas";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", {

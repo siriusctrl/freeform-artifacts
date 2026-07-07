@@ -46,11 +46,13 @@ Code orientation:
   conversion.
 - `src/artifacts/types.ts` defines the artifact, canvas node, viewport, event,
   theme, and data binding interfaces.
-- `src/artifacts/registry.ts` registers available artifact definitions and
-  initial canvas nodes.
-- `src/artifacts/MetricCard.tsx`, `TablePreview.tsx`, `FlowDiagram.tsx`,
-  `InflectionProbability.tsx`, and `SankeyFlow.tsx` are example artifact
-  modules.
+- `src/artifacts/registry.ts` merges core, example, and generated artifact
+  registries.
+- `src/artifacts/core/` contains platform-provided artifact modules.
+- `src/artifacts/examples/` contains demo and verification artifact modules.
+- `src/artifacts/generated/` is the reserved entry point for future user or
+  AI-generated artifacts.
+- `src/canvas/seeds/demoBoard.ts` defines the default demo board nodes.
 - `src/data/sampleDatabase.ts` contains sample database rows.
 - `src/data/transforms.ts` contains transform registry entries.
 - `src/data/transformFixtures.ts` contains raw query-result fixtures.

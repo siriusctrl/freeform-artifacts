@@ -102,6 +102,17 @@ Board state is automatically saved in local storage and restored on reload.
 
 Artifacts are registered in `src/artifacts/registry.ts`.
 
+The registry is layered:
+
+- `src/artifacts/core/` contains platform-provided building blocks such as
+  metric and table cards.
+- `src/artifacts/examples/` contains demo and verification artifacts such as the
+  probability chart, Sankey, and flow diagram.
+- `src/artifacts/generated/` is the reserved entry point for future user or
+  AI-generated artifacts.
+- `src/canvas/seeds/demoBoard.ts` chooses which artifacts appear on the default
+  demo board.
+
 An artifact is a typed object with an id, version, default size, optional data
 schema hints, optional config schema hints, and a renderer-specific body.
 
@@ -238,6 +249,8 @@ Implemented:
 - Transform registry with fixtures for raw query rows.
 - Zod-backed artifact payload validation with invalid-card fallback rendering.
 - Registry-backed metric, table, flow-diagram, probability chart, and Sankey
+  artifacts.
+- Layered artifact registries for core, example, and future generated
   artifacts.
 - Playwright UI smoke test.
 - Browser proof GIF recorder.

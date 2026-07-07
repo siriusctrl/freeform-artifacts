@@ -1,5 +1,5 @@
-import type { EChartsArtifactDefinition } from "./types";
-import { inflectionProbabilityDataSchema, type InflectionProbabilityData } from "./schemas";
+import type { EChartsArtifactDefinition } from "../types";
+import { inflectionProbabilityDataSchema, type InflectionProbabilityData } from "../schemas";
 
 function pct(value: number) {
   return `${Math.round(value * 100)}%`;

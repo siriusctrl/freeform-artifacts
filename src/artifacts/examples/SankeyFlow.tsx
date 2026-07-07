@@ -1,5 +1,5 @@
-import type { EChartsArtifactDefinition } from "./types";
-import { sankeyFlowDataSchema, type SankeyFlowData } from "./schemas";
+import type { EChartsArtifactDefinition } from "../types";
+import { sankeyFlowDataSchema, type SankeyFlowData } from "../schemas";
 
 export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
   id: "sankey-flow",

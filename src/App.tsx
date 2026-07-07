@@ -14,12 +14,13 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { EChartsArtifactHost } from "./artifacts/EChartsArtifactHost";
-import { artifactRegistry, initialNodes } from "./artifacts/registry";
+import { artifactRegistry } from "./artifacts/registry";
 import type { CanvasNode, CanvasViewport } from "./artifacts/types";
 import { validateArtifactPayload } from "./artifacts/validation";
 import { clearBoardState, createBoardState, downloadBoardState, loadBoardState, saveBoardState } from "./canvas/board";
 import { INITIAL_VIEWPORT, themeFor, type ThemeMode } from "./canvas/constants";
 import { createMetricNode } from "./canvas/nodeFactory";
+import { initialNodes } from "./canvas/seeds/demoBoard";
 import { importedRevenueRows } from "./data/transformFixtures";
 import { revenueSummaryTransform, revenueTableTransform, runTransform } from "./data/transforms";
 import { screenToWorld, zoomAt } from "./lib/geometry";
