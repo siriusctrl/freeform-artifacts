@@ -11,6 +11,9 @@ All notable user-facing changes to this project should be documented here.
   interaction.
 - Light/dark mode support.
 - Artifact contract and registry with metric, table, and flow-diagram examples.
+- Managed ECharts artifact host for standard chart artifacts.
+- Probability chart and Sankey examples backed by ECharts options.
+- Self-hosted Geist Sans and Geist Mono typography.
 - Sample database rows and transform helpers.
 - Playwright browser smoke test for core canvas interactions.
 - Browser proof recorder that writes WebM, GIF, screenshot, manifest, and

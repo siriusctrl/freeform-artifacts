@@ -14,6 +14,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { artifactRegistry, initialNodes } from "./artifacts/registry";
+import { EChartsArtifactHost } from "./artifacts/EChartsArtifactHost";
 import type { CanvasNode, CanvasTheme, CanvasViewport } from "./artifacts/types";
 import { screenToWorld, zoomAt } from "./lib/geometry";
 
@@ -323,12 +324,24 @@ export default function App() {
                     <span>{node.title}</span>
                   </div>
                   <div className="node-body">
-                    {artifact.render({
-                      data: node.data,
-                      config: node.config,
-                      theme: canvasTheme,
-                      emit: () => undefined,
-                    })}
+                    {artifact.renderer === "echarts" ? (
+                      <EChartsArtifactHost
+                        artifact={artifact}
+                        renderProps={{
+                          data: node.data,
+                          config: node.config,
+                          theme: canvasTheme,
+                          emit: () => undefined,
+                        }}
+                      />
+                    ) : (
+                      artifact.render({
+                        data: node.data,
+                        config: node.config,
+                        theme: canvasTheme,
+                        emit: () => undefined,
+                      })
+                    )}
                   </div>
                 </div>
               );

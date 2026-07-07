@@ -3,7 +3,7 @@
 `freeform-artifacts` is a browser canvas for placing AI-generated data
 artifacts. The product is not a dashboard builder yet, and it is not a drawing
 engine. The first boundary is a zoomable/pannable workspace that hosts
-registry-approved React/TypeScript artifact cards.
+registry-approved React/TypeScript artifact cards and managed chart artifacts.
 
 The core boundary is:
 
@@ -74,7 +74,7 @@ verification. Do not build product features on that debug handle.
 Artifact definitions live behind this interface:
 
 ```ts
-interface ArtifactDefinition<TData = unknown, TConfig = JsonObject> {
+interface ArtifactBase<TData = unknown, TConfig = JsonObject> {
   id: string;
   title: string;
   version: string;
@@ -84,8 +84,24 @@ interface ArtifactDefinition<TData = unknown, TConfig = JsonObject> {
   };
   dataSchema?: JsonObject;
   configSchema?: JsonObject;
+}
+
+interface ReactArtifactDefinition<TData = unknown, TConfig = JsonObject>
+  extends ArtifactBase<TData, TConfig> {
+  renderer?: "react";
   render: (props: ArtifactRenderProps<TData, TConfig>) => React.ReactNode;
 }
+
+interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject>
+  extends ArtifactBase<TData, TConfig> {
+  renderer: "echarts";
+  chartRenderer?: "svg" | "canvas";
+  buildOption: (props: ArtifactRenderProps<TData, TConfig>) => EChartsOption;
+}
+
+type ArtifactDefinition<TData = unknown, TConfig = JsonObject> =
+  | ReactArtifactDefinition<TData, TConfig>
+  | EChartsArtifactDefinition<TData, TConfig>;
 ```
 
 The registry maps `artifactId` to an `ArtifactDefinition`. Canvas nodes store
@@ -96,6 +112,11 @@ This keeps AI generation bounded:
 - AI can propose a new artifact module.
 - The runtime can validate and register that module.
 - The canvas can place the artifact without knowing internal render details.
+
+Use `renderer: "echarts"` for normal chart families. In that path, artifacts
+provide `buildOption` and the ECharts host owns lifecycle, resize behavior, and
+the concrete SVG/canvas renderer. Use React artifacts as the custom escape hatch
+for visuals or interaction patterns ECharts does not express well.
 
 ## Data Pipeline
 
@@ -128,12 +149,16 @@ canvas-stage
   canvas-world transform(translate + scale)
     canvas-node transform(translate)
       node chrome
-      artifact React render
+      artifact React render or managed ECharts host
 ```
 
 This is deliberate. DOM rendering keeps tables, labels, controls, and future
 accessibility behavior on the browser platform. A pure `<canvas>` renderer would
 make arbitrary TS/JS artifact cards harder to build and inspect.
+
+ECharts artifacts still live in the DOM world. Their host mounts a chart inside
+the card body and keeps the chart lifecycle separate from AI-generated
+artifact definitions.
 
 Use a pure drawing engine only if the product boundary shifts toward freehand
 ink, geometric shapes, or extremely large visual primitive counts.

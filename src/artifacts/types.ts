@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { EChartsOption } from "echarts";
 
 export type JsonObject = Record<string, unknown>;
 
@@ -21,7 +22,7 @@ export interface ArtifactRenderProps<TData = unknown, TConfig = JsonObject> {
   emit: (event: ArtifactEvent) => void;
 }
 
-export interface ArtifactDefinition<TData = unknown, TConfig = JsonObject> {
+interface ArtifactBase<TData = unknown, TConfig = JsonObject> {
   id: string;
   title: string;
   version: string;
@@ -31,8 +32,23 @@ export interface ArtifactDefinition<TData = unknown, TConfig = JsonObject> {
   };
   dataSchema?: JsonObject;
   configSchema?: JsonObject;
+}
+
+export interface ReactArtifactDefinition<TData = unknown, TConfig = JsonObject> extends ArtifactBase<TData, TConfig> {
+  renderer?: "react";
   render: (props: ArtifactRenderProps<TData, TConfig>) => ReactNode;
 }
+
+export interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject>
+  extends ArtifactBase<TData, TConfig> {
+  renderer: "echarts";
+  chartRenderer?: "svg" | "canvas";
+  buildOption: (props: ArtifactRenderProps<TData, TConfig>) => EChartsOption;
+}
+
+export type ArtifactDefinition<TData = unknown, TConfig = JsonObject> =
+  | ReactArtifactDefinition<TData, TConfig>
+  | EChartsArtifactDefinition<TData, TConfig>;
 
 export interface DataBinding {
   sourceId: string;

@@ -15,6 +15,9 @@ Principles for agents contributing to this repository.
      `src/artifacts/types.ts`.
    - Do not let generated artifacts mutate canvas state directly.
    - Keep database transforms outside render components.
+   - Prefer managed ECharts artifacts for standard charts.
+   - Use custom React artifacts when ECharts cannot express the visual or
+     interaction cleanly.
 
 3. **DOM artifacts are intentional**
    - The current renderer uses React/DOM nodes inside a transformed world layer.
@@ -64,6 +67,10 @@ workflow-specific docs.
 - Keep viewport state separate from node world coordinates.
 - Keep artifact definitions pure from canvas state mutations.
 - Keep data transforms separate from artifact rendering.
+- Keep ECharts lifecycle inside `EChartsArtifactHost`; generated ECharts
+  artifacts should provide `buildOption`, data, config, and schema hints only.
+- Keep custom lifecycle-heavy artifacts trusted and compiled until a sandbox is
+  implemented.
 - Prefer typed interfaces before adding new runtime behavior.
 - Update `README.md` when user-visible behavior or commands change.
 - Update `docs/architecture.md` when the artifact contract, data pipeline, or

@@ -5,7 +5,8 @@ Browser-first Freeform-style canvas for AI-generated data artifacts.
 `freeform-artifacts` is a demo product surface for placing JS/TS-rendered
 artifact cards on a zoomable and pannable canvas. The first use case is
 database-backed cards: raw rows can be transformed into normalized artifact data,
-then rendered by registry-approved React/TypeScript components.
+then rendered by registry-approved React/TypeScript components or managed
+ECharts artifacts.
 
 ## Quick Start
 
@@ -75,10 +76,12 @@ forcing them into a low-level drawing API.
 Artifacts are registered in `src/artifacts/registry.ts`.
 
 An artifact is a typed object with an id, version, default size, optional data
-schema hints, optional config schema hints, and a render function:
+schema hints, optional config schema hints, and a renderer-specific body.
+
+React artifacts own their component render function:
 
 ```ts
-export interface ArtifactDefinition<TData = unknown, TConfig = JsonObject> {
+export interface ReactArtifactDefinition<TData = unknown, TConfig = JsonObject> {
   id: string;
   title: string;
   version: string;
@@ -89,6 +92,26 @@ export interface ArtifactDefinition<TData = unknown, TConfig = JsonObject> {
   dataSchema?: JsonObject;
   configSchema?: JsonObject;
   render: (props: ArtifactRenderProps<TData, TConfig>) => React.ReactNode;
+}
+```
+
+ECharts artifacts only build chart options. The host owns `echarts.init`,
+`setOption`, `resize`, and `dispose`:
+
+```ts
+export interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject> {
+  id: string;
+  title: string;
+  version: string;
+  renderer: "echarts";
+  chartRenderer?: "svg" | "canvas";
+  defaultSize: {
+    width: number;
+    height: number;
+  };
+  dataSchema?: JsonObject;
+  configSchema?: JsonObject;
+  buildOption: (props: ArtifactRenderProps<TData, TConfig>) => EChartsOption;
 }
 ```
 
@@ -115,6 +138,12 @@ export interface CanvasNode<TConfig = JsonObject> {
 AI-generated artifacts should follow these rules:
 
 - Export exactly one `ArtifactDefinition`.
+- Prefer `renderer: "echarts"` for normal chart families such as line, bar,
+  scatter, heatmap, treemap, graph, and Sankey.
+- For ECharts artifacts, generate data transforms and `buildOption`; do not
+  call `echarts.init` or manage chart lifecycle inside the artifact.
+- Use React artifacts when the visual is not well represented by ECharts or
+  needs custom UI composition.
 - Do not mutate canvas state directly.
 - Receive all display input through `data`, `config`, `theme`, and `emit`.
 - Keep database-specific logic outside the render component.
@@ -133,7 +162,7 @@ flowchart LR
     transform --> artifactData["Normalized artifact data"]
     artifactData --> node["CanvasNode.data"]
     node --> registry["Artifact registry"]
-    registry --> render["React artifact render"]
+    registry --> render["React or ECharts artifact render"]
 ```
 
 ## Rendering Boundary
@@ -168,7 +197,8 @@ Implemented:
 - Pannable and zoomable dotted canvas.
 - Draggable artifact nodes.
 - Selection inspector.
-- Registry-backed metric, table, and flow-diagram artifacts.
+- Registry-backed metric, table, flow-diagram, probability chart, and Sankey
+  artifacts.
 - Playwright UI smoke test.
 - Browser proof GIF recorder.
 - Light/dark theme support.

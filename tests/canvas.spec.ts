@@ -5,9 +5,13 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
 
   const stage = page.getByTestId("canvas-stage");
   const revenueNode = page.getByTestId("node-node-revenue");
+  const probabilityNode = page.getByTestId("node-node-probability");
+  const probabilityChart = page.getByTestId("echarts-inflection-probability");
 
   await expect(stage).toBeVisible();
   await expect(revenueNode).toBeVisible();
+  await expect(probabilityNode).toBeVisible();
+  await expect(probabilityChart).toBeVisible();
   await expect(page.getByText("Monthly revenue")).toBeVisible();
 
   const initial = await page.evaluate(() => window.__FREEFORM_STATE__!);
@@ -28,6 +32,19 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
     return state.nodes.find((node) => node.id === "node-revenue")?.x;
   }).not.toBe(initial.nodes.find((node) => node.id === "node-revenue")?.x);
   await expect.poll(async () => page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
+
+  const probabilityBox = await probabilityChart.boundingBox();
+  expect(probabilityBox).not.toBeNull();
+
+  await page.mouse.move(probabilityBox!.x + 320, probabilityBox!.y + 220);
+  await page.mouse.down();
+  await page.mouse.move(probabilityBox!.x + 380, probabilityBox!.y + 260, { steps: 8 });
+  await page.mouse.up();
+
+  await expect.poll(async () => {
+    const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
+    return state.nodes.find((node) => node.id === "node-probability")?.x;
+  }).not.toBe(initial.nodes.find((node) => node.id === "node-probability")?.x);
 
   const panStart = { x: stageBox!.x + 100, y: stageBox!.y + stageBox!.height - 120 };
   await page.mouse.move(panStart.x, panStart.y);
@@ -62,7 +79,7 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   await expect(page.getByText("AI generated card")).toBeVisible();
 
   const finalState = await page.evaluate(() => window.__FREEFORM_STATE__!);
-  expect(finalState.nodes.length).toBe(4);
+  expect(finalState.nodes.length).toBe(initial.nodes.length + 1);
   expect(finalState.selectedNodeId).toMatch(/^node-ai-/);
   expect(finalState.themeMode).toBe("dark");
 });

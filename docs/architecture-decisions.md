@@ -252,3 +252,72 @@ reduces handoff surface area for the next implementation pass.
 
 Revisit when boards, source connections, artifact library browsing, or AI draft
 management become real product features rather than decorative navigation.
+
+## ADR-0005: Default standard charts to a managed ECharts artifact host
+
+Status: Accepted
+
+Date: 2026-07-07
+
+### Context
+
+The demo needs to prove that artifacts can be more than simple metric cards.
+The next useful examples are data-heavy visuals: probability timelines,
+cumulative line charts, and Sankey-style allocation flows.
+
+Hand-written React/SVG examples were a useful first sketch, but they made the
+wrong long-term boundary look attractive. If AI has to generate bespoke axis
+layout, label collision handling, scales, legends, tooltips, and interaction for
+every chart, the host is not providing enough leverage.
+
+### Decision
+
+Default standard chart artifacts to ECharts:
+
+- `renderer: "echarts"` artifacts expose `buildOption`.
+- The host owns `echarts.init`, `setOption`, `resize`, and `dispose`.
+- The host chooses the concrete chart renderer, defaulting to SVG for crisp
+  canvas-card output.
+- `InflectionProbability.tsx` and `SankeyFlow.tsx` are ECharts artifacts.
+- Custom React artifacts remain available for visuals or interaction patterns
+  that ECharts cannot express well.
+
+### Why this route
+
+ECharts gives the AI and the host a practical shared chart grammar. The model
+can generate normalized data plus an option object, while the application keeps
+ownership of lifecycle, sizing, theme context, and canvas interaction rules.
+
+This is a better default than asking AI to hand-roll charts because:
+
+- common chart families are already implemented;
+- tooltips, legends, axes, scales, Sankey layout, and animation are available;
+- SVG and canvas renderers can be selected by the host;
+- the artifact interface stays declarative for normal charts;
+- the custom React path remains open for specialized artifacts.
+
+### Tradeoffs
+
+- ECharts adds bundle weight.
+- The host must explicitly register the chart and component modules it supports.
+- ECharts option objects are powerful enough to need validation before accepting
+  untrusted runtime-generated artifacts.
+- Some visuals will still need custom React or another specialized runtime.
+- Sankey data must remain a directed acyclic graph for ECharts Sankey layout.
+
+### Rejected alternative: keep complex examples as hand-written SVG
+
+Hand-written SVG keeps bundle size small and is easy to inspect, but it pushes
+too much charting work into every generated artifact. That is acceptable for one
+or two bespoke examples and weak as the default AI-generation contract.
+
+### Rejected alternative: let generated artifacts manage ECharts lifecycle
+
+Generated artifacts could call `echarts.init` directly, but then every artifact
+would need to solve resize, disposal, theme updates, event isolation, and canvas
+pointer interaction. Keeping lifecycle in the host makes artifacts smaller and
+keeps the canvas runtime in charge.
+
+Revisit if ECharts bundle size becomes unacceptable, if the product needs a
+more constrained declarative grammar such as Vega-Lite, or if untrusted runtime
+code loading requires iframe or worker-based sandboxing.
