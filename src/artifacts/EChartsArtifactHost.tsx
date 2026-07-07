@@ -30,7 +30,10 @@ interface EChartsArtifactHostProps {
 export function EChartsArtifactHost({ artifact, renderProps }: EChartsArtifactHostProps) {
   const chartEl = useRef<HTMLDivElement | null>(null);
   const chart = useRef<EChartsType | null>(null);
-  const option = useMemo<EChartsOption>(() => artifact.buildOption(renderProps), [artifact, renderProps]);
+  const option = useMemo<EChartsOption>(
+    () => artifact.buildOption(renderProps),
+    [artifact, renderProps.data, renderProps.config, renderProps.theme],
+  );
 
   useEffect(() => {
     const element = chartEl.current;
@@ -59,7 +62,7 @@ export function EChartsArtifactHost({ artifact, renderProps }: EChartsArtifactHo
   return (
     <div
       ref={chartEl}
-      className="echarts-host"
+      className={`echarts-host ${artifact.interactive ? "interactive" : ""}`}
       data-testid={`echarts-${artifact.id}`}
     />
   );

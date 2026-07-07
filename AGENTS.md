@@ -69,6 +69,9 @@ workflow-specific docs.
 - Keep data transforms separate from artifact rendering.
 - Keep ECharts lifecycle inside `EChartsArtifactHost`; generated ECharts
   artifacts should provide `buildOption`, data, config, and schema hints only.
+- Keep ECharts artifacts non-interactive by default so canvas drag remains
+  primary. Enable artifact-level interactivity only when the user needs chart
+  hover, tooltip, click, or brush behavior.
 - Keep custom lifecycle-heavy artifacts trusted and compiled until a sandbox is
   implemented.
 - Prefer typed interfaces before adding new runtime behavior.
@@ -88,8 +91,9 @@ workflow-specific docs.
 - Run `npm run check`.
 - Run `npm run verify:ui` when interaction or rendering behavior changes.
 - Run `npm run verify:proof` when a user-facing visual interaction changes.
-- Inspect the generated GIF or final screenshot yourself before reporting
-  completion.
+- Inspect the generated GIF and contact-sheet keyframes yourself before
+  reporting completion. Use the final screenshot only as a supplementary static
+  check.
 - Report the absolute path to the latest proof directory in the final summary.
 - If Playwright cannot launch Chromium, run `npm run setup:browsers` and retry.
 - If GIF generation fails, check that `/usr/bin/ffmpeg` or another `ffmpeg`

@@ -96,6 +96,7 @@ interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject>
   extends ArtifactBase<TData, TConfig> {
   renderer: "echarts";
   chartRenderer?: "svg" | "canvas";
+  interactive?: boolean;
   buildOption: (props: ArtifactRenderProps<TData, TConfig>) => EChartsOption;
 }
 
@@ -115,8 +116,11 @@ This keeps AI generation bounded:
 
 Use `renderer: "echarts"` for normal chart families. In that path, artifacts
 provide `buildOption` and the ECharts host owns lifecycle, resize behavior, and
-the concrete SVG/canvas renderer. Use React artifacts as the custom escape hatch
-for visuals or interaction patterns ECharts does not express well.
+the concrete SVG/canvas renderer. ECharts artifacts are non-interactive by
+default so the card body still drags like any other canvas node. Set
+`interactive: true` only for artifacts that need chart-level hover, tooltip,
+click, or brush behavior. Use React artifacts as the custom escape hatch for
+visuals or interaction patterns ECharts does not express well.
 
 ## Data Pipeline
 

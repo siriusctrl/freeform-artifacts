@@ -151,6 +151,8 @@ Use Playwright Chromium for browser verification and recording:
 - `npm run verify:ui` runs assertions against real interactions.
 - `npm run verify:proof` records a browser session.
 - `ffmpeg` converts the Playwright WebM recording to `proof.gif`.
+- `ffmpeg` also writes `contact-sheet.png` so agents can inspect keyframes for
+  temporal glitches before reporting completion.
 - Proof artifacts are written under `artifacts/verification/<timestamp>/`.
 
 ### Why this route
@@ -158,8 +160,9 @@ Use Playwright Chromium for browser verification and recording:
 - Chromium can run headlessly on the SSH server.
 - Playwright can drive real pointer and wheel events.
 - Tests can assert state changes, not only produce a recording.
-- GIF/WebM/screenshot evidence gives the next Codex session and the user a
-  concrete replay of the current behavior.
+- GIF/WebM/screenshot/contact-sheet evidence gives the next Codex session a
+  concrete replay of the current behavior, while the user-facing proof can stay
+  focused on the GIF.
 
 ### Tradeoffs
 

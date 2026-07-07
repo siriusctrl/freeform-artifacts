@@ -18,6 +18,7 @@ writes:
 - `proof.gif` for quick user-facing review.
 - `recording.webm` as the original Playwright recording.
 - `final-screenshot.png` for static inspection.
+- `contact-sheet.png` for internal keyframe inspection across the GIF timeline.
 - `manifest.json` with action list and final debug state.
 - `inspection.txt` with a short human-readable checklist.
 
@@ -41,7 +42,8 @@ Playwright.
 
 ## Manual Review
 
-Inspect the GIF or screenshot before reporting completion. Look for:
+Inspect the GIF and `contact-sheet.png` before reporting completion. Use the
+final screenshot only as a supplementary static check. Look for:
 
 - blank canvas on startup;
 - missing cards;
@@ -55,6 +57,8 @@ Inspect the GIF or screenshot before reporting completion. Look for:
 - light/dark mode leaving illegible cards or panels;
 - added artifacts appearing outside the visible canvas;
 - text overflow in buttons, cards, or inspector panels.
+- one-frame label jumps, tooltip flashes, hover highlights, or chart redraws
+  that only appear during motion.
 
 ## Future Improvements
 

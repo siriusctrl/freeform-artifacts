@@ -43,6 +43,7 @@ export interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject
   extends ArtifactBase<TData, TConfig> {
   renderer: "echarts";
   chartRenderer?: "svg" | "canvas";
+  interactive?: boolean;
   buildOption: (props: ArtifactRenderProps<TData, TConfig>) => EChartsOption;
 }
 

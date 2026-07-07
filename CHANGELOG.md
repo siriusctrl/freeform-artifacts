@@ -18,6 +18,7 @@ All notable user-facing changes to this project should be documented here.
 - Playwright browser smoke test for core canvas interactions.
 - Browser proof recorder that writes WebM, GIF, screenshot, manifest, and
   inspection artifacts.
+- Internal proof contact sheet generation for keyframe inspection.
 - README, AGENTS, architecture, testing, and visual-verification handoff docs.
 
 ### Fixed
@@ -27,6 +28,8 @@ All notable user-facing changes to this project should be documented here.
 - Made zoom verification cover both wheel zoom and toolbar zoom controls.
 - Improved theme toggle affordance with explicit Light/Dark labeling.
 - Centered the add-artifact action content optically.
+- Kept static ECharts artifacts from refreshing or entering hover states during
+  canvas drag, pan, and zoom.
 
 ### Removed
 

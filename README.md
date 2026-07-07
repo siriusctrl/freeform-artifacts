@@ -105,6 +105,7 @@ export interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject
   version: string;
   renderer: "echarts";
   chartRenderer?: "svg" | "canvas";
+  interactive?: boolean;
   defaultSize: {
     width: number;
     height: number;
@@ -142,6 +143,9 @@ AI-generated artifacts should follow these rules:
   scatter, heatmap, treemap, graph, and Sankey.
 - For ECharts artifacts, generate data transforms and `buildOption`; do not
   call `echarts.init` or manage chart lifecycle inside the artifact.
+- Leave ECharts artifacts non-interactive by default so the whole card remains
+  draggable. Set `interactive: true` only when the chart needs hover, tooltip,
+  click, or brush behavior.
 - Use React artifacts when the visual is not well represented by ECharts or
   needs custom UI composition.
 - Do not mutate canvas state directly.

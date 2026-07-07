@@ -491,6 +491,10 @@ th {
     var(--panel);
 }
 
+.echarts-host:not(.interactive) {
+  pointer-events: none;
+}
+
 .zoom-controls {
   position: absolute;
   left: 30px;

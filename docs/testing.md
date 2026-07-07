@@ -51,7 +51,8 @@ npm run verify:proof
 
 This is the visual evidence path. It opens Chromium, performs the same class of
 real mouse interactions, records WebM video, writes a final screenshot, converts
-the recording to GIF with `ffmpeg`, and writes a manifest.
+the recording to GIF with `ffmpeg`, writes a keyframe contact sheet for internal
+inspection, and writes a manifest.
 
 This is the browser equivalent of a PTY visual smoke test. It proves the app can
 be operated through a real browser, not just through static tests.
@@ -64,8 +65,10 @@ After a user-facing visual change:
 2. Run `npm run verify:ui`.
 3. Run `npm run verify:proof`.
 4. Inspect `artifacts/verification/<timestamp>/proof.gif`.
-5. Inspect `final-screenshot.png` if the GIF is hard to judge.
-6. Report the absolute proof directory path in the handoff.
+5. Inspect `contact-sheet.png` to catch temporal flicker or hover artifacts that
+   a final screenshot can miss.
+6. Inspect `final-screenshot.png` only as a supplementary static check.
+7. Report the absolute proof directory path in the handoff.
 
 ## Test Boundaries
 

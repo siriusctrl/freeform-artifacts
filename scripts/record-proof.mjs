@@ -12,11 +12,13 @@ const videoDir = path.join(outputDir, "videos");
 const screenshotPath = path.join(outputDir, "final-screenshot.png");
 const webmPath = path.join(outputDir, "recording.webm");
 const gifPath = path.join(outputDir, "proof.gif");
+const contactSheetPath = path.join(outputDir, "contact-sheet.png");
 const manifestPath = path.join(outputDir, "manifest.json");
 const inspectionPath = path.join(outputDir, "inspection.txt");
 const port = Number(process.env.FREEFORM_PORT ?? 4177);
 const host = "127.0.0.1";
 const url = `http://${host}:${port}`;
+const proofTrimStartSeconds = process.env.FREEFORM_PROOF_TRIM_START ?? "1.5";
 
 mkdirSync(videoDir, { recursive: true });
 
@@ -123,6 +125,8 @@ try {
     "ffmpeg",
     [
       "-y",
+      "-ss",
+      proofTrimStartSeconds,
       "-i",
       webmPath,
       "-vf",
@@ -136,9 +140,31 @@ try {
     throw new Error(`ffmpeg failed to create GIF: ${ffmpeg.stderr.toString()}`);
   }
 
+  const contactSheet = spawnSync(
+    "ffmpeg",
+    [
+      "-y",
+      "-i",
+      gifPath,
+      "-vf",
+      "fps=1.5,scale=360:-1:flags=lanczos,tile=4x4:padding=8:margin=8:color=white",
+      "-frames:v",
+      "1",
+      "-update",
+      "1",
+      contactSheetPath,
+    ],
+    { stdio: "pipe" },
+  );
+
+  if (contactSheet.status !== 0 || !existsSync(contactSheetPath)) {
+    throw new Error(`ffmpeg failed to create contact sheet: ${contactSheet.stderr.toString()}`);
+  }
+
   const manifest = {
     url,
     createdAt: new Date().toISOString(),
+    proofTrimStartSeconds,
     actions: [
       "drag node",
       "pan canvas",
@@ -151,6 +177,7 @@ try {
       gif: gifPath,
       webm: webmPath,
       screenshot: screenshotPath,
+      contactSheet: contactSheetPath,
     },
     finalState: state,
   };
@@ -167,10 +194,12 @@ try {
       "- Wheel input changed zoom.",
       "- Theme toggle switched the app into dark mode.",
       "- Add artifact inserted and selected a new registry-backed node.",
+      "- Internal frame contact sheet was generated for temporal visual inspection.",
       "",
       `GIF: ${gifPath}`,
       `WebM: ${webmPath}`,
       `Screenshot: ${screenshotPath}`,
+      `Contact sheet: ${contactSheetPath}`,
       "",
     ].join("\n"),
   );
@@ -178,6 +207,7 @@ try {
   console.log(`Proof GIF: ${gifPath}`);
   console.log(`Recording: ${webmPath}`);
   console.log(`Screenshot: ${screenshotPath}`);
+  console.log(`Contact sheet: ${contactSheetPath}`);
 } finally {
   if (browser) {
     await browser.close();

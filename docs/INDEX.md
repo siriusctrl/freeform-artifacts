@@ -50,7 +50,8 @@ Code orientation:
 - `tests/canvas.spec.ts` drives a real Chromium browser and asserts core
   canvas interactions.
 - `scripts/record-proof.mjs` records the browser proof WebM, converts it to
-  GIF, and writes manifest/inspection artifacts.
+  GIF, and writes manifest, screenshot, contact-sheet, and inspection
+  artifacts.
 
 Keep README user-facing. Keep maintainer-only workflows in docs and link them
 from `AGENTS.md`.
