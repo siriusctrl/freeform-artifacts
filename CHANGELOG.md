@@ -10,7 +10,7 @@ All notable user-facing changes to this project should be documented here.
 - DOM-based artifact nodes with pan, zoom, drag, selection, and add-artifact
   interaction.
 - Light/dark mode support.
-- Artifact contract and registry with metric, table, and trend examples.
+- Artifact contract and registry with metric, table, and flow-diagram examples.
 - Sample database rows and transform helpers.
 - Playwright browser smoke test for core canvas interactions.
 - Browser proof recorder that writes WebM, GIF, screenshot, manifest, and
@@ -22,6 +22,8 @@ All notable user-facing changes to this project should be documented here.
 - Hardened card drag and canvas pan so browser text selection and native drag
   behavior do not take over the gesture.
 - Made zoom verification cover both wheel zoom and toolbar zoom controls.
+- Improved theme toggle affordance with explicit Light/Dark labeling.
+- Centered the add-artifact action content optically.
 
 ### Removed
 

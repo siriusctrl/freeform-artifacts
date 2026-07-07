@@ -231,7 +231,7 @@ export default function App() {
   function addArtifact() {
     const rect = stageRef.current?.getBoundingClientRect();
     const center = rect
-      ? { x: rect.left + rect.width / 2 - 140, y: rect.top + rect.height / 2 - 85 }
+      ? { x: rect.left + rect.width * 0.58 - 140, y: rect.top + rect.height * 0.62 - 85 }
       : { x: window.innerWidth / 2 - 140, y: window.innerHeight / 2 - 85 };
     const world = screenToWorld(center, viewport);
     const next = createMetricNode(nodes.length, world);
@@ -266,17 +266,18 @@ export default function App() {
             </button>
             <button
               type="button"
-              className="icon-button"
+              className="theme-toggle"
               onClick={() => setThemeMode((current) => (current === "light" ? "dark" : "light"))}
               title={themeMode === "light" ? "Switch to dark mode" : "Switch to light mode"}
               data-testid="theme-toggle"
             >
               {themeMode === "light" ? <Moon size={20} /> : <Sun size={20} />}
+              <span>{themeMode === "light" ? "Dark" : "Light"}</span>
             </button>
           </div>
           <button type="button" className="primary-action" onClick={addArtifact} data-testid="add-artifact">
             <Plus size={18} />
-            Add artifact
+            <span>Add artifact</span>
           </button>
         </header>
 

@@ -41,8 +41,8 @@ Code orientation:
   theme, and data binding interfaces.
 - `src/artifacts/registry.ts` registers available artifact definitions and
   initial canvas nodes.
-- `src/artifacts/MetricCard.tsx`, `TablePreview.tsx`, and `TrendCard.tsx` are
-  example artifact modules.
+- `src/artifacts/MetricCard.tsx`, `TablePreview.tsx`, and `FlowDiagram.tsx`
+  are example artifact modules.
 - `src/data/sampleDatabase.ts` contains sample database rows and transform
   helpers.
 - `src/styles.css` owns the current product UI styling.

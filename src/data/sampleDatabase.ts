@@ -24,10 +24,3 @@ export function latestRevenueSummary(rows = revenueRows) {
     caption: `${latest.customers.toLocaleString()} active customers`,
   };
 }
-
-export function revenueTrend(rows = revenueRows) {
-  return rows.map((row) => ({
-    label: row.month,
-    value: row.revenue,
-  }));
-}

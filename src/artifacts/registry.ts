@@ -1,7 +1,7 @@
-import { latestRevenueSummary, revenueRows, revenueTrend } from "../data/sampleDatabase";
+import { latestRevenueSummary, revenueRows } from "../data/sampleDatabase";
+import { flowDiagramArtifact } from "./FlowDiagram";
 import { metricCardArtifact } from "./MetricCard";
 import { tablePreviewArtifact } from "./TablePreview";
-import { trendCardArtifact } from "./TrendCard";
 import type { ArtifactDefinition, CanvasNode } from "./types";
 
 export type RegisteredArtifact = ArtifactDefinition<any, any>;
@@ -9,7 +9,7 @@ export type RegisteredArtifact = ArtifactDefinition<any, any>;
 export const artifactRegistry: Record<string, RegisteredArtifact> = {
   [metricCardArtifact.id]: metricCardArtifact,
   [tablePreviewArtifact.id]: tablePreviewArtifact,
-  [trendCardArtifact.id]: trendCardArtifact,
+  [flowDiagramArtifact.id]: flowDiagramArtifact,
 };
 
 export const initialNodes: CanvasNode[] = [
@@ -17,8 +17,8 @@ export const initialNodes: CanvasNode[] = [
     id: "node-revenue",
     artifactId: "metric-card",
     title: "Revenue Summary",
-    x: 120,
-    y: 90,
+    x: 90,
+    y: 120,
     width: 280,
     height: 170,
     zIndex: 2,
@@ -26,17 +26,34 @@ export const initialNodes: CanvasNode[] = [
     config: {},
   },
   {
-    id: "node-trend",
-    artifactId: "trend-card",
-    title: "Revenue Trend",
+    id: "node-flow",
+    artifactId: "flow-diagram",
+    title: "Artifact Pipeline",
     x: 470,
-    y: 140,
-    width: 340,
-    height: 210,
+    y: 78,
+    width: 560,
+    height: 300,
     zIndex: 1,
     data: {
-      title: "Revenue growth",
-      points: revenueTrend(),
+      title: "Database rows to generated artifact",
+      summary: "AI output stays inside the registry contract.",
+      steps: [
+        {
+          label: "Query",
+          detail: "6 revenue rows",
+          metric: "raw",
+        },
+        {
+          label: "Transform",
+          detail: "normalize fields",
+          metric: "typed",
+        },
+        {
+          label: "Render",
+          detail: "React artifact",
+          metric: "live",
+        },
+      ],
     },
     config: {},
   },
@@ -44,8 +61,8 @@ export const initialNodes: CanvasNode[] = [
     id: "node-table",
     artifactId: "table-preview",
     title: "Database Rows",
-    x: 220,
-    y: 390,
+    x: 120,
+    y: 420,
     width: 430,
     height: 260,
     zIndex: 3,

@@ -134,8 +134,8 @@ button {
 }
 
 .icon-button,
+.theme-toggle,
 .primary-action {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 0;
@@ -152,19 +152,52 @@ button {
 }
 
 .icon-button:hover,
-.icon-button.active {
+.icon-button.active,
+.theme-toggle:hover {
   background: var(--panel-soft);
 }
 
+.theme-toggle {
+  display: grid;
+  grid-template-columns: 20px auto;
+  gap: 7px;
+  min-width: 82px;
+  height: 34px;
+  padding: 0 10px;
+  color: var(--text);
+  background: transparent;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 730;
+  line-height: 1;
+}
+
+.theme-toggle svg {
+  justify-self: center;
+}
+
 .primary-action {
+  display: grid;
+  grid-template-columns: 18px auto;
   gap: 8px;
   height: 42px;
+  min-width: 142px;
   padding: 0 15px;
   color: var(--primary-text);
   background: var(--primary-bg);
   border-radius: 999px;
   font-weight: 720;
+  line-height: 1;
   white-space: nowrap;
+}
+
+.primary-action svg {
+  justify-self: center;
+}
+
+.primary-action span {
+  display: block;
+  transform: translateY(-0.5px);
 }
 
 .canvas-stage {
@@ -314,39 +347,130 @@ th {
   text-transform: uppercase;
 }
 
-.trend-card {
-  background: var(--panel);
+.flow-diagram {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr 34px;
+  gap: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--accent), transparent 78%), transparent 34%),
+    linear-gradient(135deg, color-mix(in srgb, var(--panel), #ffffff 4%) 0%, var(--panel) 100%);
 }
 
-.trend-card svg {
-  width: 100%;
-  height: 138px;
+.flow-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  gap: 18px;
+  align-items: start;
 }
 
-.trend-axis {
-  stroke: var(--line-strong);
-  stroke-width: 2;
+.flow-title {
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.08;
+  font-weight: 820;
+  text-wrap: balance;
 }
 
-.trend-line {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.trend-dot {
-  fill: var(--panel);
-  stroke: var(--accent);
-  stroke-width: 3;
-}
-
-.trend-labels {
-  display: flex;
-  justify-content: space-between;
-  color: var(--faint);
+.flow-summary {
+  color: var(--muted);
   font-size: 12px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.flow-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.flow-grid::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 29px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.72;
+}
+
+.flow-step {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 130px;
+  padding: 13px;
+  background: color-mix(in srgb, var(--panel), var(--stage-bg) 24%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff, transparent 86%);
+}
+
+.flow-step-index {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), transparent 88%);
+  border: 1px solid color-mix(in srgb, var(--accent), transparent 62%);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 820;
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-step-body {
+  align-self: end;
+  display: grid;
+  gap: 6px;
+}
+
+.flow-step-body strong {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.flow-step-body span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.flow-step-metric {
+  justify-self: start;
+  margin-top: 12px;
+  padding: 4px 8px;
+  color: var(--text);
+  background: var(--panel-soft);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.flow-rail {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr 1fr;
+  gap: 8px;
+  align-items: end;
+}
+
+.flow-rail span {
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent), transparent 72%);
+}
+
+.flow-rail span:nth-child(2) {
+  height: 12px;
+  background: var(--accent);
 }
 
 .zoom-controls {

@@ -87,13 +87,13 @@ try {
 
   await page.mouse.move(nodeBox.x + 82, nodeBox.y + 22);
   await page.mouse.down();
-  await page.mouse.move(nodeBox.x + 230, nodeBox.y + 110, { steps: 18 });
+  await page.mouse.move(nodeBox.x + 48, nodeBox.y + 132, { steps: 18 });
   await page.mouse.up();
   await page.waitForTimeout(350);
 
   await page.mouse.move(stageBox.x + 920, stageBox.y + 620);
   await page.mouse.down();
-  await page.mouse.move(stageBox.x + 760, stageBox.y + 520, { steps: 18 });
+  await page.mouse.move(stageBox.x + 1_010, stageBox.y + 560, { steps: 18 });
   await page.mouse.up();
   await page.waitForTimeout(350);
 

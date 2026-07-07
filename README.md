@@ -168,7 +168,7 @@ Implemented:
 - Pannable and zoomable dotted canvas.
 - Draggable artifact nodes.
 - Selection inspector.
-- Registry-backed metric, table, and trend artifacts.
+- Registry-backed metric, table, and flow-diagram artifacts.
 - Playwright UI smoke test.
 - Browser proof GIF recorder.
 - Light/dark theme support.
