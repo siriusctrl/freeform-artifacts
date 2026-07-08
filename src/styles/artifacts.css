@@ -1,0 +1,239 @@
+.artifact {
+  width: 100%;
+  height: 100%;
+  padding: 18px;
+}
+
+.artifact-kicker,
+.inspector-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.metric-card {
+  display: grid;
+  align-content: center;
+  gap: 12px;
+  background: var(--metric-bg);
+}
+
+.metric-value {
+  color: var(--text);
+  font-family: var(--font-mono), monospace;
+  font-size: 36px;
+  line-height: 1;
+  font-weight: 780;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.invalid-artifact {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 10% 0%, var(--alert-soft), transparent 36%),
+    var(--panel);
+}
+
+.invalid-artifact strong {
+  font-size: 18px;
+}
+
+.invalid-artifact span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.metric-delta {
+  color: var(--metric-delta-text);
+  background: var(--metric-delta-bg);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-weight: 780;
+}
+
+.table-card {
+  overflow: hidden;
+}
+
+.table-title {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 780;
+  margin-bottom: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+td {
+  font-family: var(--font-mono), monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.flow-diagram {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr 34px;
+  gap: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--accent), transparent 78%), transparent 34%),
+    linear-gradient(135deg, color-mix(in srgb, var(--panel), #ffffff 4%) 0%, var(--panel) 100%);
+}
+
+.flow-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  gap: 18px;
+  align-items: start;
+}
+
+.flow-title {
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.08;
+  font-weight: 820;
+  text-wrap: balance;
+}
+
+.flow-summary {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.flow-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.flow-grid::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 29px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.72;
+}
+
+.flow-step {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 130px;
+  padding: 13px;
+  background: color-mix(in srgb, var(--panel), var(--stage-bg) 24%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff, transparent 86%);
+}
+
+.flow-step-index {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), transparent 88%);
+  border: 1px solid color-mix(in srgb, var(--accent), transparent 62%);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 820;
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-step-body {
+  align-self: end;
+  display: grid;
+  gap: 6px;
+}
+
+.flow-step-body strong {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.flow-step-body span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.flow-step-metric {
+  justify-self: start;
+  margin-top: 12px;
+  padding: 4px 8px;
+  color: var(--text);
+  background: var(--panel-soft);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.flow-rail {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr 1fr;
+  gap: 8px;
+  align-items: end;
+}
+
+.flow-rail span {
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent), transparent 72%);
+}
+
+.flow-rail span:nth-child(2) {
+  height: 12px;
+  background: var(--accent);
+}
+
+.echarts-host {
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(circle at 84% 0%, color-mix(in srgb, var(--accent), transparent 86%), transparent 28%),
+    var(--panel);
+}
+
+.echarts-host:not(.interactive) {
+  pointer-events: none;
+}

@@ -46,6 +46,8 @@ All notable user-facing changes to this project should be documented here.
   canvas drag, pan, and zoom.
 - Bound the dotted grid background to the same viewport pan and zoom model as
   canvas nodes.
+- Split the canvas runtime into focused components, an interaction hook, debug
+  state helper, domain CSS files, and shared verification script helpers.
 - Refactored board, transform, and node creation boundaries out of the main app
   component.
 - Split demo artifact seeds away from the artifact registry.

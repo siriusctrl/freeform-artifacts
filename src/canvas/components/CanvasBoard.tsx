@@ -1,0 +1,82 @@
+import type { PointerEvent, RefObject } from "react";
+import type { RegisteredArtifact } from "../../artifacts/registryTypes";
+import type { CanvasNode, CanvasTheme, CanvasViewport } from "../../artifacts/types";
+import { CANVAS_GRID_SIZE } from "../../lib/geometry";
+import { CanvasNodeView } from "./CanvasNodeView";
+import { SelectionInspector } from "./SelectionInspector";
+import { ZoomControls } from "./ZoomControls";
+
+interface CanvasBoardProps {
+  canvasTheme: CanvasTheme;
+  nodes: CanvasNode[];
+  runtimeArtifactRegistry: Record<string, RegisteredArtifact>;
+  selectedNode?: CanvasNode;
+  selectedNodeId: string;
+  snapToGrid: boolean;
+  stageRef: RefObject<HTMLDivElement | null>;
+  viewport: CanvasViewport;
+  onChangeZoom: (factor: number) => void;
+  onNodePointerDown: (event: PointerEvent<HTMLDivElement>, node: CanvasNode) => void;
+  onResetView: () => void;
+  onResizePointerDown: (event: PointerEvent<HTMLButtonElement>, node: CanvasNode) => void;
+  onStagePointerDown: (event: PointerEvent<HTMLDivElement>) => void;
+}
+
+export function CanvasBoard({
+  canvasTheme,
+  nodes,
+  runtimeArtifactRegistry,
+  selectedNode,
+  selectedNodeId,
+  snapToGrid,
+  stageRef,
+  viewport,
+  onChangeZoom,
+  onNodePointerDown,
+  onResetView,
+  onResizePointerDown,
+  onStagePointerDown,
+}: CanvasBoardProps) {
+  return (
+    <div
+      ref={stageRef}
+      className="canvas-stage"
+      data-testid="canvas-stage"
+      data-scale={viewport.scale.toFixed(3)}
+      data-selected-node={selectedNodeId}
+      onPointerDown={onStagePointerDown}
+      onDragStart={(event) => event.preventDefault()}
+    >
+      <div
+        className="grid-plane"
+        data-testid="grid-plane"
+        style={{
+          backgroundSize: `${CANVAS_GRID_SIZE * viewport.scale}px ${CANVAS_GRID_SIZE * viewport.scale}px`,
+          backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+        }}
+      />
+      <div
+        className="canvas-world"
+        data-testid="canvas-world"
+        style={{
+          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
+        }}
+      >
+        {nodes.map((node) => (
+          <CanvasNodeView
+            key={node.id}
+            artifact={runtimeArtifactRegistry[node.artifactId]}
+            canvasTheme={canvasTheme}
+            isSelected={node.id === selectedNodeId}
+            node={node}
+            onNodePointerDown={onNodePointerDown}
+            onResizePointerDown={onResizePointerDown}
+          />
+        ))}
+      </div>
+
+      <ZoomControls scale={viewport.scale} onChangeZoom={onChangeZoom} onResetView={onResetView} />
+      <SelectionInspector selectedNode={selectedNode} snapToGrid={snapToGrid} />
+    </div>
+  );
+}

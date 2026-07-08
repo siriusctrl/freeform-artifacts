@@ -37,11 +37,15 @@ Read these when the task matches:
 Code orientation:
 
 - `src/main.tsx` mounts the React application.
-- `src/App.tsx` owns the current demo canvas runtime, viewport state, node
-  movement, resize behavior, zoom behavior, selection, persistence, and toolbar
-  actions.
-- `src/canvas/` contains board serialization, shared canvas constants, and node
-  factories.
+- `src/App.tsx` owns demo-level orchestration: board persistence, import/export,
+  theme, snap preference, and artifact insertion.
+- `src/canvas/components/` contains the toolbar, board, node, zoom controls, and
+  selection inspector views.
+- `src/canvas/hooks/useCanvasInteractions.ts` owns pan, zoom, drag, resize, and
+  snap interaction mechanics.
+- `src/canvas/debugState.ts` publishes the browser-verification debug handle.
+- `src/canvas/` also contains board serialization, shared canvas constants, and
+  node factories.
 - `src/lib/geometry.ts` owns viewport math and screen/world coordinate
   conversion.
 - `src/artifacts/types.ts` defines the artifact, canvas node, viewport, event,
@@ -58,7 +62,7 @@ Code orientation:
 - `src/data/sampleDatabase.ts` contains sample database rows.
 - `src/data/transforms.ts` contains transform registry entries.
 - `src/data/transformFixtures.ts` contains raw query-result fixtures.
-- `src/styles.css` owns the current product UI styling.
+- `src/styles.css` imports domain styles from `src/styles/`.
 - `tests/canvas.spec.ts` drives a real Chromium browser and asserts core
   canvas interactions.
 - `scripts/record-proof.mjs` records the browser proof WebM, converts it to
@@ -66,6 +70,8 @@ Code orientation:
   artifacts.
 - `scripts/verify-preview.mjs` verifies the production build through Vite
   preview and Chromium.
+- `scripts/lib/` contains shared browser-server helpers for verification
+  scripts.
 - `skill/freeform-artifact-builder/` contains the project-local Codex skill and
   references for future artifact-building agents.
 

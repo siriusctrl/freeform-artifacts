@@ -1,0 +1,135 @@
+.workspace {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 66px minmax(0, 1fr);
+}
+
+.topbar {
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 24px 10px 22px;
+  background: var(--panel-glass);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(16px);
+}
+
+.title-block,
+.tool-strip,
+.topbar-actions {
+  display: flex;
+  align-items: center;
+}
+
+.title-block {
+  min-width: 0;
+  gap: 11px;
+  font-size: 21px;
+  font-weight: 760;
+}
+
+.title-block span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-strip {
+  height: 46px;
+  gap: 8px;
+  padding: 0 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 12px 28px var(--shadow);
+}
+
+.icon-button,
+.theme-toggle,
+.primary-action {
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  cursor: pointer;
+}
+
+.icon-button {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  color: var(--text);
+  background: transparent;
+  border-radius: 999px;
+}
+
+.icon-button:hover,
+.icon-button.active,
+.theme-toggle:hover {
+  background: var(--panel-soft);
+}
+
+.theme-toggle {
+  display: grid;
+  grid-template-columns: 20px auto;
+  gap: 7px;
+  min-width: 82px;
+  height: 34px;
+  padding: 0 10px;
+  color: var(--text);
+  background: transparent;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 730;
+  line-height: 1;
+}
+
+.theme-toggle svg {
+  justify-self: center;
+}
+
+.primary-action {
+  display: grid;
+  grid-template-columns: 18px auto;
+  gap: 8px;
+  height: 42px;
+  min-width: 142px;
+  padding: 0 15px;
+  color: var(--primary-text);
+  background: var(--primary-bg);
+  border-radius: 999px;
+  font-weight: 720;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.primary-action svg {
+  justify-self: center;
+}
+
+.primary-action span {
+  display: block;
+  transform: translateY(-0.5px);
+}
+
+.topbar-actions {
+  min-width: 0;
+  gap: 12px;
+}
+
+.status-pill {
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 690;
+  box-shadow: 0 10px 24px var(--shadow);
+}

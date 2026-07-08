@@ -204,6 +204,25 @@ artifact definitions.
 Use a pure drawing engine only if the product boundary shifts toward freehand
 ink, geometric shapes, or extremely large visual primitive counts.
 
+## Runtime Module Boundaries
+
+`src/App.tsx` is intentionally a thin orchestration layer. It loads external
+artifacts, persists board state, publishes the debug state used by Playwright,
+and wires product actions such as import/export, theme switching, snap
+preference, and adding an artifact.
+
+Canvas runtime behavior lives under `src/canvas/`:
+
+- `components/` renders the toolbar, board, canvas nodes, zoom controls, and
+  selection inspector.
+- `hooks/useCanvasInteractions.ts` owns pointer drag, resize, pan, wheel zoom,
+  toolbar zoom, z-order bumping, and snap-to-grid math.
+- `debugState.ts` is the only place that writes `window.__FREEFORM_STATE__`.
+
+Styles are also split by domain under `src/styles/` and imported through
+`src/styles.css`. Keep new visual rules near the surface they style instead of
+growing the entry file.
+
 ## Future Boundaries
 
 Before loading untrusted AI-generated code, add a sandbox strategy. Candidate

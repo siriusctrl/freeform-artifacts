@@ -1,0 +1,89 @@
+:root {
+  color: #171717;
+  background: #f6f7f7;
+  --font-sans: "Geist Variable";
+  --font-mono: "Geist Mono Variable";
+  font-family:
+    var(--font-sans),
+    ui-sans-serif,
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body.dragging-canvas,
+body.dragging-canvas * {
+  cursor: grabbing !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  --accent: #0098b8;
+  --app-bg: #f7f8f8;
+  --stage-bg: #fbfbfa;
+  --text: #171717;
+  --muted: #667174;
+  --faint: #7b8588;
+  --panel: #ffffff;
+  --panel-soft: #f5f7f7;
+  --panel-glass: rgb(255 255 255 / 90%);
+  --line: rgb(0 0 0 / 8%);
+  --line-strong: rgb(0 0 0 / 13%);
+  --shadow: rgb(0 0 0 / 13%);
+  --grid-dot: rgb(52 56 58 / 28%);
+  --primary-bg: #171717;
+  --primary-text: #ffffff;
+  --metric-bg: linear-gradient(135deg, #ffffff 0%, #eef8f7 100%);
+  --metric-delta-bg: #dff4ee;
+  --metric-delta-text: #006e63;
+  --alert: #ef4444;
+  --alert-soft: rgb(239 68 68 / 16%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  height: 100dvh;
+  color: var(--text);
+  background: var(--app-bg);
+}
+
+.app-shell[data-theme="dark"] {
+  --accent: #35c8dc;
+  --app-bg: #101314;
+  --stage-bg: #121617;
+  --text: #eef3f3;
+  --muted: #a4afb1;
+  --faint: #7f8a8d;
+  --panel: #171b1d;
+  --panel-soft: #202628;
+  --panel-glass: rgb(23 27 29 / 88%);
+  --line: rgb(255 255 255 / 10%);
+  --line-strong: rgb(255 255 255 / 16%);
+  --shadow: rgb(0 0 0 / 36%);
+  --grid-dot: rgb(214 226 228 / 22%);
+  --primary-bg: #eef3f3;
+  --primary-text: #111415;
+  --metric-bg: linear-gradient(135deg, #171b1d 0%, #132629 100%);
+  --metric-delta-bg: rgb(53 200 220 / 14%);
+  --metric-delta-text: #73e5f1;
+  --alert: #ff5a5f;
+  --alert-soft: rgb(255 90 95 / 18%);
+}

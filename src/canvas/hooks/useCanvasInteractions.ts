@@ -1,0 +1,262 @@
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+  type SetStateAction,
+} from "react";
+import type { CanvasNode, CanvasViewport } from "../../artifacts/types";
+import { INITIAL_VIEWPORT } from "../constants";
+import { screenToWorld, snapToGrid, zoomAt } from "../../lib/geometry";
+
+type DragState =
+  | { type: "pan"; startX: number; startY: number; viewport: CanvasViewport }
+  | { type: "node"; nodeId: string; startWorldX: number; startWorldY: number; nodeX: number; nodeY: number }
+  | {
+      type: "resize";
+      nodeId: string;
+      startWorldX: number;
+      startWorldY: number;
+      startWidth: number;
+      startHeight: number;
+    };
+
+const MIN_NODE_SIZE = { width: 180, height: 130 };
+
+interface UseCanvasInteractionsOptions {
+  stageRef: RefObject<HTMLDivElement | null>;
+  viewport: CanvasViewport;
+  setViewport: Dispatch<SetStateAction<CanvasViewport>>;
+  setNodes: Dispatch<SetStateAction<CanvasNode[]>>;
+  setSelectedNodeId: Dispatch<SetStateAction<string>>;
+  snapToGrid: boolean;
+}
+
+export function useCanvasInteractions({
+  stageRef,
+  viewport,
+  setViewport,
+  setNodes,
+  setSelectedNodeId,
+  snapToGrid: shouldSnapToGrid,
+}: UseCanvasInteractionsOptions) {
+  const dragRef = useRef<DragState | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
+
+  const updateNodePosition = useCallback(
+    (nodeId: string, x: number, y: number) => {
+      const nextX = shouldSnapToGrid ? snapToGrid(x) : Math.round(x);
+      const nextY = shouldSnapToGrid ? snapToGrid(y) : Math.round(y);
+      setNodes((current) =>
+        current.map((node) => (node.id === nodeId ? { ...node, x: nextX, y: nextY } : node)),
+      );
+    },
+    [setNodes, shouldSnapToGrid],
+  );
+
+  const updateNodeSize = useCallback(
+    (nodeId: string, width: number, height: number) => {
+      const nextWidth = shouldSnapToGrid ? snapToGrid(Math.max(MIN_NODE_SIZE.width, width)) : Math.round(width);
+      const nextHeight = shouldSnapToGrid ? snapToGrid(Math.max(MIN_NODE_SIZE.height, height)) : Math.round(height);
+      setNodes((current) =>
+        current.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                width: Math.max(MIN_NODE_SIZE.width, nextWidth),
+                height: Math.max(MIN_NODE_SIZE.height, nextHeight),
+              }
+            : node,
+        ),
+      );
+    },
+    [setNodes, shouldSnapToGrid],
+  );
+
+  const bringToFront = useCallback(
+    (nodeId: string) => {
+      setNodes((current) => {
+        const maxZ = Math.max(...current.map((node) => node.zIndex));
+        return current.map((node) => (node.id === nodeId ? { ...node, zIndex: maxZ + 1 } : node));
+      });
+    },
+    [setNodes],
+  );
+
+  const startDrag = useCallback((nextDrag: DragState) => {
+    dragRef.current = nextDrag;
+    setDrag(nextDrag);
+  }, []);
+
+  const endDrag = useCallback(() => {
+    dragRef.current = null;
+    setDrag(null);
+  }, []);
+
+  useEffect(() => {
+    dragRef.current = drag;
+    document.body.classList.toggle("dragging-canvas", Boolean(drag));
+
+    return () => {
+      if (!dragRef.current) {
+        document.body.classList.remove("dragging-canvas");
+      }
+    };
+  }, [drag]);
+
+  useEffect(() => {
+    function handlePointerMove(event: PointerEvent) {
+      const currentDrag = dragRef.current;
+      if (!currentDrag) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (currentDrag.type === "pan") {
+        setViewport({
+          ...currentDrag.viewport,
+          x: currentDrag.viewport.x + event.clientX - currentDrag.startX,
+          y: currentDrag.viewport.y + event.clientY - currentDrag.startY,
+        });
+        return;
+      }
+
+      const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
+      if (currentDrag.type === "resize") {
+        updateNodeSize(
+          currentDrag.nodeId,
+          currentDrag.startWidth + world.x - currentDrag.startWorldX,
+          currentDrag.startHeight + world.y - currentDrag.startWorldY,
+        );
+        return;
+      }
+
+      updateNodePosition(
+        currentDrag.nodeId,
+        currentDrag.nodeX + world.x - currentDrag.startWorldX,
+        currentDrag.nodeY + world.y - currentDrag.startWorldY,
+      );
+    }
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", endDrag);
+      window.removeEventListener("pointercancel", endDrag);
+    };
+  }, [endDrag, setViewport, updateNodePosition, updateNodeSize, viewport]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) {
+      return;
+    }
+
+    function handleWheel(event: WheelEvent) {
+      event.preventDefault();
+      const delta = event.deltaY > 0 ? 0.9 : 1.1;
+      setViewport((current) => zoomAt(current, { x: event.clientX, y: event.clientY }, current.scale * delta));
+    }
+
+    stage.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      stage.removeEventListener("wheel", handleWheel);
+    };
+  }, [setViewport, stageRef]);
+
+  const handleStagePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.button !== 0 || target?.closest(".canvas-node, button, a, input, textarea, select")) {
+        return;
+      }
+
+      event.preventDefault();
+      setSelectedNodeId("");
+      startDrag({
+        type: "pan",
+        startX: event.clientX,
+        startY: event.clientY,
+        viewport,
+      });
+    },
+    [setSelectedNodeId, startDrag, viewport],
+  );
+
+  const handleNodePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>, node: CanvasNode) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
+      setSelectedNodeId(node.id);
+      bringToFront(node.id);
+      startDrag({
+        type: "node",
+        nodeId: node.id,
+        startWorldX: world.x,
+        startWorldY: world.y,
+        nodeX: node.x,
+        nodeY: node.y,
+      });
+    },
+    [bringToFront, setSelectedNodeId, startDrag, viewport],
+  );
+
+  const handleResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>, node: CanvasNode) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
+      setSelectedNodeId(node.id);
+      bringToFront(node.id);
+      startDrag({
+        type: "resize",
+        nodeId: node.id,
+        startWorldX: world.x,
+        startWorldY: world.y,
+        startWidth: node.width,
+        startHeight: node.height,
+      });
+    },
+    [bringToFront, setSelectedNodeId, startDrag, viewport],
+  );
+
+  const changeZoom = useCallback(
+    (factor: number) => {
+      const rect = stageRef.current?.getBoundingClientRect();
+      const center = rect
+        ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+        : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      setViewport((current) => zoomAt(current, center, current.scale * factor));
+    },
+    [setViewport, stageRef],
+  );
+
+  const resetView = useCallback(() => {
+    setViewport(INITIAL_VIEWPORT);
+  }, [setViewport]);
+
+  return {
+    changeZoom,
+    handleNodePointerDown,
+    handleResizePointerDown,
+    handleStagePointerDown,
+    resetView,
+  };
+}

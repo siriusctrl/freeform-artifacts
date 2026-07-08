@@ -1,9 +1,9 @@
 import { chromium } from "@playwright/test";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import http from "node:http";
 import path from "node:path";
 import process from "node:process";
+import { stopProcessGroup, waitForServer } from "./lib/browser-server.mjs";
 
 const root = process.cwd();
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -77,39 +77,6 @@ function checkSampledFrames(gifFile) {
   }
 
   return report;
-}
-
-function waitForServer(targetUrl, timeoutMs = 120_000) {
-  const startedAt = Date.now();
-
-  return new Promise((resolve, reject) => {
-    const check = () => {
-      const request = http.get(targetUrl, (response) => {
-        response.resume();
-        if (response.statusCode && response.statusCode < 500) {
-          resolve();
-          return;
-        }
-        retry();
-      });
-
-      request.on("error", retry);
-      request.setTimeout(2_000, () => {
-        request.destroy();
-        retry();
-      });
-    };
-
-    const retry = () => {
-      if (Date.now() - startedAt > timeoutMs) {
-        reject(new Error(`Timed out waiting for ${targetUrl}`));
-        return;
-      }
-      setTimeout(check, 500);
-    };
-
-    check();
-  });
 }
 
 const server = spawn("npm", ["run", "dev", "--", "--host", host, "--port", String(port)], {
@@ -304,11 +271,5 @@ try {
   if (browser) {
     await browser.close();
   }
-  if (server.pid) {
-    try {
-      process.kill(-server.pid, "SIGTERM");
-    } catch {
-      server.kill("SIGTERM");
-    }
-  }
+  stopProcessGroup(server);
 }

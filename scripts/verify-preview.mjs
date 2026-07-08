@@ -1,45 +1,12 @@
 import { chromium } from "@playwright/test";
 import { spawn, spawnSync } from "node:child_process";
-import http from "node:http";
 import process from "node:process";
+import { stopProcessGroup, waitForServer } from "./lib/browser-server.mjs";
 
 const root = process.cwd();
 const port = Number(process.env.FREEFORM_PREVIEW_PORT ?? 4178);
 const host = "127.0.0.1";
 const url = `http://${host}:${port}`;
-
-function waitForServer(targetUrl, timeoutMs = 120_000) {
-  const startedAt = Date.now();
-
-  return new Promise((resolve, reject) => {
-    const check = () => {
-      const request = http.get(targetUrl, (response) => {
-        response.resume();
-        if (response.statusCode && response.statusCode < 500) {
-          resolve();
-          return;
-        }
-        retry();
-      });
-
-      request.on("error", retry);
-      request.setTimeout(2_000, () => {
-        request.destroy();
-        retry();
-      });
-    };
-
-    const retry = () => {
-      if (Date.now() - startedAt > timeoutMs) {
-        reject(new Error(`Timed out waiting for ${targetUrl}`));
-        return;
-      }
-      setTimeout(check, 500);
-    };
-
-    check();
-  });
-}
 
 const build = spawnSync("npm", ["run", "build"], {
   cwd: root,
@@ -80,11 +47,5 @@ try {
   if (browser) {
     await browser.close();
   }
-  if (server.pid) {
-    try {
-      process.kill(-server.pid, "SIGTERM");
-    } catch {
-      server.kill("SIGTERM");
-    }
-  }
+  stopProcessGroup(server);
 }
