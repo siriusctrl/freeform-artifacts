@@ -6,11 +6,13 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   await page.reload();
 
   const stage = page.getByTestId("canvas-stage");
+  const grid = page.getByTestId("grid-plane");
   const revenueNode = page.getByTestId("node-node-revenue");
   const probabilityNode = page.getByTestId("node-node-probability");
   const probabilityChart = page.getByTestId("echarts-inflection-probability");
 
   await expect(stage).toBeVisible();
+  await expect(grid).toBeVisible();
   await expect(revenueNode).toBeVisible();
   await expect(probabilityNode).toBeVisible();
   await expect(probabilityChart).toBeVisible();
@@ -20,6 +22,10 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   );
 
   const initial = await page.evaluate(() => window.__FREEFORM_STATE__!);
+  const initialGrid = await grid.evaluate((element) => {
+    const style = window.getComputedStyle(element);
+    return { backgroundPosition: style.backgroundPosition, backgroundSize: style.backgroundSize };
+  });
   expect(initial.snapToGrid).toBe(true);
   expect(initial.snapGridSize).toBe(38);
 
@@ -93,6 +99,10 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
     const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
     return Math.round(state.viewport.x);
   }).not.toBe(Math.round(initial.viewport.x));
+  await expect.poll(async () => {
+    const style = await grid.evaluate((element) => window.getComputedStyle(element).backgroundPosition);
+    return style;
+  }).not.toBe(initialGrid.backgroundPosition);
 
   await page.mouse.move(stageBox!.x + 650, stageBox!.y + 360);
   await page.mouse.wheel(0, -420);
@@ -101,6 +111,10 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
     const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
     return state.viewport.scale;
   }).toBeGreaterThan(initial.viewport.scale);
+  await expect.poll(async () => {
+    const style = await grid.evaluate((element) => window.getComputedStyle(element).backgroundSize);
+    return style;
+  }).not.toBe(initialGrid.backgroundSize);
 
   const scaleAfterWheel = await page.evaluate(() => window.__FREEFORM_STATE__!.viewport.scale);
   await page.getByTestId("zoom-out").click();

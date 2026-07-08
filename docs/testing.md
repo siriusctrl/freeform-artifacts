@@ -29,6 +29,8 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - default snap-to-grid is on and dragged/resized nodes land on grid multiples;
 - dragging a card does not create a browser text selection;
 - dragging empty canvas space changes the viewport offset;
+- the visual grid follows viewport pan and zoom instead of staying fixed to the
+  browser glass;
 - wheel input changes zoom scale;
 - zoom controls change zoom scale;
 - resize handles change card dimensions;

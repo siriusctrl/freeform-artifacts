@@ -424,7 +424,14 @@ export default function App() {
           onPointerDown={handleStagePointerDown}
           onDragStart={(event) => event.preventDefault()}
         >
-          <div className="grid-plane" />
+          <div
+            className="grid-plane"
+            data-testid="grid-plane"
+            style={{
+              backgroundSize: `${CANVAS_GRID_SIZE * viewport.scale}px ${CANVAS_GRID_SIZE * viewport.scale}px`,
+              backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+            }}
+          />
           <div
             className="canvas-world"
             data-testid="canvas-world"

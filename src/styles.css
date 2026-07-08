@@ -239,9 +239,7 @@ button {
 .grid-plane {
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle, var(--grid-dot) 1.2px, transparent 1.4px);
-  background-size: 38px 38px;
-  background-position: 18px 17px;
+  background-image: radial-gradient(circle at 0 0, var(--grid-dot) 1.2px, transparent 1.4px);
   pointer-events: none;
 }
 

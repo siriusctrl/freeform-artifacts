@@ -44,6 +44,8 @@ All notable user-facing changes to this project should be documented here.
 - Centered the add-artifact action content optically.
 - Kept static ECharts artifacts from refreshing or entering hover states during
   canvas drag, pan, and zoom.
+- Bound the dotted grid background to the same viewport pan and zoom model as
+  canvas nodes.
 - Refactored board, transform, and node creation boundaries out of the main app
   component.
 - Split demo artifact seeds away from the artifact registry.
