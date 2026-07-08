@@ -20,6 +20,8 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   );
 
   const initial = await page.evaluate(() => window.__FREEFORM_STATE__!);
+  expect(initial.snapToGrid).toBe(true);
+  expect(initial.snapGridSize).toBe(38);
 
   const stageBox = await stage.boundingBox();
   const nodeBox = await revenueNode.boundingBox();
@@ -36,6 +38,11 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
     const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
     return state.nodes.find((node) => node.id === "node-revenue")?.x;
   }).not.toBe(initial.nodes.find((node) => node.id === "node-revenue")?.x);
+  await expect.poll(async () => {
+    const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
+    const revenue = state.nodes.find((node) => node.id === "node-revenue");
+    return revenue ? [revenue.x % state.snapGridSize, revenue.y % state.snapGridSize] : null;
+  }).toEqual([0, 0]);
   await expect.poll(async () => page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
 
   const probabilityBox = await probabilityChart.boundingBox();
@@ -65,6 +72,16 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
     const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
     return state.nodes.find((node) => node.id === "node-probability")?.width;
   }).toBeGreaterThan(initial.nodes.find((node) => node.id === "node-probability")!.width);
+  await expect.poll(async () => {
+    const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
+    const probability = state.nodes.find((node) => node.id === "node-probability");
+    return probability ? [probability.width % state.snapGridSize, probability.height % state.snapGridSize] : null;
+  }).toEqual([0, 0]);
+
+  await page.getByTestId("snap-toggle").click();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.snapToGrid)).toBe(false);
+  await page.getByTestId("snap-toggle").click();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.snapToGrid)).toBe(true);
 
   const panStart = { x: stageBox!.x + 100, y: stageBox!.y + stageBox!.height - 120 };
   await page.mouse.move(panStart.x, panStart.y);
@@ -111,4 +128,5 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   await expect(page.getByText("AI generated card")).toBeVisible();
   await expect(page.getByText("$232,400")).toBeVisible();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.snapToGrid)).toBe(true);
 });

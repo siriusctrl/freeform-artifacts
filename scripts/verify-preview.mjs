@@ -71,7 +71,7 @@ try {
   await page.getByTestId("theme-toggle").click();
   const state = await page.evaluate(() => window.__FREEFORM_STATE__);
 
-  if (state?.themeMode !== "dark" || !state?.artifactIds?.includes("runtime-margin-chart")) {
+  if (state?.themeMode !== "dark" || state?.snapToGrid !== true || !state?.artifactIds?.includes("runtime-margin-chart")) {
     throw new Error("Preview state did not reflect import and theme interactions");
   }
 

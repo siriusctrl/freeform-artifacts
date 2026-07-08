@@ -82,6 +82,8 @@ Current controls:
 
 - Drag an artifact card to move it.
 - Drag the selected card's bottom-right handle to resize it.
+- Keep snap-to-grid on by default for 38px world-coordinate placement; toggle
+  it with the grid button in the top toolbar when free placement is needed.
 - Drag empty canvas space to pan.
 - Scroll over the canvas to zoom around the pointer.
 - Use the bottom-left zoom controls to zoom or reset the view.
@@ -96,7 +98,8 @@ and scale. Rendering converts world coordinates into a single transformed DOM
 layer, which keeps artifact components as normal React/DOM content instead of
 forcing them into a low-level drawing API.
 
-Board state is automatically saved in local storage and restored on reload.
+Board state is automatically saved in local storage and restored on reload,
+including the current theme and snap-to-grid preference.
 
 ## Artifact Runtime
 
@@ -295,6 +298,7 @@ Implemented:
 - Pannable and zoomable dotted canvas.
 - Draggable artifact nodes.
 - Resizable selected artifact nodes.
+- Default-on 38px snap-to-grid placement with a toolbar toggle.
 - Selection inspector.
 - Persistent board serialization in local storage and JSON export.
 - Transform registry with fixtures for raw query rows.

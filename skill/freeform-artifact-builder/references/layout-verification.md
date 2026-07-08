@@ -27,6 +27,8 @@ Guidelines:
 - Keep the first viewport useful at `INITIAL_VIEWPORT = { x: 80, y: 80, scale: 1 }`.
 - Avoid hiding the primary example behind the toolbar, zoom controls, or
   inspector.
+- The canvas defaults to a 38px snap grid. Prefer grid-aligned positions and
+  sizes for default demo nodes unless an intentional stagger improves scanning.
 - Use 24-40 px gaps between cards when possible.
 - Prefer `280x170` for metric cards, `430x260` for table previews,
   `560x300` for flow cards, and `600-760` wide cards for complex charts.

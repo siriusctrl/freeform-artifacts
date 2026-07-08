@@ -70,7 +70,10 @@ The current runtime exposes `window.__FREEFORM_STATE__` only for browser
 verification. Do not build product features on that debug handle.
 
 Canvas board state is serialized as a versioned JSON object in local storage.
-The persisted shape includes nodes, viewport, selected node, and theme mode.
+The persisted shape includes nodes, viewport, selected node, theme mode, and
+the snap-to-grid preference. Node positions and dimensions can be snapped to the
+38px world-coordinate grid by the canvas shell; artifacts do not own placement
+behavior.
 Artifact render data remains serializable and is validated when rendered.
 
 ## Artifact Registry

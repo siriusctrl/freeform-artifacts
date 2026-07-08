@@ -37,6 +37,7 @@ export const boardStateSchema = z.object({
   viewport: canvasViewportSchema,
   selectedNodeId: z.string(),
   themeMode: z.enum(["light", "dark"]),
+  snapToGrid: z.boolean().default(true),
 });
 
 export interface BoardState {
@@ -45,6 +46,7 @@ export interface BoardState {
   viewport: CanvasViewport;
   selectedNodeId: string;
   themeMode: ThemeMode;
+  snapToGrid: boolean;
 }
 
 export function createBoardState(state: Omit<BoardState, "version">): BoardState {

@@ -500,3 +500,50 @@ repo development, while deployed owners can drop compiled ESM modules under
 
 Revisit when generated code should be accepted from untrusted users, or when the
 product needs a server-side compiler/bundler for uploaded TSX artifacts.
+
+## ADR-0010: Keep snap-to-grid in the canvas host
+
+Status: Accepted
+
+Date: 2026-07-08
+
+### Context
+
+As the demo gained larger charts and multiple artifact cards, freehand
+placement became harder to keep tidy. The board already had a dotted grid, but
+that was only visual; dragging and resizing still used arbitrary rounded world
+coordinates.
+
+Generated artifacts should not need to know about board alignment. They render
+data inside a node. Placement, resize, pan, zoom, and future multi-select
+behavior belong to the canvas shell.
+
+### Decision
+
+Add default-on snap-to-grid behavior in the canvas host:
+
+- the grid interval is 38px, matching the visual dotted grid;
+- dragged node positions snap in world coordinates;
+- resized node dimensions snap in world coordinates;
+- the toolbar grid button toggles snap on and off;
+- the snap preference is saved in the versioned board JSON.
+
+### Why this route
+
+World-coordinate snapping keeps layout stable across zoom levels. Keeping the
+logic in the host also means AI-generated artifacts remain pure renderers and
+do not duplicate alignment rules.
+
+### Tradeoffs
+
+- Default snap introduces visible jumps during drag rather than perfectly
+  continuous motion.
+- Users sometimes need free placement, so the toolbar exposes an explicit
+  toggle.
+- Future smart guides, alignment commands, or multi-select distribution should
+  compose with this host-level placement policy instead of moving into artifact
+  code.
+
+Revisit if the product adds a full layout engine, constraint solver, or
+collaborative selection model that needs richer alignment state than a single
+grid preference.

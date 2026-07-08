@@ -2,6 +2,7 @@ import type { CanvasViewport } from "../artifacts/types";
 
 export const MIN_SCALE = 0.35;
 export const MAX_SCALE = 2.4;
+export const CANVAS_GRID_SIZE = 38;
 
 export function clampScale(scale: number) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
@@ -27,4 +28,8 @@ export function zoomAt(
     x: screenPoint.x - worldPoint.x * scale,
     y: screenPoint.y - worldPoint.y * scale,
   };
+}
+
+export function snapToGrid(value: number, gridSize = CANVAS_GRID_SIZE) {
+  return Math.round(value / gridSize) * gridSize;
 }

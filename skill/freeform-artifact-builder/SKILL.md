@@ -46,6 +46,8 @@ canvas.
 - Add `interactive: true` only when chart-level hover, tooltip, click, or brush
   behavior is required.
 - Keep text readable in both light and dark mode.
+- Keep default demo node positions and sizes grid-friendly; the canvas host
+  owns 38px snap-to-grid placement.
 - Attach a Zod `dataValidator` to new artifacts.
 - Treat runtime external ESM artifacts as trusted self-hosted code, not
   sandboxed plugins.

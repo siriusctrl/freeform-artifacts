@@ -26,11 +26,13 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - the canvas renders;
 - the initial artifact nodes are visible;
 - dragging a card changes its world coordinates;
+- default snap-to-grid is on and dragged/resized nodes land on grid multiples;
 - dragging a card does not create a browser text selection;
 - dragging empty canvas space changes the viewport offset;
 - wheel input changes zoom scale;
 - zoom controls change zoom scale;
 - resize handles change card dimensions;
+- the snap-to-grid toolbar toggle can switch free placement off and back on;
 - theme toggle switches light/dark mode;
 - importing sample query rows runs transforms and updates artifacts;
 - adding an artifact inserts and selects a registry-backed node.

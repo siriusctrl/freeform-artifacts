@@ -177,6 +177,11 @@ try {
   await page.mouse.up();
   await page.waitForTimeout(350);
 
+  await page.getByTestId("snap-toggle").click();
+  await page.waitForTimeout(260);
+  await page.getByTestId("snap-toggle").click();
+  await page.waitForTimeout(350);
+
   await page.getByTestId("theme-toggle").click();
   await page.waitForTimeout(350);
 
@@ -248,6 +253,7 @@ try {
       "wheel zoom",
       "import query result",
       "resize chart artifact",
+      "toggle snap-to-grid off and on",
       "toggle dark mode",
       "add artifact",
       "capture screenshot",
@@ -274,6 +280,7 @@ try {
       "- Wheel input changed zoom.",
       "- Import data transformed raw rows into metric and table artifacts.",
       "- Resize handle changed an artifact card size.",
+      "- Snap-to-grid toggle switched placement mode off and back on.",
       "- Theme toggle switched the app into dark mode.",
       "- Add artifact inserted and selected a new registry-backed node.",
       "- Internal frame contact sheet was generated for temporal visual inspection.",

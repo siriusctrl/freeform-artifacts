@@ -16,6 +16,7 @@ All notable user-facing changes to this project should be documented here.
 - Self-hosted Geist Sans and Geist Mono typography.
 - Sample database rows and transform helpers.
 - Persistent board autosave/restore and board JSON export.
+- Default-on 38px snap-to-grid placement and resizing with a toolbar toggle.
 - Selected-card resize handles.
 - Transform registry with checked raw-row fixtures.
 - Zod-backed artifact payload validation with invalid-artifact fallback UI.

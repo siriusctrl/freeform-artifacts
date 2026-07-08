@@ -55,6 +55,7 @@ final screenshot and `frame-check.json` as supplementary checks. Look for:
 - canvas pan moving the wrong layer;
 - wheel zoom jumping away from the pointer;
 - top toolbar zoom controls not changing scale;
+- snap-to-grid toggle not returning to the intended on/off state;
 - light/dark mode leaving illegible cards or panels;
 - added artifacts appearing outside the visible canvas;
 - text overflow in buttons, cards, or inspector panels.

@@ -19,13 +19,13 @@ import { artifactRegistry } from "./artifacts/registry";
 import type { RegisteredArtifact } from "./artifacts/registryTypes";
 import type { CanvasNode, CanvasViewport } from "./artifacts/types";
 import { validateArtifactPayload } from "./artifacts/validation";
-import { clearBoardState, createBoardState, downloadBoardState, loadBoardState, saveBoardState } from "./canvas/board";
+import { createBoardState, downloadBoardState, loadBoardState, saveBoardState } from "./canvas/board";
 import { INITIAL_VIEWPORT, themeFor, type ThemeMode } from "./canvas/constants";
 import { createMetricNode } from "./canvas/nodeFactory";
 import { initialNodes } from "./canvas/seeds/demoBoard";
 import { importedRevenueRows } from "./data/transformFixtures";
 import { revenueSummaryTransform, revenueTableTransform, runTransform } from "./data/transforms";
-import { screenToWorld, zoomAt } from "./lib/geometry";
+import { CANVAS_GRID_SIZE, screenToWorld, snapToGrid as snapValueToGrid, zoomAt } from "./lib/geometry";
 
 type DragState =
   | { type: "pan"; startX: number; startY: number; viewport: CanvasViewport }
@@ -60,6 +60,7 @@ export default function App() {
   const [selectedNodeId, setSelectedNodeId] = useState<string>(() => savedBoard?.selectedNodeId ?? "node-revenue");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => savedBoard?.themeMode ?? "light");
+  const [snapToGrid, setSnapToGrid] = useState(() => savedBoard?.snapToGrid ?? true);
   const [status, setStatus] = useState(savedBoard ? "Restored saved board" : "Autosave ready");
   const [runtimeArtifactRegistry, setRuntimeArtifactRegistry] =
     useState<Record<string, RegisteredArtifact>>(artifactRegistry);
@@ -101,7 +102,7 @@ export default function App() {
   }, [drag]);
 
   useEffect(() => {
-    const board = createBoardState({ nodes, viewport, selectedNodeId, themeMode });
+    const board = createBoardState({ nodes, viewport, selectedNodeId, themeMode, snapToGrid });
     saveBoardState(board);
     window.__FREEFORM_STATE__ = {
       get nodes() {
@@ -116,6 +117,12 @@ export default function App() {
       get themeMode() {
         return themeMode;
       },
+      get snapToGrid() {
+        return snapToGrid;
+      },
+      get snapGridSize() {
+        return CANVAS_GRID_SIZE;
+      },
       get status() {
         return status;
       },
@@ -123,7 +130,7 @@ export default function App() {
         return Object.keys(runtimeArtifactRegistry);
       },
     };
-  }, [nodes, viewport, selectedNodeId, themeMode, status, runtimeArtifactRegistry]);
+  }, [nodes, viewport, selectedNodeId, themeMode, snapToGrid, status, runtimeArtifactRegistry]);
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
@@ -173,7 +180,7 @@ export default function App() {
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerUp);
     };
-  }, [viewport]);
+  }, [viewport, snapToGrid]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -195,19 +202,23 @@ export default function App() {
   }, []);
 
   function updateNodePosition(nodeId: string, x: number, y: number) {
+    const nextX = snapToGrid ? snapValueToGrid(x) : Math.round(x);
+    const nextY = snapToGrid ? snapValueToGrid(y) : Math.round(y);
     setNodes((current) =>
-      current.map((node) => (node.id === nodeId ? { ...node, x: Math.round(x), y: Math.round(y) } : node)),
+      current.map((node) => (node.id === nodeId ? { ...node, x: nextX, y: nextY } : node)),
     );
   }
 
   function updateNodeSize(nodeId: string, width: number, height: number) {
+    const nextWidth = snapToGrid ? snapValueToGrid(Math.max(MIN_NODE_SIZE.width, width)) : Math.round(width);
+    const nextHeight = snapToGrid ? snapValueToGrid(Math.max(MIN_NODE_SIZE.height, height)) : Math.round(height);
     setNodes((current) =>
       current.map((node) =>
         node.id === nodeId
           ? {
               ...node,
-              width: Math.max(MIN_NODE_SIZE.width, Math.round(width)),
-              height: Math.max(MIN_NODE_SIZE.height, Math.round(height)),
+              width: Math.max(MIN_NODE_SIZE.width, nextWidth),
+              height: Math.max(MIN_NODE_SIZE.height, nextHeight),
             }
           : node,
       ),
@@ -339,22 +350,19 @@ export default function App() {
   }
 
   function exportBoard() {
-    downloadBoardState(createBoardState({ nodes, viewport, selectedNodeId, themeMode }));
+    downloadBoardState(createBoardState({ nodes, viewport, selectedNodeId, themeMode, snapToGrid }));
     setStatus("Exported board JSON");
-  }
-
-  function resetBoard() {
-    clearBoardState();
-    setNodes(initialNodes);
-    setViewport(INITIAL_VIEWPORT);
-    setSelectedNodeId("node-revenue");
-    setThemeMode("light");
-    setStatus("Reset board");
   }
 
   function resetView() {
     setViewport(INITIAL_VIEWPORT);
     setStatus("Reset view");
+  }
+
+  function toggleSnapToGrid() {
+    const nextSnapToGrid = !snapToGrid;
+    setSnapToGrid(nextSnapToGrid);
+    setStatus(nextSnapToGrid ? `Snap to ${CANVAS_GRID_SIZE}px grid` : "Free placement mode");
   }
 
   return (
@@ -369,7 +377,14 @@ export default function App() {
             <button type="button" className="icon-button active" title="Select">
               <MousePointer2 size={20} />
             </button>
-            <button type="button" className="icon-button" title="Reset board" onClick={resetBoard} data-testid="reset-board">
+            <button
+              type="button"
+              className={`icon-button ${snapToGrid ? "active" : ""}`}
+              title={snapToGrid ? `Snap to ${CANVAS_GRID_SIZE}px grid is on` : "Snap to grid is off"}
+              aria-pressed={snapToGrid}
+              onClick={toggleSnapToGrid}
+              data-testid="snap-toggle"
+            >
               <Grid3X3 size={20} />
             </button>
             <button type="button" className="icon-button" title="Import data" onClick={importData} data-testid="import-data">
@@ -525,6 +540,10 @@ export default function App() {
                       {selectedNode.width} x {selectedNode.height}
                     </dd>
                   </div>
+                  <div>
+                    <dt>Grid</dt>
+                    <dd>{snapToGrid ? `${CANVAS_GRID_SIZE}px snap` : "free"}</dd>
+                  </div>
                   {selectedNode.dataBinding ? (
                     <div>
                       <dt>Source</dt>
@@ -550,6 +569,8 @@ declare global {
       readonly viewport: CanvasViewport;
       readonly selectedNodeId: string;
       readonly themeMode: ThemeMode;
+      readonly snapToGrid: boolean;
+      readonly snapGridSize: number;
       readonly status: string;
       readonly artifactIds: string[];
     };
