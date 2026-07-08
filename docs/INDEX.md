@@ -6,6 +6,10 @@ Read in this order when getting oriented:
 2. `AGENTS.md`
 3. `CHANGELOG.md`
 
+Use `AGENTS.md` as the compact operating map for agents. Product framing lives
+in `README.md`; durable architecture rationale lives in `docs/architecture.md`
+and `docs/architecture-decisions.md`.
+
 Read these when the task matches:
 
 - `docs/architecture.md`

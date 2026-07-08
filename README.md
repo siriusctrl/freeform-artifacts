@@ -8,6 +8,17 @@ database-backed cards: raw rows can be transformed into normalized artifact data
 then rendered by registry-approved React/TypeScript components or managed
 ECharts artifacts.
 
+## Product Boundary
+
+This project is canvas-first, not dashboard-first. The first screen should stay
+focused on placing, moving, resizing, panning, zooming, and inspecting artifacts
+in a Freeform-style workspace.
+
+It is not a landing page, admin dashboard, or server management console. It is
+also not a general drawing engine yet. Generated artifacts enter through the
+artifact registry contract; they do not own the whole page or mutate canvas
+internals directly.
+
 ## Quick Start
 
 Install dependencies:

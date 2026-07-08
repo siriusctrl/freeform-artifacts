@@ -48,6 +48,8 @@ All notable user-facing changes to this project should be documented here.
   canvas nodes.
 - Split the canvas runtime into focused components, an interaction hook, debug
   state helper, domain CSS files, and shared verification script helpers.
+- Slimmed `AGENTS.md` into an agent source map and moved product framing into
+  README/docs.
 - Refactored board, transform, and node creation boundaries out of the main app
   component.
 - Split demo artifact seeds away from the artifact registry.

@@ -1,112 +1,78 @@
 # AGENTS.md
 
-Principles for agents contributing to this repository.
+This file is the operating map for agents working in this repo. Keep product
+vision in `README.md` and durable tradeoffs in `docs/`; keep this file focused
+on navigation, invariants, verification, and handoff rules.
 
-## Core Principles
+## Source Map
 
-1. **Canvas-first, not dashboard-first**
-   - This project is a Freeform-style artifact canvas.
-   - Do not turn the first screen into a landing page, admin dashboard, or
-     server management console unless the product boundary is deliberately
-     changed.
+- `src/App.tsx`: app orchestration only.
+- `src/canvas/components/`: canvas UI pieces.
+- `src/canvas/hooks/useCanvasInteractions.ts`: drag, resize, pan, zoom, snap,
+  and z-order interaction mechanics.
+- `src/canvas/board.ts`: board persistence and JSON export.
+- `src/canvas/debugState.ts`: Playwright/browser debug state only.
+- `src/canvas/seeds/demoBoard.ts`: default demo board nodes.
+- `src/lib/geometry.ts`: viewport math and screen/world coordinate conversion.
+- `src/artifacts/types.ts`: artifact contract.
+- `src/artifacts/core/`: platform-provided artifacts.
+- `src/artifacts/examples/`: demo and verification artifacts.
+- `src/artifacts/generated/`: AI/user-generated repo-compiled artifact entry
+  point.
+- `public/artifacts/generated/manifest.json`: trusted runtime ESM artifact
+  manifest.
+- `src/data/transforms.ts`: data shaping before render.
+- `src/styles.css` and `src/styles/`: product styling entry point and domain
+  styles.
+- `tests/canvas.spec.ts`: Playwright interaction smoke test.
+- `scripts/`: preview and proof verification.
+- `skill/freeform-artifact-builder/`: project-local artifact authoring skill.
 
-2. **Artifacts are registry objects**
-   - AI-generated cards must enter through the artifact contract in
-     `src/artifacts/types.ts`.
-   - Do not let generated artifacts mutate canvas state directly.
-   - Keep database transforms outside render components.
-   - Prefer managed ECharts artifacts for standard charts.
-   - Use custom React artifacts when ECharts cannot express the visual or
-     interaction cleanly.
-   - Put repo-compiled generated artifacts in
-     `src/artifacts/generated/*.artifact.tsx`.
-   - Put runtime ESM artifacts under `public/artifacts/generated/` and list
-     them in `manifest.json`.
+## Engineering Invariants
 
-3. **DOM artifacts are intentional**
-   - The current renderer uses React/DOM nodes inside a transformed world layer.
-   - Do not replace the runtime with a pure `<canvas>` renderer unless the
-     product goal shifts toward drawing primitives rather than data artifacts.
-
-4. **Browser proof is required for user-facing interaction**
-   - When canvas interaction, artifact rendering, layout, or visual behavior
-     changes, run a real browser verification path before reporting completion.
-   - Keep the proof GIF path in the final handoff.
-
-5. **Conventional Commits with real bodies**
-   - Use Conventional Commits for commits.
-   - Include a body that explains what changed and why.
-
-## Navigation
-
-Use README for user-facing behavior. Use docs for maintainer workflows and
-durable project decisions.
-
-Keep this file coarse-grained. Do not mirror every implementation detail here.
-Use `docs/INDEX.md` as the navigation entry point when you need code layout or
-workflow-specific docs.
-
-### Read these docs first
-
-- `README.md`
-- `docs/INDEX.md`
-- `CHANGELOG.md`
-
-### Read these docs when the task matches
-
-- Creating, editing, registering, or laying out canvas artifacts:
-  - Use `skill/freeform-artifact-builder/SKILL.md`.
-- Architecture, canvas state, artifact runtime, data transforms, or renderer
-  boundaries:
-  - Read `docs/architecture.md`.
-- Product and engineering tradeoffs, including accepted and rejected technical
-  routes:
-  - Read `docs/architecture-decisions.md`.
-- Tests, Playwright setup, UI smoke coverage, or proof scripts:
-  - Read `docs/testing.md`.
-- Browser recordings, GIF evidence, screenshots, traces, or proof inspection:
-  - Read `docs/visual-verification.md`.
-
-## Engineering Rules
-
-- Keep canvas state serializable.
+- Keep `App.tsx` thin; put canvas mechanics under `src/canvas/`.
+- Keep the first screen canvas-first, not dashboard-first.
 - Keep viewport state separate from node world coordinates.
-- Keep artifact definitions pure from canvas state mutations.
-- Keep data transforms separate from artifact rendering.
-- Keep ECharts lifecycle inside `EChartsArtifactHost`; generated ECharts
-  artifacts should provide `buildOption`, data, config, and schema hints only.
-- Keep ECharts artifacts non-interactive by default so canvas drag remains
-  primary. Enable artifact-level interactivity only when the user needs chart
-  hover, tooltip, click, or brush behavior.
+- Keep canvas state serializable.
+- Generated artifacts must not mutate canvas state directly.
+- Database shaping belongs in transforms, not render components.
+- ECharts lifecycle stays inside `EChartsArtifactHost`.
+- Prefer managed ECharts artifacts for standard charts.
+- Use custom React artifacts for visuals or interactions ECharts cannot express
+  cleanly.
+- Runtime external artifacts are trusted self-hosted code, not sandboxed
+  plugins.
 - Keep custom lifecycle-heavy artifacts trusted and compiled until a sandbox is
   implemented.
 - Prefer typed interfaces before adding new runtime behavior.
-- Keep `skill/freeform-artifact-builder` updated when artifact contracts,
-  renderer policy, layout expectations, or proof requirements change.
-- Update `README.md` when user-visible behavior or commands change.
-- Update `docs/architecture.md` when the artifact contract, data pipeline, or
-  canvas runtime boundary changes.
-- Update `docs/architecture-decisions.md` when choosing a significant library,
-  runtime boundary, verification strategy, sandbox strategy, or rejected
-  alternative.
-- Update `docs/testing.md` when verification commands or test coverage changes.
-- Update `docs/visual-verification.md` when proof artifact shape changes.
-- Update `CHANGELOG.md` for user-facing behavior, verification workflows, or
-  handoff policy changes.
 
-## Verification Requirements
+## Verification
 
-- Run `npm run check`.
-- Run `npm run verify:ui` when interaction or rendering behavior changes.
-- Run `npm run verify:preview` when runtime, bundling, imports, persistence, or
-  production-facing behavior changes.
-- Run `npm run verify:proof` when a user-facing visual interaction changes.
-- Inspect the generated GIF and contact-sheet keyframes yourself before
-  reporting completion. Use `frame-check.json` and the final screenshot as
-  supplementary checks.
-- Report the absolute path to the latest proof directory in the final summary.
-- If Playwright cannot launch Chromium, run `npm run setup:browsers` and retry.
-- If GIF generation fails, check that `/usr/bin/ffmpeg` or another `ffmpeg`
-  binary is available.
-- Do not claim a browser interaction works based only on static TypeScript or
-  build success.
+- Run `npm run check` for every code change.
+- Run `npm run verify:ui` for interaction or rendering changes.
+- Run `npm run verify:preview` for runtime, bundling, import, persistence, or
+  production-facing changes.
+- Run `npm run verify:proof` for user-facing visual changes.
+- Inspect `proof.gif`, `contact-sheet.png`, and `frame-check.json` before
+  claiming visual behavior works.
+- Report the absolute proof GIF path in the final handoff when visual behavior
+  changed.
+- If Chromium is missing, run `npm run setup:browsers` and retry.
+- If GIF generation fails, check that `ffmpeg` is available.
+
+## Docs Update Rules
+
+- User-visible behavior or commands: update `README.md` and `CHANGELOG.md`.
+- Runtime, artifact, data, or canvas boundary: update `docs/architecture.md`.
+- Significant decision or rejected alternative: update
+  `docs/architecture-decisions.md`.
+- Verification commands or coverage: update `docs/testing.md`.
+- Proof artifact shape or review workflow: update `docs/visual-verification.md`.
+- Artifact contract, renderer policy, layout expectations, or proof
+  requirements: update `skill/freeform-artifact-builder/`.
+
+## Commit Rules
+
+- Use Conventional Commits.
+- Include a body that explains what changed and why.
+- Do not revert unrelated user changes.
