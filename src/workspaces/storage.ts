@@ -4,24 +4,30 @@ import {
   workspaceRecordSchema,
   type WorkspaceLoadResult,
   type WorkspaceRecord,
+  type WorkspaceSummary,
   type WorkspaceTemplate,
 } from "./types";
 
 export const WORKSPACE_DATABASE_NAME = "freeform-artifacts";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const WORKSPACE_STORE = "workspaces";
+export const ARTIFACT_PACKAGE_STORE = "artifact-packages";
+const ACTIVE_WORKSPACE_KEY = "freeform-artifacts.active-view.v1";
 
 function fallbackKey(templateId: string) {
   return `freeform-artifacts.workspace.${templateId}.v1`;
 }
 
-function openDatabase(): Promise<IDBDatabase> {
+export function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = window.indexedDB.open(WORKSPACE_DATABASE_NAME, DATABASE_VERSION);
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(WORKSPACE_STORE)) {
         database.createObjectStore(WORKSPACE_STORE, { keyPath: "templateId" });
+      }
+      if (!database.objectStoreNames.contains(ARTIFACT_PACKAGE_STORE)) {
+        database.createObjectStore(ARTIFACT_PACKAGE_STORE, { keyPath: "artifactId" });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -40,6 +46,24 @@ async function readIndexedWorkspace(templateId: string): Promise<WorkspaceRecord
         resolve(parsed.success ? parsed.data : null);
       };
       request.onerror = () => reject(request.error ?? new Error("Unable to read the local workspace"));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function listIndexedWorkspaces(): Promise<WorkspaceRecord[]> {
+  const database = await openDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = database.transaction(WORKSPACE_STORE, "readonly").objectStore(WORKSPACE_STORE).getAll();
+      request.onsuccess = () => resolve(
+        request.result.flatMap((value) => {
+          const parsed = workspaceRecordSchema.safeParse(value);
+          return parsed.success ? [parsed.data] : [];
+        }),
+      );
+      request.onerror = () => reject(request.error ?? new Error("Unable to list local canvases"));
     });
   } finally {
     database.close();
@@ -74,6 +98,63 @@ function writeFallbackWorkspace(workspace: WorkspaceRecord) {
   window.localStorage.setItem(fallbackKey(workspace.templateId), JSON.stringify(workspace));
 }
 
+function listFallbackWorkspaces(): WorkspaceRecord[] {
+  const prefix = "freeform-artifacts.workspace.";
+  const records: WorkspaceRecord[] = [];
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (!key?.startsWith(prefix)) continue;
+    try {
+      const parsed = workspaceRecordSchema.safeParse(JSON.parse(window.localStorage.getItem(key) ?? "null"));
+      if (parsed.success) records.push(parsed.data);
+    } catch {
+      // Ignore malformed fallback entries and keep scanning.
+    }
+  }
+  return records;
+}
+
+export async function listWorkspaces(): Promise<WorkspaceSummary[]> {
+  let records: WorkspaceRecord[];
+  try {
+    records = await listIndexedWorkspaces();
+  } catch {
+    records = listFallbackWorkspaces();
+  }
+  return records
+    .sort((first, second) => second.updatedAt.localeCompare(first.updatedAt))
+    .map((workspace) => ({ id: workspace.templateId, title: workspace.title, updatedAt: workspace.updatedAt }));
+}
+
+export async function loadWorkspaceById(id: string): Promise<WorkspaceLoadResult | null> {
+  let storage: WorkspaceLoadResult["storage"] = "indexeddb";
+  let workspace: WorkspaceRecord | null = null;
+  const fallback = readFallbackWorkspace(id);
+  try {
+    workspace = await readIndexedWorkspace(id);
+    if (fallback && (!workspace || fallback.updatedAt > workspace.updatedAt)) {
+      workspace = fallback;
+      await writeIndexedWorkspace(fallback);
+    }
+  } catch {
+    storage = "localstorage";
+    workspace = fallback;
+  }
+  return workspace ? { workspace, source: "existing", storage } : null;
+}
+
+export function setActiveWorkspaceId(id: string) {
+  window.localStorage.setItem(ACTIVE_WORKSPACE_KEY, id);
+}
+
+export async function createWorkspace(template: WorkspaceTemplate): Promise<WorkspaceLoadResult> {
+  const id = `canvas-${crypto.randomUUID()}`;
+  const workspace = createWorkspaceFromTemplate(template, { id, title: "Untitled canvas", empty: true });
+  const storage = await saveWorkspace(workspace);
+  setActiveWorkspaceId(id);
+  return { workspace, source: "template", storage };
+}
+
 export async function saveWorkspace(workspace: WorkspaceRecord): Promise<"indexeddb" | "localstorage"> {
   const checked = workspaceRecordSchema.parse(workspace);
   let fallbackSaved = false;
@@ -96,6 +177,16 @@ export async function saveWorkspace(workspace: WorkspaceRecord): Promise<"indexe
 }
 
 export async function loadOrCreateWorkspace(template: WorkspaceTemplate): Promise<WorkspaceLoadResult> {
+  const requestedId = new URLSearchParams(window.location.search).get("view");
+  const activeId = requestedId ?? window.localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+  if (activeId) {
+    const active = await loadWorkspaceById(activeId);
+    if (active) {
+      setActiveWorkspaceId(activeId);
+      return active;
+    }
+  }
+
   let storage: WorkspaceLoadResult["storage"] = "indexeddb";
   let existing: WorkspaceRecord | null = null;
   const fallback = readFallbackWorkspace(template.id);
@@ -112,6 +203,7 @@ export async function loadOrCreateWorkspace(template: WorkspaceTemplate): Promis
   }
 
   if (existing) {
+    setActiveWorkspaceId(existing.templateId);
     return { workspace: existing, source: "existing", storage };
   }
 
@@ -122,6 +214,7 @@ export async function loadOrCreateWorkspace(template: WorkspaceTemplate): Promis
   }
 
   storage = await saveWorkspace(workspace);
+  setActiveWorkspaceId(workspace.templateId);
   if (legacyBoard) {
     clearLegacyBoardState();
   }

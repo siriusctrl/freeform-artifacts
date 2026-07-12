@@ -7,7 +7,7 @@
 .topbar {
   z-index: 4;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, auto) minmax(420px, 1fr);
   align-items: center;
   gap: 18px;
   padding: 10px 24px 10px 22px;
@@ -18,7 +18,8 @@
 
 .title-block,
 .tool-strip,
-.topbar-actions {
+.topbar-actions,
+.topbar-controls {
   display: flex;
   align-items: center;
 }
@@ -28,6 +29,10 @@
   gap: 11px;
   font-size: 21px;
   font-weight: 760;
+}
+
+.sidebar-toggle {
+  margin-right: 1px;
 }
 
 .title-block > div {
@@ -42,10 +47,45 @@
   white-space: nowrap;
 }
 
-.title-block small {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
+.canvas-title-slot {
+  min-width: 0;
+  justify-self: center;
+}
+
+.canvas-title-slot button,
+.canvas-title-slot input {
+  width: min(320px, 30vw);
+  height: 36px;
+  padding: 0 12px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 720;
+}
+
+.canvas-title-slot button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.canvas-title-slot button:hover {
+  background: var(--panel-soft);
+}
+
+.canvas-title-slot input {
+  background: var(--panel);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.topbar-controls {
+  justify-self: end;
+  gap: 12px;
 }
 
 .tool-strip {
@@ -243,6 +283,64 @@
   background: var(--accent);
 }
 
+.canvas-sidebar {
+  z-index: 12;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 66px minmax(0, 1fr);
+  color: var(--text);
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.canvas-sidebar header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.canvas-sidebar nav {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 8px;
+}
+
+.canvas-sidebar nav button {
+  width: 100%;
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.canvas-sidebar nav button:hover {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.canvas-sidebar nav button.active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent), transparent 88%);
+}
+
+.canvas-sidebar nav span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -346,12 +444,20 @@
 
 .secondary-action {
   height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   padding: 0 14px;
   color: var(--text);
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 999px;
   cursor: pointer;
+}
+
+.install-bundle-action {
+  margin-right: auto;
 }
 
 .dialog-primary {

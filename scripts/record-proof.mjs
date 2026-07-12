@@ -247,6 +247,30 @@ function checkSampledFrames(gifFile) {
   return report;
 }
 
+function proofArtifactBundle() {
+  return {
+    version: 1,
+    artifactId: "agent-capacity-card",
+    moduleSource: `export const artifact = {
+      id: "agent-capacity-card", renderer: "echarts", chartRenderer: "svg",
+      title: "Agent Capacity", version: "1.0.0", defaultSize: { width: 480, height: 300 },
+      buildOption: ({ data, theme }) => ({
+        animation: false, backgroundColor: "transparent",
+        title: { text: data.title, left: 24, top: 20, textStyle: { color: theme.text, fontSize: 22 } },
+        grid: { left: 48, right: 24, top: 76, bottom: 40 },
+        xAxis: { type: "category", data: data.points.map((point) => point.label) },
+        yAxis: { type: "value" },
+        series: [{ type: "bar", data: data.points.map((point) => point.value), itemStyle: { color: theme.accent } }],
+      }),
+    };`,
+    node: {
+      title: "Agent capacity",
+      data: { title: "Installed directly into this view", points: [{ label: "North", value: 34 }, { label: "South", value: 47 }] },
+      config: {},
+    },
+  };
+}
+
 const server = spawn("npm", ["run", "dev", "--", "--host", host, "--port", String(port), "--strictPort"], {
   cwd: root,
   detached: true,
@@ -345,6 +369,42 @@ try {
     initialSankeyLayout,
   );
 
+  await showProofStep(page, "Rename canvas • edit the centered title", 900);
+  await page.getByTestId("canvas-title").dblclick();
+  const titleInput = page.getByTestId("canvas-title-input");
+  await titleInput.press("Control+A");
+  await titleInput.pressSequentially("Market canvas", { delay: 65 });
+  await page.waitForTimeout(500);
+  await titleInput.press("Enter");
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saved locally");
+  await page.waitForTimeout(900);
+  verifyUx("double-click rename persists the centered canvas title", await page.getByTestId("canvas-title").getByText("Market canvas").isVisible());
+
+  await showProofStep(page, "Open canvases • create a second local view", 900);
+  await page.getByTestId("sidebar-toggle").click();
+  await page.waitForTimeout(800);
+  verifyUx("sidebar opens only on request", await page.getByTestId("canvas-sidebar").isVisible());
+  await page.getByTestId("create-view").click();
+  await page.waitForTimeout(900);
+  const secondViewId = await page.evaluate(() => window.__FREEFORM_AGENT__.activeViewId);
+  verifyUx("new canvas is an empty independent view", secondViewId !== "market-overview" && (await page.evaluate(() => window.__FREEFORM_STATE__.nodes.length)) === 0, { secondViewId });
+  await page.getByTestId("canvas-title").dblclick();
+  const secondTitleInput = page.getByTestId("canvas-title-input");
+  await secondTitleInput.press("Control+A");
+  await secondTitleInput.pressSequentially("Scenario canvas", { delay: 55 });
+  await secondTitleInput.press("Enter");
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saved locally");
+  await page.waitForTimeout(900);
+
+  await showProofStep(page, "Switch canvas • restore the first view", 800);
+  await page.getByTestId("view-market-overview").click();
+  await page.getByTestId("node-node-revenue").waitFor({ state: "visible" });
+  await page.waitForTimeout(1000);
+  const viewSummaries = await page.evaluate(() => window.__FREEFORM_AGENT__.listViews());
+  verifyUx("view switch restores the first canvas and keeps both names", (await page.getByTestId("canvas-title").innerText()) === "Market canvas" && viewSummaries.some((view) => view.title === "Scenario canvas"), { viewSummaries });
+  await page.getByTestId("sidebar-toggle").click();
+  await page.waitForTimeout(500);
+
   const stageBox = await stage.boundingBox();
   const revenueNode = page.getByTestId("node-node-revenue");
   const nodeBox = await revenueNode.boundingBox();
@@ -372,7 +432,7 @@ try {
   });
   verifyUx("drag does not select browser text", (await page.evaluate(() => window.getSelection()?.toString() ?? "")) === "");
 
-  await showProofStep(page, "Resize chart • scale the complete object", 550);
+  await showProofStep(page, "Resize chart • watch the complete object scale", 1000);
   const beforeResize = await page.evaluate(() => window.__FREEFORM_STATE__);
   await page.getByTestId("node-node-probability").click({ position: { x: 120, y: 18 } });
   await page.waitForTimeout(150);
@@ -400,9 +460,9 @@ try {
   }));
   await resizeHandle.hover();
   await page.mouse.down();
-  await page.mouse.move(resizeCenter.x + 76, resizeCenter.y + 48, { steps: 16 });
+  await page.mouse.move(resizeCenter.x + 150, resizeCenter.y + 96, { steps: 30 });
   await page.mouse.up();
-  await page.waitForTimeout(450);
+  await page.waitForTimeout(1100);
   const afterResize = await page.evaluate(() => window.__FREEFORM_STATE__);
   const resizedBefore = beforeResize.nodes.find((node) => node.id === "node-probability");
   const resizedAfter = afterResize.nodes.find((node) => node.id === "node-probability");
@@ -448,6 +508,27 @@ try {
     "probability note remains contained after resize",
     resizedProbabilityNote.missing.length === 0 && resizedProbabilityNote.overflow.length === 0 && new Set(resizedProbabilityNote.tops).size === 3,
     resizedProbabilityNote,
+  );
+
+  await showProofStep(page, "Resize chart back • restore the composition", 800);
+  const enlargedResizeBox = await resizeHandle.boundingBox();
+  if (!enlargedResizeBox) throw new Error("Enlarged probability resize handle is not visible");
+  const enlargedResizeCenter = {
+    x: enlargedResizeBox.x + enlargedResizeBox.width / 2,
+    y: enlargedResizeBox.y + enlargedResizeBox.height / 2,
+  };
+  await page.mouse.move(enlargedResizeCenter.x, enlargedResizeCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(enlargedResizeCenter.x - 150, enlargedResizeCenter.y - 96, { steps: 30 });
+  await page.mouse.up();
+  await page.waitForTimeout(900);
+  const restoredProbability = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.find(
+    (node) => node.id === "node-probability",
+  );
+  verifyUx(
+    "reverse handle drag returns the chart near its original size",
+    Math.abs(restoredProbability.width - resizedBefore.width) < 2 && Math.abs(restoredProbability.height - resizedBefore.height) < 2,
+    { original: resizedBefore, restored: restoredProbability },
   );
 
   await showProofStep(page, "Drag background • pan the whole world", 550);
@@ -538,7 +619,7 @@ try {
   const afterReset = await page.evaluate(() => window.__FREEFORM_STATE__.viewport);
   verifyUx("reset restores the initial viewport", afterReset.x === 80 && afterReset.y === 80 && afterReset.scale === 1, afterReset);
 
-  await showProofStep(page, "Resize Sankey • scale content and controls together", 550);
+  await showProofStep(page, "Resize Sankey • watch content and controls shrink together", 1000);
   await page.mouse.move(stageBox.x + 700, stageBox.y + 400);
   for (let index = 0; index < 4; index += 1) {
     await page.mouse.wheel(112.5, 120);
@@ -559,9 +640,9 @@ try {
   if (!sankeyResizeBox) throw new Error("Sankey resize handle was not visible enough to record proof");
   await sankeyResize.hover();
   await page.mouse.down();
-  await page.mouse.move(sankeyResizeBox.x - 400, sankeyResizeBox.y - 300, { steps: 18 });
+  await page.mouse.move(sankeyResizeBox.x - 400, sankeyResizeBox.y - 300, { steps: 30 });
   await page.mouse.up();
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(1100);
   const resizedSankey = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.find(
     (node) => node.id === "node-sankey",
   );
@@ -609,13 +690,13 @@ try {
   await page.waitForTimeout(600);
   verifyUx("theme switch reaches dark mode", (await page.evaluate(() => window.__FREEFORM_STATE__.themeMode)) === "dark");
 
-  await showProofStep(page, "Build with AI • generate a Claude Code handoff", 550);
+  await showProofStep(page, "Build with AI • generate a no-code bundle handoff", 900);
   const beforeHandoff = await page.evaluate(() => window.__FREEFORM_STATE__);
   await page.getByTestId("build-artifact").click();
   await page.getByTestId("agent-request").fill("A regional renewable capacity mix chart with quarterly forecasts");
   await page.waitForTimeout(500);
   const instruction = await page.getByTestId("agent-instruction").innerText();
-  verifyUx("AI handoff installs and invokes the public artifact skill", instruction.includes("npx skills add siriusctrl/freeform-artifacts") && instruction.includes("regional renewable capacity mix chart"));
+  verifyUx("AI handoff targets bundle installation instead of a branch", instruction.includes("npx skills add siriusctrl/freeform-artifacts") && instruction.includes("window.__FREEFORM_AGENT__.installArtifact") && instruction.includes("Do not modify, commit, or deploy"));
   await page.getByTestId("copy-agent-instruction").click();
   await page.getByTestId("copy-agent-instruction").getByText("Copied").waitFor({ state: "visible" });
   verifyUx("AI handoff can be copied", await page.getByTestId("copy-agent-instruction").getByText("Copied").isVisible());
@@ -625,9 +706,19 @@ try {
     afterCount: afterHandoff.nodes.length,
   });
   await page.getByTitle("Close").click();
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(500);
+
+  await showProofStep(page, "Agent install • add a real artifact to this view", 1000);
+  const beforeInstall = await page.evaluate(() => window.__FREEFORM_STATE__);
+  const installedArtifact = await page.evaluate((bundle) => window.__FREEFORM_AGENT__.installArtifact(bundle), proofArtifactBundle());
+  await page.getByTestId(`node-${installedArtifact.nodeId}`).waitFor({ state: "visible" });
+  await page.waitForTimeout(1500);
+  const afterInstall = await page.evaluate(() => window.__FREEFORM_STATE__);
+  verifyUx("Agent API installs and selects a persisted artifact without a deploy", afterInstall.nodes.length === beforeInstall.nodes.length + 1 && afterInstall.artifactIds.includes("agent-capacity-card"), { installedArtifact });
+  verifyUx("installed artifact renders its generated content", await page.getByText("Installed directly into this view").isVisible());
 
   await showProofStep(page, "Delete artifact • remove it from this workspace", 550);
+  await page.getByTestId("node-node-revenue").click({ position: { x: 100, y: 18 } });
   const beforeDelete = await page.evaluate(() => window.__FREEFORM_STATE__);
   await page.getByTestId("delete-node-revenue").click();
   await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saved locally");
@@ -657,6 +748,9 @@ try {
     afterCount: restoredState.nodes.length,
   });
   verifyUx("reload preserves artifact deletion", !restoredState.nodes.some((node) => node.id === "node-revenue"));
+  verifyUx("reload restores the agent-installed artifact", restoredState.nodes.some((node) => node.id === installedArtifact.nodeId) && restoredState.artifactIds.includes("agent-capacity-card"));
+  const restoredViews = await page.evaluate(() => window.__FREEFORM_AGENT__.listViews());
+  verifyUx("reload restores multiple named views", restoredViews.some((view) => view.title === "Market canvas") && restoredViews.some((view) => view.title === "Scenario canvas"), { restoredViews });
   verifyUx("reload restores theme and storage mode", restoredState.themeMode === "dark" && restoredState.storageMode === "indexeddb", {
     themeMode: restoredState.themeMode,
     storageMode: restoredState.storageMode,
@@ -730,16 +824,19 @@ try {
     proofDuration,
     actions: [
       "inspect initial layout and controls",
+      "rename the centered canvas title",
+      "open the sidebar, create and rename a second view, and switch back",
       "drag node",
-      "resize chart artifact",
-      "resize Sankey to its responsive minimum",
+      "visibly resize the complete chart object",
+      "visibly resize Sankey to its proportional minimum",
       "drag-pan canvas",
       "wheel pan",
       "pinch zoom in and out around a stable pointer anchor",
       "toolbar zoom and viewport reset",
       "import query result",
       "toggle dark mode",
-      "generate and copy a Claude Code artifact handoff",
+      "generate and copy a no-code artifact bundle handoff",
+      "install a runtime artifact through the browser Agent API",
       "delete an artifact with the selected-card control",
       "close, reopen, and restore the browser-local workspace",
       "capture screenshot",

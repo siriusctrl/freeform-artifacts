@@ -43,11 +43,11 @@ on navigation, invariants, verification, and handoff rules.
 - Keep canvas state serializable.
 - Treat published templates as immutable seeds; user edits belong to local
   workspaces.
-- Keep workspace keys scoped by template ID and preserve versioned migration
-  boundaries.
+- Preserve the legacy `templateId` storage key as the local view id; do not
+  expose that historical naming in product UI.
 - Generated artifacts must not mutate canvas state directly.
-- The Build with AI surface generates instructions only; adding a real artifact
-  remains a reviewed repository change.
+- Build with AI is bundle-first: trusted packages install into IndexedDB and a
+  target local view without a repository change.
 - Database shaping belongs in transforms, not render components.
 - ECharts lifecycle stays inside `EChartsArtifactHost`.
 - Dense artifacts declare `minSize`; essential labels must fit at both default
@@ -72,6 +72,9 @@ on navigation, invariants, verification, and handoff rules.
 - Run `npm run verify:proof` for user-facing visual changes.
 - Inspect `proof.gif`, every cell in `contact-sheet.png`, `ux-checks.json`, and
   `frame-check.json` before claiming visual behavior works.
+- The GIF must visibly exercise every changed user-facing function with a named
+  step, real input, readable before/after states, and enough dwell time to judge
+  the result. Hidden assertions alone are not proof.
 - Report the absolute proof GIF path in the final handoff when visual behavior
   changed.
 - If Chromium is missing, run `npm run setup:browsers` and retry.

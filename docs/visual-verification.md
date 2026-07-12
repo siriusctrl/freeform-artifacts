@@ -52,6 +52,10 @@ Inspect the GIF and the full 30-cell `contact-sheet.png` before reporting
 completion. Read `ux-checks.json`, the final screenshot, and `frame-check.json`
 as supplementary checks. Look for:
 
+- every changed user-facing function appearing as a named, legible action with
+  real input and readable before/after dwell; an assertion that is invisible in
+  the GIF does not count as proof;
+
 - blank canvas on startup;
 - missing cards;
 - unexpected card clipping;

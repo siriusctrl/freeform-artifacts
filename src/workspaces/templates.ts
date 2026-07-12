@@ -34,12 +34,17 @@ export function getRequestedTemplate(): WorkspaceTemplate {
   return templates[templateId] ?? templates[DEFAULT_TEMPLATE_ID];
 }
 
-export function createWorkspaceFromTemplate(template: WorkspaceTemplate) {
+export function createWorkspaceFromTemplate(
+  template: WorkspaceTemplate,
+  options: { id?: string; title?: string; empty?: boolean } = {},
+) {
+  const board = template.createBoard();
   return {
     version: 1 as const,
-    templateId: template.id,
+    templateId: options.id ?? template.id,
+    title: options.title ?? template.title,
     templateVersion: template.version,
     updatedAt: new Date().toISOString(),
-    board: template.createBoard(),
+    board: options.empty ? { ...board, nodes: [], selectedNodeId: "" } : board,
   };
 }

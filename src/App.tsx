@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  installArtifactBundle,
+  loadInstalledArtifactRegistry,
+  parseArtifactBundle,
+  type ArtifactBundle,
+} from "./artifacts/generated/bundles";
 import { loadExternalArtifactRegistry } from "./artifacts/generated/externalLoader";
 import { artifactRegistry } from "./artifacts/registry";
 import type { RegisteredArtifact } from "./artifacts/registryTypes";
 import type { CanvasNode, CanvasViewport } from "./artifacts/types";
+import { validateArtifactPayload } from "./artifacts/validation";
 import { createBoardState } from "./canvas/board";
 import { AgentHandoffDialog } from "./canvas/components/AgentHandoffDialog";
 import { CanvasBoard } from "./canvas/components/CanvasBoard";
+import { CanvasSidebar } from "./canvas/components/CanvasSidebar";
 import { CanvasToolbar } from "./canvas/components/CanvasToolbar";
 import { themeFor, type ThemeMode } from "./canvas/constants";
 import { publishCanvasDebugState } from "./canvas/debugState";
@@ -13,11 +21,18 @@ import { useCanvasInteractions } from "./canvas/hooks/useCanvasInteractions";
 import { clampNodesToArtifactMinimums } from "./canvas/nodeSize";
 import { importedRevenueRows } from "./data/transformFixtures";
 import { revenueSummaryTransform, revenueTableTransform, runTransform } from "./data/transforms";
-import { CANVAS_GRID_SIZE } from "./lib/geometry";
+import { CANVAS_GRID_SIZE, screenToWorld } from "./lib/geometry";
 import { downloadWorkspace, parseWorkspace } from "./workspaces/bundle";
-import { loadOrCreateWorkspace, saveWorkspace } from "./workspaces/storage";
+import {
+  createWorkspace,
+  listWorkspaces,
+  loadOrCreateWorkspace,
+  loadWorkspaceById,
+  saveWorkspace,
+  setActiveWorkspaceId,
+} from "./workspaces/storage";
 import { createWorkspaceFromTemplate, getRequestedTemplate } from "./workspaces/templates";
-import type { WorkspaceLoadResult, WorkspaceRecord, WorkspaceTemplate } from "./workspaces/types";
+import type { WorkspaceLoadResult, WorkspaceRecord, WorkspaceSummary, WorkspaceTemplate } from "./workspaces/types";
 
 interface BootstrappedWorkspace {
   template: WorkspaceTemplate;
@@ -37,15 +52,18 @@ function statusForLoad(result: WorkspaceLoadResult) {
 export default function App() {
   const [bootstrapped, setBootstrapped] = useState<BootstrappedWorkspace | null>(null);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [views, setViews] = useState<WorkspaceSummary[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const template = useMemo(() => getRequestedTemplate(), []);
 
   useEffect(() => {
     let cancelled = false;
-    const template = getRequestedTemplate();
-
     loadOrCreateWorkspace(template)
-      .then((result) => {
+      .then(async (result) => {
+        const summaries = await listWorkspaces();
         if (!cancelled) {
           setBootstrapped({ template, result });
+          setViews(summaries);
         }
       })
       .catch((error) => {
@@ -57,7 +75,24 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [template]);
+
+  async function selectView(id: string) {
+    const result = await loadWorkspaceById(id);
+    if (!result) return;
+    setActiveWorkspaceId(id);
+    setBootstrapped({ template, result });
+  }
+
+  async function addView() {
+    const result = await createWorkspace(template);
+    setViews(await listWorkspaces());
+    setBootstrapped({ template, result });
+  }
+
+  function updateViewTitle(id: string, title: string) {
+    setViews((current) => current.map((view) => view.id === id ? { ...view, title } : view));
+  }
 
   if (bootstrapError) {
     return (
@@ -86,10 +121,17 @@ export default function App() {
 
   return (
     <CanvasWorkspace
+      key={bootstrapped.result.workspace.templateId}
       initialWorkspace={bootstrapped.result.workspace}
       initialStorage={bootstrapped.result.storage}
       initialStatus={statusForLoad(bootstrapped.result)}
       template={bootstrapped.template}
+      views={views}
+      sidebarOpen={sidebarOpen}
+      onCreateView={addView}
+      onSelectView={selectView}
+      onToggleSidebar={() => setSidebarOpen((current) => !current)}
+      onViewTitleChange={updateViewTitle}
     />
   );
 }
@@ -99,9 +141,26 @@ interface CanvasWorkspaceProps {
   initialStorage: WorkspaceLoadResult["storage"];
   initialStatus: string;
   template: WorkspaceTemplate;
+  views: WorkspaceSummary[];
+  sidebarOpen: boolean;
+  onCreateView: () => void;
+  onSelectView: (id: string) => void;
+  onToggleSidebar: () => void;
+  onViewTitleChange: (id: string, title: string) => void;
 }
 
-function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, template }: CanvasWorkspaceProps) {
+function CanvasWorkspace({
+  initialWorkspace,
+  initialStorage,
+  initialStatus,
+  template,
+  views,
+  sidebarOpen,
+  onCreateView,
+  onSelectView,
+  onToggleSidebar,
+  onViewTitleChange,
+}: CanvasWorkspaceProps) {
   const normalizedInitialNodes = useMemo(
     () => clampNodesToArtifactMinimums(initialWorkspace.board.nodes, artifactRegistry),
     [initialWorkspace.board.nodes],
@@ -115,6 +174,7 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
   const [selectedNodeId, setSelectedNodeId] = useState(initialWorkspace.board.selectedNodeId);
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialWorkspace.board.themeMode);
   const [snapToGrid, setSnapToGrid] = useState(initialWorkspace.board.snapToGrid);
+  const [viewTitle, setViewTitle] = useState(initialWorkspace.title);
   const [status, setStatus] = useState(initialStatus);
   const [storageMode, setStorageMode] = useState<WorkspaceLoadResult["storage"]>(initialStorage);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
@@ -135,7 +195,8 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
   function currentWorkspace(): WorkspaceRecord {
     return {
       version: 1,
-      templateId: template.id,
+      templateId: initialWorkspace.templateId,
+      title: viewTitle,
       templateVersion: template.version,
       updatedAt: new Date().toISOString(),
       board: createBoardState({ nodes, viewport, selectedNodeId, themeMode, snapToGrid }),
@@ -153,12 +214,10 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
   useEffect(() => {
     let cancelled = false;
 
-    loadExternalArtifactRegistry()
-      .then((externalRegistry) => {
-        if (cancelled || Object.keys(externalRegistry).length === 0) {
-          return;
-        }
-        setRuntimeArtifactRegistry((current) => ({ ...current, ...externalRegistry }));
+    Promise.all([loadExternalArtifactRegistry(), loadInstalledArtifactRegistry()])
+      .then(([externalRegistry, installedRegistry]) => {
+        if (cancelled) return;
+        setRuntimeArtifactRegistry((current) => ({ ...current, ...externalRegistry, ...installedRegistry }));
       })
       .catch((error) => {
         if (!cancelled) {
@@ -195,7 +254,7 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
           setStatus(error instanceof Error ? error.message : "Local save failed");
         }
       });
-  }, [nodes, viewport, selectedNodeId, themeMode, snapToGrid]);
+  }, [nodes, viewport, selectedNodeId, themeMode, snapToGrid, viewTitle]);
 
   useEffect(() => {
     publishCanvasDebugState({
@@ -205,11 +264,11 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
       snapToGrid,
       status,
       storageMode,
-      templateId: template.id,
+      templateId: initialWorkspace.templateId,
       themeMode,
       viewport,
     });
-  }, [nodes, viewport, selectedNodeId, themeMode, snapToGrid, status, storageMode, runtimeArtifactRegistry, template.id]);
+  }, [nodes, viewport, selectedNodeId, themeMode, snapToGrid, status, storageMode, runtimeArtifactRegistry, initialWorkspace.templateId]);
 
   function deleteNode(nodeId: string) {
     setNodes((current) => current.filter((node) => node.id !== nodeId));
@@ -275,7 +334,8 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
       const imported = parseWorkspace(await file.text());
       const importedWorkspace = {
         ...imported,
-        templateId: template.id,
+        templateId: initialWorkspace.templateId,
+        title: viewTitle,
         templateVersion: template.version,
         updatedAt: new Date().toISOString(),
       };
@@ -303,7 +363,7 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
     if (!window.confirm("Replace this browser's workspace with the original demo?")) {
       return;
     }
-    applyWorkspace(createWorkspaceFromTemplate(template));
+    applyWorkspace(createWorkspaceFromTemplate(template, { id: initialWorkspace.templateId, title: viewTitle }));
     setStatus("Demo restored in this browser");
   }
 
@@ -315,14 +375,102 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
     setSnapToGrid((current) => !current);
   }
 
+  function createBundleNode(
+    bundle: ArtifactBundle,
+    artifact: RegisteredArtifact,
+    targetNodes: CanvasNode[],
+    targetViewport = viewport,
+  ): CanvasNode {
+    const stageRect = stageRef.current?.getBoundingClientRect();
+    const center = stageRect
+      ? screenToWorld({ x: stageRect.left + stageRect.width / 2, y: stageRect.top + stageRect.height / 2 }, targetViewport)
+      : { x: 260, y: 200 };
+    return {
+      id: `node-${artifact.id}-${crypto.randomUUID().slice(0, 8)}`,
+      artifactId: artifact.id,
+      title: bundle.node.title,
+      x: bundle.node.x ?? Math.round(center.x - artifact.defaultSize.width / 2),
+      y: bundle.node.y ?? Math.round(center.y - artifact.defaultSize.height / 2),
+      width: artifact.defaultSize.width,
+      height: artifact.defaultSize.height,
+      zIndex: Math.max(0, ...targetNodes.map((node) => node.zIndex)) + 1,
+      data: bundle.node.data,
+      config: bundle.node.config,
+    };
+  }
+
+  async function installBundle(value: unknown, options: { viewId?: string } = {}) {
+    const { artifact, bundle } = await installArtifactBundle(value);
+    const targetViewId = options.viewId ?? initialWorkspace.templateId;
+    setRuntimeArtifactRegistry((current) => ({ ...current, [artifact.id]: artifact }));
+
+    if (targetViewId === initialWorkspace.templateId) {
+      const node = createBundleNode(bundle, artifact, nodes);
+      const validation = validateArtifactPayload(node, artifact);
+      if (!validation.ok) throw new Error(validation.message);
+      const nextNodes = [...nodes, node];
+      const workspace = {
+        ...currentWorkspace(),
+        board: createBoardState({ nodes: nextNodes, viewport, selectedNodeId: node.id, themeMode, snapToGrid }),
+      };
+      const mode = await saveWorkspace(workspace);
+      setNodes(nextNodes);
+      setSelectedNodeId(node.id);
+      setStorageMode(mode);
+      setStatus(`Installed ${artifact.title}`);
+      return { artifactId: artifact.id, nodeId: node.id, viewId: targetViewId };
+    }
+
+    const target = await loadWorkspaceById(targetViewId);
+    if (!target) throw new Error(`Unknown canvas view: ${targetViewId}`);
+    const node = createBundleNode(bundle, artifact, target.workspace.board.nodes, target.workspace.board.viewport);
+    const validation = validateArtifactPayload(node, artifact);
+    if (!validation.ok) throw new Error(validation.message);
+    await saveWorkspace({
+      ...target.workspace,
+      updatedAt: new Date().toISOString(),
+      board: { ...target.workspace.board, nodes: [...target.workspace.board.nodes, node], selectedNodeId: node.id },
+    });
+    return { artifactId: artifact.id, nodeId: node.id, viewId: targetViewId };
+  }
+
+  async function installBundleFile(file: File) {
+    try {
+      await installBundle(parseArtifactBundle(await file.text()));
+      setAgentDialogOpen(false);
+    } catch (error) {
+      setStatus(error instanceof Error ? `Install failed: ${error.message}` : "Artifact install failed");
+    }
+  }
+
+  useEffect(() => {
+    window.__FREEFORM_AGENT__ = {
+      activeViewId: initialWorkspace.templateId,
+      listViews: listWorkspaces,
+      installArtifact: installBundle,
+    };
+    return () => {
+      delete window.__FREEFORM_AGENT__;
+    };
+  });
+
   return (
-    <main className="app-shell" data-theme={themeMode}>
+    <main className={`app-shell ${sidebarOpen ? "sidebar-open" : ""}`} data-theme={themeMode}>
+      {sidebarOpen ? (
+        <CanvasSidebar
+          activeViewId={initialWorkspace.templateId}
+          views={views}
+          onCreateView={onCreateView}
+          onSelectView={onSelectView}
+        />
+      ) : null}
       <section className="workspace">
         <CanvasToolbar
           importInputRef={importInputRef}
           status={status}
           storageMode={storageMode}
-          templateTitle={template.title}
+          viewTitle={viewTitle}
+          sidebarOpen={sidebarOpen}
           themeMode={themeMode}
           snapToGrid={snapToGrid}
           onBuildArtifact={() => setAgentDialogOpen(true)}
@@ -330,7 +478,12 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
           onImportData={importData}
           onImportWorkspace={importWorkspace}
           onResetWorkspace={resetWorkspace}
+          onRenameView={(title) => {
+            setViewTitle(title);
+            onViewTitleChange(initialWorkspace.templateId, title);
+          }}
           onThemeToggle={() => setThemeMode((current) => (current === "light" ? "dark" : "light"))}
+          onToggleSidebar={onToggleSidebar}
           onToggleSnapToGrid={toggleSnapToGrid}
         />
         <CanvasBoard
@@ -348,7 +501,26 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
           onStagePointerDown={canvasInteractions.handleStagePointerDown}
         />
       </section>
-      <AgentHandoffDialog open={agentDialogOpen} onClose={() => setAgentDialogOpen(false)} />
+      <AgentHandoffDialog
+        open={agentDialogOpen}
+        viewId={initialWorkspace.templateId}
+        onClose={() => setAgentDialogOpen(false)}
+        onInstallBundle={installBundleFile}
+      />
     </main>
   );
+}
+
+declare global {
+  interface Window {
+    __FREEFORM_AGENT__?: {
+      readonly activeViewId: string;
+      listViews: typeof listWorkspaces;
+      installArtifact: (bundle: unknown, options?: { viewId?: string }) => Promise<{
+        artifactId: string;
+        nodeId: string;
+        viewId: string;
+      }>;
+    };
+  }
 }

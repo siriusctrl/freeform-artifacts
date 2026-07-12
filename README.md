@@ -107,11 +107,15 @@ Current controls:
 - Pinch on a trackpad to zoom around the pointer.
 - Use the bottom-left zoom controls to zoom or reset the view.
 - Toggle light/dark mode from the top toolbar.
+- Double-click the centered canvas name to rename the current view.
+- Open the collapsed canvas sidebar to create and switch between independent
+  browser-local views.
 - Use the **More** menu to load sample query rows, import/export a versioned
   workspace backup, or explicitly reset to the authored demo.
-- Click **Build with AI**, describe an artifact, and copy the generated
-  repository-aware instruction into Claude Code. The browser does not insert a
-  fake template card; the agent implements and verifies the real artifact.
+- Click **Build with AI**, describe an artifact, and give the generated bundle
+  instruction to Claude Code. An agent controlling the same page can install
+  directly through `window.__FREEFORM_AGENT__`; otherwise install the returned
+  `.freeform-artifact.json` from the dialog.
 
 The canvas stores nodes in world coordinates. The viewport stores screen offset
 and scale. Rendering converts world coordinates into a single transformed DOM
@@ -138,7 +142,8 @@ The registry is layered:
 
 ## Adding A Customized Artifact
 
-There are two trusted-code paths.
+There are three trusted-code paths. Runtime bundles are the default for personal
+views; repo changes remain available for app maintainers.
 
 The product's **Build with AI** dialog creates a handoff for Claude Code. It
 installs the public project skill with:
@@ -147,11 +152,25 @@ installs the public project skill with:
 npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder --agent claude-code -y
 ```
 
-The generated instruction asks the agent to implement the artifact, add its
-initial node when appropriate, increment the published template version, run
-the full browser verification loop, and commit/push the result. After a new
-template is deployed, an existing browser workspace remains intentionally
-unchanged until its owner chooses **More > Reset demo**.
+The generated instruction asks the agent for one self-contained trusted bundle
+with `artifactId`, ESM `moduleSource`, and initial node data. It explicitly
+forbids modifying, committing, or deploying the application repo. Bundles are
+stored in IndexedDB, dynamically registered, and installed only into the target
+local view.
+
+### Runtime Artifact Bundle
+
+Use this for normal AI-created artifacts. An agent with browser control calls:
+
+```js
+await page.evaluate(
+  ({ bundle, viewId }) => window.__FREEFORM_AGENT__.installArtifact(bundle, { viewId }),
+  { bundle, viewId },
+);
+```
+
+Without browser control, choose **Install bundle** in the Build with AI dialog.
+Bundle modules are trusted code and are not sandboxed.
 
 ### Repo-Compiled TSX
 
@@ -341,6 +360,7 @@ Implemented:
 - Default-on 38px snap-to-grid placement with a labeled More-menu toggle.
 - Aspect-locked whole-object resizing with artifact-specific minimum scales.
 - Published demo template with a per-browser local workspace fork.
+- Multiple named local canvas views with a default-collapsed sidebar.
 - IndexedDB workspace persistence with a synchronous local-storage recovery
   mirror and versioned JSON import/export.
 - Transform registry with fixtures for raw query rows.
@@ -356,7 +376,8 @@ Implemented:
 - Browser proof GIF recorder.
 - Lightweight proof frame checks and production preview verification.
 - Light/dark theme support.
-- Repository-aware Claude Code handoff generation through **Build with AI**.
+- No-deploy artifact bundle installation through **Build with AI** and the
+  browser Agent API.
 - Hardened pointer dragging that suppresses browser text selection and native
   drag behavior during canvas moves.
 - Handoff docs for the next Codex session.
@@ -368,12 +389,12 @@ TODO:
 - Add sandbox strategy before loading untrusted generated code.
 - Add file/API import for arbitrary database query result JSON.
 - Add richer visual diff thresholds beyond the current blank-frame checks.
-- Add a local multi-workspace picker when more published templates exist.
 
 ## Public demo and local workspaces
 
 The public URL opens the `market-overview` template. The template is immutable:
-on first visit, the app copies it into a workspace owned by that browser origin.
+on first visit, the app copies it into the first named view owned by that browser
+origin. Users can create more empty views from the sidebar.
 Every later drag, resize, delete, zoom, theme change, or data import
 is saved locally and restored when the page is reopened.
 

@@ -1,6 +1,35 @@
 import { expect, test, type Page } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 
+function agentArtifactBundle(artifactId = "agent-forecast-card") {
+  return {
+    version: 1,
+    artifactId,
+    moduleSource: `export const artifact = {
+      id: ${JSON.stringify(artifactId)},
+      renderer: "echarts",
+      chartRenderer: "svg",
+      title: "Agent Forecast",
+      version: "1.0.0",
+      defaultSize: { width: 480, height: 300 },
+      buildOption: ({ data, theme }) => ({
+        animation: false,
+        backgroundColor: "transparent",
+        title: { text: data.title, left: 24, top: 20, textStyle: { color: theme.text, fontSize: 22 } },
+        xAxis: { type: "category", data: data.points.map((point) => point.label) },
+        yAxis: { type: "value" },
+        grid: { left: 48, right: 24, top: 76, bottom: 40 },
+        series: [{ type: "bar", data: data.points.map((point) => point.value), itemStyle: { color: theme.accent } }],
+      }),
+    };`,
+    node: {
+      title: "Agent forecast",
+      data: { title: "Installed without a deploy", points: [{ label: "Q1", value: 24 }, { label: "Q2", value: 37 }] },
+      config: {},
+    },
+  };
+}
+
 async function chartLabelLayout(page: Page, hostTestId: string, labels: string[]) {
   return page.getByTestId(hostTestId).evaluate((host, expectedLabels) => {
     const hostRect = host.getBoundingClientRect();
@@ -304,6 +333,8 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
     "npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder --agent claude-code -y",
   );
   await expect(page.getByTestId("agent-instruction")).toContainText("regional renewable capacity mix chart");
+  await expect(page.getByTestId("agent-instruction")).toContainText("window.__FREEFORM_AGENT__.installArtifact");
+  await expect(page.getByTestId("agent-instruction")).toContainText("Do not modify, commit, or deploy");
   await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
   expect((await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length).toBe(beforeHandoffCount);
   await page.getByTitle("Close").click();
@@ -516,6 +547,71 @@ test("card resize and canvas zoom scale Sankey visuals and selected controls tog
 
   expect(zoomedDelete.width / expandedDelete.width).toBeCloseTo(zoomRatio, 2);
   expect(zoomedLabel.height / expandedLabel.height).toBeCloseTo(zoomRatio, 1);
+});
+
+test("named canvas views can be created, renamed, switched, and restored", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await expect(page.getByTestId("canvas-sidebar")).toHaveCount(0);
+  await expect(page.getByTestId("canvas-title")).toHaveText("Market overview");
+
+  await page.getByTestId("canvas-title").dblclick();
+  await page.getByTestId("canvas-title-input").fill("Energy room");
+  await page.getByTestId("canvas-title-input").press("Enter");
+  await expect(page.getByTestId("canvas-title")).toHaveText("Energy room");
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+
+  await page.getByTestId("sidebar-toggle").click();
+  await expect(page.getByTestId("canvas-sidebar")).toBeVisible();
+  await expect(page.getByTestId("view-market-overview")).toContainText("Energy room");
+  await page.getByTestId("create-view").click();
+  await expect(page.getByTestId("canvas-title")).toHaveText("Untitled canvas");
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(0);
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_AGENT__?.activeViewId)).not.toBe("market-overview");
+
+  await page.getByTestId("canvas-title").dblclick();
+  await page.getByTestId("canvas-title-input").fill("Scenario lab");
+  await page.getByTestId("canvas-title-input").press("Enter");
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+  const activeViewId = await page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId);
+  expect(activeViewId).not.toBe("market-overview");
+
+  await page.getByTestId("view-market-overview").click();
+  await expect(page.getByTestId("canvas-title")).toHaveText("Energy room");
+  await expect(page.getByTestId("node-node-revenue")).toBeVisible();
+  await page.getByTestId(`view-${activeViewId}`).click();
+  await expect(page.getByTestId("canvas-title")).toHaveText("Scenario lab");
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(0);
+
+  await page.reload();
+  await expect(page.getByTestId("canvas-title")).toHaveText("Scenario lab");
+  await expect(page.getByTestId("canvas-sidebar")).toHaveCount(0);
+});
+
+test("agent bundles install into a view without a repository change and survive reload", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await expect.poll(async () => page.evaluate(() => Boolean(window.__FREEFORM_AGENT__))).toBe(true);
+  const bundle = agentArtifactBundle();
+  const result = await page.evaluate(async (value) => window.__FREEFORM_AGENT__!.installArtifact(value), bundle);
+  expect(result.artifactId).toBe(bundle.artifactId);
+  await expect(page.getByTestId(`node-${result.nodeId}`)).toBeVisible();
+  await expect(page.getByText("Installed without a deploy")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+
+  await page.reload();
+  await expect(page.getByTestId(`node-${result.nodeId}`)).toBeVisible();
+  await expect.poll(async () => page.evaluate((id) => window.__FREEFORM_STATE__!.artifactIds.includes(id), bundle.artifactId)).toBe(true);
+
+  await page.getByTestId("build-artifact").click();
+  const fileBundle = agentArtifactBundle("agent-file-card");
+  await page.getByTestId("artifact-bundle-file").setInputFiles({
+    name: "agent-file-card.freeform-artifact.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(fileBundle)),
+  });
+  await expect.poll(async () => page.evaluate((id) => window.__FREEFORM_STATE__!.artifactIds.includes(id), fileBundle.artifactId)).toBe(true);
+  await expect(page.getByText("Installed without a deploy")).toHaveCount(2);
 });
 
 test("each browser gets an isolated local fork that survives closing and reopening the page", async ({ browser }) => {
