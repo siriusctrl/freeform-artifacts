@@ -44,6 +44,10 @@ All notable user-facing changes to this project should be documented here.
   centered inline title editing.
 - Trusted artifact bundles persisted in IndexedDB, with direct Agent API and
   file-import installation paths that require no app commit or deployment.
+- Agent-neutral **Build with AI** handoff that installs the project skill before
+  asking the agent to clarify what artifact the user wants.
+- Smooth **Views** sidebar transitions and data-derived canvas previews beneath
+  each view name.
 
 ### Fixed
 

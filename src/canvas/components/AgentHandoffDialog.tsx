@@ -1,5 +1,5 @@
 import { Check, Copy, PackagePlus, Sparkles, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface AgentHandoffDialogProps {
   open: boolean;
@@ -9,37 +9,31 @@ interface AgentHandoffDialogProps {
 }
 
 const INSTALL_COMMAND =
-  "npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder --agent claude-code -y";
+  "npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder";
 
 export function AgentHandoffDialog({ open, viewId, onClose, onInstallBundle }: AgentHandoffDialogProps) {
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const copyButtonRef = useRef<HTMLButtonElement | null>(null);
   const bundleInputRef = useRef<HTMLInputElement | null>(null);
-  const [description, setDescription] = useState("");
   const [copied, setCopied] = useState(false);
-  const instruction = useMemo(
-    () => `Create a trusted Freeform Artifact bundle for this request. Do not modify, commit, or deploy the application repository.
+  const instruction = `Install the project artifact skill for your agent:
+${INSTALL_COMMAND}
 
-1. Install the project artifact skill for Claude Code:
-   ${INSTALL_COMMAND}
-2. Follow the freeform-artifact-builder bundle contract and create one .freeform-artifact.json file.
-3. Build this artifact:
+After installation, ask the user what artifact they want to build and clarify the data, visual form, and layout they need. Then follow the freeform-artifact-builder bundle contract and create one trusted .freeform-artifact.json file. Do not modify, commit, or deploy the application repository.
 
-   ${description.trim() || "Describe the artifact here."}
+Include version, artifactId, self-contained ESM moduleSource, and serializable node title/data/config. Use ECharts options or window.React; do not use imports, network fetches, or external dependencies.
 
-4. Include version, artifactId, self-contained ESM moduleSource, and serializable node title/data/config. Use ECharts options or window.React; do not use imports, network fetches, or external dependencies.
-5. Validate in a real browser. If you control the user's open Freeform page, install directly:
+Validate the finished artifact in a real browser. If you control the user's open Freeform page, install it directly into this view:
 
-   await page.evaluate(async ({ bundle, viewId }) => {
-     return window.__FREEFORM_AGENT__.installArtifact(bundle, { viewId });
-   }, { bundle, viewId: ${JSON.stringify(viewId)} });
+await page.evaluate(async ({ bundle, viewId }) => {
+  return window.__FREEFORM_AGENT__.installArtifact(bundle, { viewId });
+}, { bundle, viewId: ${JSON.stringify(viewId)} });
 
-6. Otherwise return the bundle file so the user can choose Install bundle in this dialog. Report the artifact id and target view.`,
-    [description, viewId],
-  );
+Otherwise return the bundle file so the user can choose Install bundle in this dialog. Report the artifact id and target view.`;
 
   useEffect(() => {
     if (!open) return;
-    inputRef.current?.focus();
+    setCopied(false);
+    copyButtonRef.current?.focus();
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
     }
@@ -68,28 +62,13 @@ export function AgentHandoffDialog({ open, viewId, onClose, onInstallBundle }: A
             <Sparkles size={20} />
             <div>
               <h2 id="agent-dialog-title">Build with AI</h2>
-              <p>Generate and install an artifact bundle without changing the app.</p>
+              <p>Install the skill, then let your agent ask what to build.</p>
             </div>
           </div>
           <button type="button" className="icon-button" title="Close" onClick={onClose}>
             <X size={19} />
           </button>
         </header>
-
-        <label className="agent-request-label" htmlFor="agent-request">
-          Artifact request
-        </label>
-        <textarea
-          ref={inputRef}
-          id="agent-request"
-          data-testid="agent-request"
-          value={description}
-          onChange={(event) => {
-            setDescription(event.target.value);
-            setCopied(false);
-          }}
-          placeholder="A cohort retention chart from monthly customer activity..."
-        />
 
         <pre className="agent-instruction" data-testid="agent-instruction">
           {instruction}
@@ -116,10 +95,10 @@ export function AgentHandoffDialog({ open, viewId, onClose, onInstallBundle }: A
             Cancel
           </button>
           <button
+            ref={copyButtonRef}
             type="button"
             className="primary-action dialog-primary"
             data-testid="copy-agent-instruction"
-            disabled={!description.trim()}
             onClick={copyInstruction}
           >
             {copied ? <Check size={18} /> : <Copy size={18} />}

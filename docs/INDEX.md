@@ -53,6 +53,8 @@ Code orientation:
 - `src/canvas/` also contains board serialization and shared canvas constants.
 - `src/workspaces/` owns immutable templates, local persistence, recovery
   fallback, and portable workspace bundles.
+- `src/workspaces/preview.ts` creates lightweight geometry summaries for the
+  Views sidebar without mounting artifact renderers.
 - `src/lib/geometry.ts` owns viewport math and screen/world coordinate
   conversion.
 - `src/artifacts/types.ts` defines the artifact, canvas node, viewport, event,

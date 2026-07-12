@@ -28,6 +28,17 @@ export interface WorkspaceSummary {
   id: string;
   title: string;
   updatedAt: string;
+  previewNodes: WorkspacePreviewNode[];
+}
+
+export interface WorkspacePreviewNode {
+  id: string;
+  artifactId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zIndex: number;
 }
 
 export interface WorkspaceTemplate {

@@ -108,13 +108,14 @@ Current controls:
 - Use the bottom-left zoom controls to zoom or reset the view.
 - Toggle light/dark mode from the top toolbar.
 - Double-click the centered canvas name to rename the current view.
-- Open the collapsed canvas sidebar to create and switch between independent
-  browser-local views.
+- Open the collapsed **Views** sidebar to browse real canvas previews, create
+  views, and switch between independent browser-local workspaces.
 - Use the **More** menu to load sample query rows, import/export a versioned
   workspace backup, or explicitly reset to the authored demo.
-- Click **Build with AI**, describe an artifact, and give the generated bundle
-  instruction to Claude Code. An agent controlling the same page can install
-  directly through `window.__FREEFORM_AGENT__`; otherwise install the returned
+- Click **Build with AI** and give its instruction to your coding agent. The
+  prompt installs the project skill, asks the agent to learn what artifact you
+  want, and then installs the result through `window.__FREEFORM_AGENT__` when
+  browser control is available. Otherwise install the returned
   `.freeform-artifact.json` from the dialog.
 
 The canvas stores nodes in world coordinates. The viewport stores screen offset
@@ -145,18 +146,19 @@ The registry is layered:
 There are three trusted-code paths. Runtime bundles are the default for personal
 views; repo changes remain available for app maintainers.
 
-The product's **Build with AI** dialog creates a handoff for Claude Code. It
-installs the public project skill with:
+The product's **Build with AI** dialog creates an agent-neutral handoff. It
+installs the public project skill with an interactive agent choice:
 
 ```sh
-npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder --agent claude-code -y
+npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder
 ```
 
-The generated instruction asks the agent for one self-contained trusted bundle
-with `artifactId`, ESM `moduleSource`, and initial node data. It explicitly
-forbids modifying, committing, or deploying the application repo. Bundles are
-stored in IndexedDB, dynamically registered, and installed only into the target
-local view.
+After installation, the generated instruction tells the agent to ask what the
+user wants to build and clarify its data, visual form, and layout. It then asks
+for one self-contained trusted bundle with `artifactId`, ESM `moduleSource`,
+and initial node data, while explicitly forbidding application repo changes.
+Bundles are stored in IndexedDB, dynamically registered, and installed only
+into the target local view.
 
 ### Runtime Artifact Bundle
 
@@ -360,7 +362,8 @@ Implemented:
 - Default-on 38px snap-to-grid placement with a labeled More-menu toggle.
 - Aspect-locked whole-object resizing with artifact-specific minimum scales.
 - Published demo template with a per-browser local workspace fork.
-- Multiple named local canvas views with a default-collapsed sidebar.
+- Multiple named local canvas views with a smoothly animated,
+  default-collapsed **Views** sidebar and data-derived page previews.
 - IndexedDB workspace persistence with a synchronous local-storage recovery
   mirror and versioned JSON import/export.
 - Transform registry with fixtures for raw query rows.

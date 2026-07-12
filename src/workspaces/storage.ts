@@ -1,5 +1,6 @@
 import { clearLegacyBoardState, loadLegacyBoardState } from "../canvas/board";
 import { createWorkspaceFromTemplate } from "./templates";
+import { createWorkspacePreview } from "./preview";
 import {
   workspaceRecordSchema,
   type WorkspaceLoadResult,
@@ -123,7 +124,12 @@ export async function listWorkspaces(): Promise<WorkspaceSummary[]> {
   }
   return records
     .sort((first, second) => second.updatedAt.localeCompare(first.updatedAt))
-    .map((workspace) => ({ id: workspace.templateId, title: workspace.title, updatedAt: workspace.updatedAt }));
+    .map((workspace) => ({
+      id: workspace.templateId,
+      title: workspace.title,
+      updatedAt: workspace.updatedAt,
+      previewNodes: createWorkspacePreview(workspace.board.nodes),
+    }));
 }
 
 export async function loadWorkspaceById(id: string): Promise<WorkspaceLoadResult | null> {
