@@ -1,9 +1,10 @@
 import { createBoardState } from "../canvas/board";
 import { INITIAL_VIEWPORT } from "../canvas/constants";
 import { initialNodes } from "../canvas/seeds/demoBoard";
-import type { WorkspaceTemplate } from "./types";
+import type { WorkspaceRecord, WorkspaceTemplate } from "./types";
 
 export const DEFAULT_TEMPLATE_ID = "market-overview";
+const REFRESHED_EXAMPLE_NODE_IDS = new Set(["node-probability", "node-flow", "node-sankey"]);
 
 function initialTemplateViewport() {
   if (window.innerWidth <= 640) {
@@ -46,5 +47,32 @@ export function createWorkspaceFromTemplate(
     templateVersion: template.version,
     updatedAt: new Date().toISOString(),
     board: options.empty ? { ...board, nodes: [], selectedNodeId: "" } : board,
+  };
+}
+
+export function migratePublishedExamples(workspace: WorkspaceRecord, template: WorkspaceTemplate) {
+  if (
+    workspace.templateId !== template.id ||
+    template.id !== DEFAULT_TEMPLATE_ID ||
+    workspace.templateVersion >= template.version
+  ) {
+    return workspace;
+  }
+
+  const authoredNodes = new Map(template.createBoard().nodes.map((node) => [node.id, node]));
+  return {
+    ...workspace,
+    templateVersion: template.version,
+    updatedAt: new Date().toISOString(),
+    board: {
+      ...workspace.board,
+      nodes: workspace.board.nodes.map((node) => {
+        if (!REFRESHED_EXAMPLE_NODE_IDS.has(node.id)) return node;
+        const authored = authoredNodes.get(node.id);
+        return authored
+          ? { ...node, title: authored.title, data: structuredClone(authored.data) }
+          : node;
+      }),
+    },
   };
 }

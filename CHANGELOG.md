@@ -53,6 +53,9 @@ All notable user-facing changes to this project should be documented here.
   Sankey node palettes.
 - Artifact skill visual style guide with mandatory dual-theme chart and browser
   verification rules.
+- Published-example migration that refreshes the three shared demo payloads in
+  existing local forks while preserving personal layout, deletions, and added
+  artifacts.
 
 ### Fixed
 

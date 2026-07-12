@@ -1,5 +1,5 @@
 import { clearLegacyBoardState, loadLegacyBoardState } from "../canvas/board";
-import { createWorkspaceFromTemplate } from "./templates";
+import { createWorkspaceFromTemplate, migratePublishedExamples } from "./templates";
 import { createWorkspacePreview } from "./preview";
 import {
   workspaceRecordSchema,
@@ -188,6 +188,11 @@ export async function loadOrCreateWorkspace(template: WorkspaceTemplate): Promis
   if (activeId) {
     const active = await loadWorkspaceById(activeId);
     if (active) {
+      const workspace = migratePublishedExamples(active.workspace, template);
+      if (workspace !== active.workspace) {
+        active.storage = await saveWorkspace(workspace);
+        active.workspace = workspace;
+      }
       setActiveWorkspaceId(activeId);
       return active;
     }
@@ -209,6 +214,11 @@ export async function loadOrCreateWorkspace(template: WorkspaceTemplate): Promis
   }
 
   if (existing) {
+    const workspace = migratePublishedExamples(existing, template);
+    if (workspace !== existing) {
+      storage = await saveWorkspace(workspace);
+      existing = workspace;
+    }
     setActiveWorkspaceId(existing.templateId);
     return { workspace: existing, source: "existing", storage };
   }
