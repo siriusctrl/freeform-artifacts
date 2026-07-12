@@ -73,7 +73,3 @@ export function loadLegacyBoardState(): BoardState | null {
 export function clearLegacyBoardState() {
   window.localStorage.removeItem(LEGACY_BOARD_STORAGE_KEY);
 }
-
-export function serializeBoardState(board: BoardState) {
-  return JSON.stringify(board, null, 2);
-}

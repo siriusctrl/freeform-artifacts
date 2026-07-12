@@ -33,7 +33,7 @@ export const artifact = {
           color: text,
           fontFamily: "Instrument Sans Variable",
           fontSize: 21,
-          fontWeight: 800,
+          fontWeight: 700,
         },
       },
       grid: { left: 46, right: 26, top: 74, bottom: 42 },

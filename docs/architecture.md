@@ -75,18 +75,21 @@ to the first browser-local view. Additional named views use unique ids while
 retaining the historical `templateId` field as their IndexedDB key. Navigation
 summaries retain only node geometry and artifact ids for page previews; they do
 not cache screenshots or mount artifact renderers a second time. IndexedDB is
-the primary store, and a synchronous localStorage mirror provides recovery if a page closes
-before an asynchronous IndexedDB transaction finishes. The persisted board
+the primary store. Interaction-driven saves are debounced and serialized per
+view; `pagehide` synchronously writes the latest localStorage recovery mirror if
+a page closes before the next IndexedDB transaction. The persisted board
 includes nodes, viewport, selected node, theme mode, and the snap-to-grid
-preference. Node positions and dimensions can be snapped to the 38px
-world-coordinate grid by the canvas shell; artifacts do not own placement
-behavior.
+preference. Node positions can be snapped to the 38px world-coordinate grid by
+the canvas shell. Resize remains aspect-locked and independent of grid snapping;
+artifacts do not own placement behavior.
 
 This is browser-profile isolation, not account identity. The static app has no
 shared board backend, so separate browser contexts cannot see each other's
 workspaces. Clearing site data removes the workspace, and cross-device sync is
 outside the current product boundary. Versioned `.freeform.json` import/export
-is the explicit portability path.
+is the explicit portability path for serializable board data, not executable
+personal artifact packages. Import validates that every referenced artifact is
+available and asks the user to install missing packages before changing the view.
 Artifact render data remains serializable and is validated when rendered.
 
 Trusted runtime artifact bundles are stored separately in the IndexedDB
@@ -95,6 +98,10 @@ initial node payload. The runtime Blob-imports installed sources, merges them
 into the registry, and stores only node references/data in each view. The
 `window.__FREEFORM_AGENT__` bridge lets a browser-controlling agent list views
 and install a bundle into a target view without rebuilding the app.
+Package ids are browser-origin-wide immutable identities, while nodes remain
+view-scoped. Package and target workspace writes share one IndexedDB transaction;
+invalid targets and payloads are rejected before persistence. Loader failures
+are quarantined per source/package, and renderer errors are isolated per card.
 
 ## Artifact Registry
 
@@ -247,10 +254,11 @@ ink, geometric shapes, or extremely large visual primitive counts.
 
 ## Runtime Module Boundaries
 
-`src/App.tsx` is the orchestration boundary. It loads external and locally
-installed artifacts, switches named views, persists board state, publishes the
-debug state used by Playwright, and wires product actions such as import/export,
-theme switching, snap preference, deletion, and the AI handoff dialog. Personal
+`src/App.tsx` is the view-bootstrap boundary: it opens, creates, and switches
+browser-local views. `src/canvas/CanvasWorkspace.tsx` composes the active canvas,
+while focused runtime and autosave hooks load artifacts and persist board state.
+The workspace publishes Playwright debug state and wires product actions such as
+import/export, theme switching, snap preference, deletion, and the AI handoff dialog. Personal
 artifact creation is bundle-first: an agent installs a trusted ESM bundle into
 one browser-local view through `window.__FREEFORM_AGENT__`, or the user imports
 the same bundle file. Neither path requires an application commit or deploy.

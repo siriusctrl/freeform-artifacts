@@ -31,6 +31,8 @@ export function EChartsArtifactHost({ artifact, renderProps }: EChartsArtifactHo
   const chartEl = useRef<HTMLDivElement | null>(null);
   const chart = useRef<EChartsType | null>(null);
   const [size, setSize] = useState(renderProps.size);
+  const [lifecycleError, setLifecycleError] = useState<Error | null>(null);
+  if (lifecycleError) throw lifecycleError;
   const option = useMemo<EChartsOption>(
     () => artifact.buildOption({ ...renderProps, size }),
     [artifact, renderProps.data, renderProps.config, renderProps.theme, size],
@@ -43,14 +45,23 @@ export function EChartsArtifactHost({ artifact, renderProps }: EChartsArtifactHo
     }
     const chartElement = element;
 
-    chart.current = echarts.init(chartElement, null, {
-      renderer: artifact.chartRenderer ?? "svg",
-    });
+    try {
+      chart.current = echarts.init(chartElement, null, {
+        renderer: artifact.chartRenderer ?? "svg",
+      });
+    } catch (error) {
+      setLifecycleError(error instanceof Error ? error : new Error("Unable to initialize chart"));
+      return;
+    }
 
     function syncSize() {
       const width = Math.round(chartElement.clientWidth);
       const height = Math.round(chartElement.clientHeight);
-      chart.current?.resize({ width, height });
+      try {
+        chart.current?.resize({ width, height });
+      } catch (error) {
+        setLifecycleError(error instanceof Error ? error : new Error("Unable to resize chart"));
+      }
       setSize((current) =>
         current.width === width && current.height === height ? current : { width, height },
       );
@@ -68,7 +79,11 @@ export function EChartsArtifactHost({ artifact, renderProps }: EChartsArtifactHo
   }, [artifact]);
 
   useEffect(() => {
-    chart.current?.setOption(option, true);
+    try {
+      chart.current?.setOption(option, true);
+    } catch (error) {
+      setLifecycleError(error instanceof Error ? error : new Error("Unable to update chart"));
+    }
   }, [option]);
 
   return (

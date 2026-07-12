@@ -1,8 +1,9 @@
 import { AppWindow, Scaling, Trash2 } from "lucide-react";
 import type { PointerEvent } from "react";
+import { ArtifactErrorBoundary } from "../../artifacts/ArtifactErrorBoundary";
 import { EChartsArtifactHost } from "../../artifacts/EChartsArtifactHost";
 import type { RegisteredArtifact } from "../../artifacts/registryTypes";
-import type { CanvasNode, CanvasTheme } from "../../artifacts/types";
+import type { ArtifactRenderProps, CanvasNode, CanvasTheme } from "../../artifacts/types";
 import { validateArtifactPayload } from "../../artifacts/validation";
 import { artifactObjectScale } from "../nodeSize";
 
@@ -19,10 +20,24 @@ interface CanvasNodeViewProps {
 function InvalidArtifactCard({ message }: { message?: string }) {
   return (
     <article className="artifact invalid-artifact">
-      <div className="artifact-kicker">invalid artifact</div>
-      <strong>Schema validation failed</strong>
+      <div className="artifact-kicker">artifact unavailable</div>
+      <strong>Unable to render this artifact</strong>
       <span>{message ?? "The artifact data or config did not match its contract."}</span>
     </article>
+  );
+}
+
+function ArtifactRenderer({
+  artifact,
+  renderProps,
+}: {
+  artifact: RegisteredArtifact;
+  renderProps: ArtifactRenderProps<any, any>;
+}) {
+  return artifact.renderer === "echarts" ? (
+    <EChartsArtifactHost artifact={artifact} renderProps={renderProps} />
+  ) : (
+    artifact.render(renderProps)
   );
 }
 
@@ -43,7 +58,6 @@ export function CanvasNodeView({
     config: node.config,
     size: { width: baseSize.width, height: Math.max(0, baseSize.height - 32) },
     theme: canvasTheme,
-    emit: () => undefined,
   };
 
   return (
@@ -85,13 +99,13 @@ export function CanvasNodeView({
       <div className="node-body">
         {!validation.ok || !artifact ? (
           <InvalidArtifactCard message={validation.message} />
-        ) : artifact.renderer === "echarts" ? (
-          <EChartsArtifactHost
-            artifact={artifact}
-            renderProps={renderProps}
-          />
         ) : (
-          artifact.render(renderProps)
+          <ArtifactErrorBoundary
+            key={`${artifact.id}:${artifact.version}`}
+            fallback={(message) => <InvalidArtifactCard message={message} />}
+          >
+            <ArtifactRenderer artifact={artifact} renderProps={renderProps} />
+          </ArtifactErrorBoundary>
         )}
       </div>
       {isSelected ? (

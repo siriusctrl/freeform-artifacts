@@ -72,7 +72,11 @@ canvas.
 - Treat line wrapping and annotation layout as artifact responsibilities. A
   newline in rich text is not proof of separate SVG lines; inspect rendered
   element positions at default and minimum sizes.
-- Attach a Zod `dataValidator` to new artifacts.
+- Attach a Zod `dataValidator` to repo-compiled artifacts. Runtime bundles are
+  self-contained and cannot import Zod; validate uncertain payload fields inside
+  the renderer/build function and rely on the host's per-card error isolation.
+- Treat `artifactId` as an immutable package identity. Use a new id when bundle
+  implementation changes; the host rejects different code under an installed id.
 - Treat runtime external ESM artifacts as trusted self-hosted code, not
   sandboxed plugins.
 - Keep bundle `moduleSource` self-contained: no imports, fetches, credentials,

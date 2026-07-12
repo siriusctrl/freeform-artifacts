@@ -41,8 +41,9 @@ Read these when the task matches:
 Code orientation:
 
 - `src/main.tsx` mounts the React application.
-- `src/App.tsx` owns view bootstrap/switching, persistence, runtime artifact
-  installation, import/export, theme, snap preference, and deletion.
+- `src/App.tsx` owns view bootstrap and switching.
+- `src/canvas/CanvasWorkspace.tsx` composes active-view state and product actions;
+  focused hooks/services own persistence, runtime loading, and node creation.
 - `src/canvas/components/` contains the toolbar, default-collapsed view sidebar,
   AI handoff dialog, board, node, and zoom controls.
 - `src/canvas/hooks/useCanvasInteractions.ts` owns pan, zoom, drag, resize, and

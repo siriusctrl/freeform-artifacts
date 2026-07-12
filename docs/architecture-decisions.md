@@ -528,7 +528,8 @@ Add default-on snap-to-grid behavior in the canvas host:
 
 - the grid interval is 38px, matching the visual dotted grid;
 - dragged node positions snap in world coordinates;
-- resized node dimensions snap in world coordinates;
+- resize is owned by the canvas host but remains aspect-locked rather than
+  snapping dimensions independently;
 - the labeled toolbar setting toggles snap on and off;
 - the snap preference is saved in the versioned board JSON.
 
@@ -576,8 +577,9 @@ assets.
 - Select templates with a static-hosting-safe `?board=<template-id>` query.
 - On first visit, create a versioned `WorkspaceRecord` keyed by template ID.
 - Persist the workspace in IndexedDB.
-- Write a synchronous localStorage recovery mirror before each IndexedDB save
-  so an immediate page close can still recover the latest serializable board.
+- Debounce interaction-driven IndexedDB saves, serialize writes per view, and
+  write the latest localStorage recovery mirror synchronously on `pagehide` so
+  an immediate close can still recover the latest serializable board.
 - Prefer the newest valid record during bootstrap and repair IndexedDB from the
   recovery mirror when needed.
 - Provide versioned `.freeform.json` import/export and an explicit reset action.
@@ -602,7 +604,8 @@ explicit user action.
   workspace.
 - There is no automatic cross-device sync.
 - Very large boards may exceed the recovery mirror quota; IndexedDB remains the
-  primary store and workspace export is the durable portability path.
+  primary store and workspace export is the durable portability path for board
+  data. Executable personal packages must be installed separately.
 - Existing visitors do not automatically receive future template changes after
   they have forked a workspace.
 
@@ -1057,3 +1060,43 @@ also served both prose and data, reducing typographic distinction.
 
 Revisit the type pairing only when multilingual product chrome becomes a core
 requirement or a future design system provides its own licensed family.
+
+## ADR-0022: Make runtime artifact packages immutable and failure-isolated
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+Personal artifact bundles introduced executable code that lives longer than one
+view. Nodes were view-local, but package source was keyed globally by
+`artifactId`; a later install could silently replace code used by another view.
+Installation also wrote the package before validating the target workspace, and
+one damaged package could prevent every installed artifact from loading.
+
+### Decision
+
+- Treat `artifactId` as a browser-origin-wide immutable package identity. The
+  same source may be reused in multiple views, but changed source needs a new id.
+- Validate the exported artifact shape and target node payload before writing.
+- Commit package source and the target workspace in one IndexedDB transaction.
+- Load external sources and installed packages independently, retaining healthy
+  registry entries and reporting quarantined failures.
+- Isolate React render, ECharts option, and ECharts lifecycle failures to the
+  affected card.
+- Keep `.freeform.json` as a serializable board-data backup. Executable package
+  transfer remains the explicit `.freeform-artifact.json` installation path.
+
+### Tradeoffs
+
+- Updating an installed artifact requires a new id; explicit package migration
+  can be added later if versioned replacement becomes a real workflow.
+- Board backup alone cannot recreate personal cards in a fresh browser until
+  their trusted packages are installed there.
+- Error boundaries preserve the rest of the canvas but cannot undo arbitrary
+  global side effects from trusted module evaluation; sandboxing remains a
+  separate future boundary.
+
+Revisit immutable identity when packages gain signed versions, content hashes,
+or an explicit user-approved upgrade and node-migration flow.

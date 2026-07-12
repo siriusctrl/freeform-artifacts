@@ -15,6 +15,16 @@ export function screenToWorld(point: { x: number; y: number }, viewport: CanvasV
   };
 }
 
+export function clientToStage(
+  point: { x: number; y: number },
+  stageRect: Pick<DOMRect, "left" | "top">,
+) {
+  return {
+    x: point.x - stageRect.left,
+    y: point.y - stageRect.top,
+  };
+}
+
 export function zoomAt(
   viewport: CanvasViewport,
   screenPoint: { x: number; y: number },

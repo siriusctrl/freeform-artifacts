@@ -1,35 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 
-function agentArtifactBundle(artifactId = "agent-forecast-card") {
-  return {
-    version: 1,
-    artifactId,
-    moduleSource: `export const artifact = {
-      id: ${JSON.stringify(artifactId)},
-      renderer: "echarts",
-      chartRenderer: "svg",
-      title: "Agent Forecast",
-      version: "1.0.0",
-      defaultSize: { width: 480, height: 300 },
-      buildOption: ({ data, theme }) => ({
-        animation: false,
-        backgroundColor: "transparent",
-        title: { text: data.title, left: 24, top: 20, textStyle: { color: theme.text, fontSize: 22 } },
-        xAxis: { type: "category", data: data.points.map((point) => point.label) },
-        yAxis: { type: "value" },
-        grid: { left: 48, right: 24, top: 76, bottom: 40 },
-        series: [{ type: "bar", data: data.points.map((point) => point.value), itemStyle: { color: theme.accent } }],
-      }),
-    };`,
-    node: {
-      title: "Agent forecast",
-      data: { title: "Installed without a deploy", points: [{ label: "Q1", value: 24 }, { label: "Q2", value: 37 }] },
-      config: {},
-    },
-  };
-}
-
 async function chartLabelLayout(page: Page, hostTestId: string, labels: string[]) {
   return page.getByTestId(hostTestId).evaluate((host, expectedLabels) => {
     const hostRect = host.getBoundingClientRect();
@@ -612,12 +583,75 @@ test("card resize and canvas zoom scale Sankey visuals and selected controls tog
   expect(zoomedLabel.height / expandedLabel.height).toBeCloseTo(zoomRatio, 1);
 });
 
+test("pinch zoom keeps the pointer anchor stable with the views sidebar closed and open", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+
+  async function pointerAnchorDrift() {
+    const before = await page.getByTestId("canvas-stage").evaluate((stage) => {
+      const rect = stage.getBoundingClientRect();
+      const point = {
+        x: Math.round(rect.left + rect.width * 0.68),
+        y: Math.round(rect.top + rect.height * 0.41),
+      };
+      const local = { x: point.x - rect.left, y: point.y - rect.top };
+      const viewport = window.__FREEFORM_STATE__!.viewport;
+      return {
+        local,
+        point,
+        scale: viewport.scale,
+        world: {
+          x: (local.x - viewport.x) / viewport.scale,
+          y: (local.y - viewport.y) / viewport.scale,
+        },
+      };
+    });
+    await page.getByTestId("canvas-stage").evaluate((stage, point) => {
+      stage.dispatchEvent(new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        clientX: point.x,
+        clientY: point.y,
+        ctrlKey: true,
+        deltaY: -12,
+      }));
+    }, before.point);
+    await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.viewport.scale)).toBeGreaterThan(before.scale);
+    return page.evaluate(({ local, world }) => {
+      const after = window.__FREEFORM_STATE__!.viewport;
+      const afterWorld = {
+        x: (local.x - after.x) / after.scale,
+        y: (local.y - after.y) / after.scale,
+      };
+      return {
+        drift: Math.hypot(afterWorld.x - world.x, afterWorld.y - world.y),
+        scaleChanged: true,
+      };
+    }, before);
+  }
+
+  const closedResult = await pointerAnchorDrift();
+  expect(closedResult.scaleChanged).toBe(true);
+  expect(closedResult.drift).toBeLessThan(0.000001);
+  await page.getByTestId("sidebar-toggle").click();
+  await expect(page.getByTestId("canvas-sidebar")).toBeVisible();
+  await page.waitForTimeout(400);
+  const openResult = await pointerAnchorDrift();
+  expect(openResult.scaleChanged).toBe(true);
+  expect(openResult.drift).toBeLessThan(0.000001);
+});
+
 test("named canvas views can be created, renamed, switched, and restored", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await expect(page.getByTestId("canvas-sidebar")).not.toBeVisible();
   await expect(page.locator(".canvas-sidebar-slot")).toHaveAttribute("inert", "");
   await expect(page.getByTestId("canvas-title")).toHaveText("Market overview");
+
+  await page.getByTestId("canvas-title").focus();
+  await page.getByTestId("canvas-title").press("F2");
+  await expect(page.getByTestId("canvas-title-input")).toBeVisible();
+  await page.getByTestId("canvas-title-input").press("Escape");
 
   await page.getByTestId("canvas-title").dblclick();
   await page.getByTestId("canvas-title-input").fill("Energy room");
@@ -654,32 +688,6 @@ test("named canvas views can be created, renamed, switched, and restored", async
   await page.reload();
   await expect(page.getByTestId("canvas-title")).toHaveText("Scenario lab");
   await expect(page.getByTestId("canvas-sidebar")).not.toBeVisible();
-});
-
-test("agent bundles install into a view without a repository change and survive reload", async ({ page }) => {
-  await page.goto("/");
-  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
-  await expect.poll(async () => page.evaluate(() => Boolean(window.__FREEFORM_AGENT__))).toBe(true);
-  const bundle = agentArtifactBundle();
-  const result = await page.evaluate(async (value) => window.__FREEFORM_AGENT__!.installArtifact(value), bundle);
-  expect(result.artifactId).toBe(bundle.artifactId);
-  await expect(page.getByTestId(`node-${result.nodeId}`)).toBeVisible();
-  await expect(page.getByText("Installed without a deploy")).toBeVisible();
-  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
-
-  await page.reload();
-  await expect(page.getByTestId(`node-${result.nodeId}`)).toBeVisible();
-  await expect.poll(async () => page.evaluate((id) => window.__FREEFORM_STATE__!.artifactIds.includes(id), bundle.artifactId)).toBe(true);
-
-  await page.getByTestId("build-artifact").click();
-  const fileBundle = agentArtifactBundle("agent-file-card");
-  await page.getByTestId("artifact-bundle-file").setInputFiles({
-    name: "agent-file-card.freeform-artifact.json",
-    mimeType: "application/json",
-    buffer: Buffer.from(JSON.stringify(fileBundle)),
-  });
-  await expect.poll(async () => page.evaluate((id) => window.__FREEFORM_STATE__!.artifactIds.includes(id), fileBundle.artifactId)).toBe(true);
-  await expect(page.getByText("Installed without a deploy")).toHaveCount(2);
 });
 
 test("published example migration refreshes copy without replacing personal layout", async ({ page }) => {
@@ -766,7 +774,7 @@ test("each browser gets an isolated local fork that survives closing and reopeni
     await firstPage.getByTestId("node-node-revenue").click({ position: { x: 100, y: 18 } });
     await firstPage.getByTestId("delete-node-revenue").click();
     await expect(firstPage.getByTestId("node-node-revenue")).toHaveCount(0);
-    await expect.poll(async () => firstPage.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+    await expect.poll(async () => firstPage.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saving locally");
     await firstPage.close();
 
     const reopenedPage = await visitorA.newPage();

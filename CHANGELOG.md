@@ -18,11 +18,10 @@ All notable user-facing changes to this project should be documented here.
 - Sample database rows and transform helpers.
 - Published template forking into per-browser IndexedDB workspaces.
 - Synchronous localStorage recovery mirrors for close/reopen resilience.
-- Versioned workspace JSON import/export and explicit reset-to-demo control.
+- Versioned board-data JSON import/export and explicit reset-to-demo control.
 - Default-on 38px snap-to-grid placement with a toolbar setting.
 - Selected-card resize handles.
 - Selected-artifact deletion from the title bar and with `Delete`/`Backspace`.
-- Repository-aware **Build with AI** handoff generation for Claude Code.
 - Transform registry with checked raw-row fixtures.
 - Zod-backed artifact payload validation with invalid-artifact fallback UI.
 - Playwright browser smoke test for core canvas interactions.
@@ -59,6 +58,10 @@ All notable user-facing changes to this project should be documented here.
   artifacts.
 - Compact 54px top bar with a grouped display control, flat save state, and
   restrained command button hierarchy.
+- Runtime artifact definition validation, per-card render isolation, immutable
+  package identities, atomic view installation, and partial-failure loading.
+- Debounced and per-view ordered workspace saves with page-close recovery.
+- Pull-request browser verification in GitHub Actions.
 
 ### Fixed
 
@@ -103,6 +106,10 @@ All notable user-facing changes to this project should be documented here.
   canvas drag, pan, and zoom.
 - Bound the dotted grid background to the same viewport pan and zoom model as
   canvas nodes.
+- Corrected pointer-anchored zoom and bundle placement to use stage-local
+  coordinates when the top bar or Views sidebar offsets the canvas.
+- Split view bootstrap from active-canvas composition and extracted artifact
+  runtime, autosave, and node-factory responsibilities from `App.tsx`.
 - Split the canvas runtime into focused components, an interaction hook, debug
   state helper, domain CSS files, and shared verification script helpers.
 - Slimmed `AGENTS.md` into an agent source map and moved product framing into
@@ -116,4 +123,3 @@ All notable user-facing changes to this project should be documented here.
 - Removed the read-only selection inspector from the canvas UI; browser debug
   state remains available to verification tooling.
 - Removed the redundant select tool and placeholder Add artifact behavior.
-- Removed the low-value sidebar so the first screen prioritizes the canvas.

@@ -11,11 +11,6 @@ export interface CanvasTheme {
   text: string;
 }
 
-export interface ArtifactEvent {
-  type: string;
-  payload?: JsonObject;
-}
-
 export interface ArtifactSize {
   width: number;
   height: number;
@@ -26,7 +21,6 @@ export interface ArtifactRenderProps<TData = unknown, TConfig = JsonObject> {
   config: TConfig;
   size: ArtifactSize;
   theme: CanvasTheme;
-  emit: (event: ArtifactEvent) => void;
 }
 
 interface ArtifactBase<TData = unknown, TConfig = JsonObject> {
