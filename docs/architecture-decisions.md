@@ -1102,3 +1102,50 @@ one damaged package could prevent every installed artifact from loading.
 
 Revisit immutable identity when packages gain signed versions, content hashes,
 or an explicit user-approved upgrade and node-migration flow.
+
+## ADR-0023: Make Chart Kit the default generated chart contract
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+Generated artifacts repeatedly rebuilt the same ECharts axes, tooltip, palette,
+font, grid, dark-mode, and sizing options. The skill also described chart
+families that the tree-shaken host had not registered, so a syntactically valid
+browser bundle could request an unavailable series. Browser-origin bundles and
+self-deployed source artifacts additionally have different valid output
+locations, but one skill workflow did not make that distinction prominent.
+
+### Decision
+
+- Add `renderer: "chart-kit"` as the default contract for ordinary Cartesian
+  bar, line, and combo charts.
+- Compile declarative specs into managed ECharts dataset, axes, grid, tooltip,
+  palette, ARIA, SVG, and series options.
+- Keep raw ECharts for registered bar, line, Sankey, and advanced options Chart
+  Kit cannot express. Keep React for non-chart composition.
+- Publish runtime capabilities through `window.__FREEFORM_AGENT__` and reject
+  unsupported raw series during preflight and installation.
+- Add non-persisting `validateArtifact()` checks across default/minimum sizes and
+  both themes before a browser bundle can be installed.
+- Split skill delivery into Browser View Bundle and Self-Deployed Repo modes.
+  In-product Build with AI always selects the former and forbids repository
+  source changes; self-deployed artifacts live under
+  `src/artifacts/generated/*.artifact.tsx`.
+
+### Tradeoffs
+
+- Chart Kit intentionally exposes fewer options than ECharts. It should cover
+  common analytical intent, not mirror the full ECharts schema.
+- Complex existing charts remain raw ECharts until a repeated pattern justifies
+  a new declarative capability.
+- Structural preflight catches invalid specs and unsupported capabilities but
+  does not replace visual inspection of the installed card.
+- New raw chart families require host registration and increase the shipped
+  JavaScript bundle, so they should be added from demonstrated demand.
+
+Revisit the v1 capability set when several real artifacts need the same missing
+chart behavior; extend Chart Kit by repeated use case rather than by copying the
+entire ECharts API.

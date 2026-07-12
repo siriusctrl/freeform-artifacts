@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts/core";
 import { BarChart, LineChart, SankeyChart } from "echarts/charts";
-import { GraphicComponent, GridComponent, LegendComponent, MarkLineComponent, TitleComponent, TooltipComponent } from "echarts/components";
+import { AriaComponent, DatasetComponent, GraphicComponent, GridComponent, LegendComponent, MarkLineComponent, TitleComponent, TooltipComponent } from "echarts/components";
 import { LabelLayout } from "echarts/features";
 import { CanvasRenderer, SVGRenderer } from "echarts/renderers";
 import type { EChartsOption, EChartsType } from "echarts";
@@ -11,6 +11,8 @@ echarts.use([
   BarChart,
   LineChart,
   SankeyChart,
+  AriaComponent,
+  DatasetComponent,
   GraphicComponent,
   GridComponent,
   LegendComponent,

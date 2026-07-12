@@ -41,6 +41,13 @@ export function assertArtifactDefinition(
     throw new Error(`Artifact ${artifact.id} minSize must be positive`);
   }
 
+  if (artifact.renderer === "chart-kit") {
+    if (typeof (artifact as { buildChart?: unknown }).buildChart !== "function") {
+      throw new Error(`Chart Kit artifact ${artifact.id} must define buildChart`);
+    }
+    return;
+  }
+
   if (artifact.renderer === "echarts") {
     if (typeof artifact.buildOption !== "function") {
       throw new Error(`ECharts artifact ${artifact.id} must define buildOption`);

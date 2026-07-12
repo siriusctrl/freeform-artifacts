@@ -97,7 +97,8 @@ Trusted runtime artifact bundles are stored separately in the IndexedDB
 initial node payload. The runtime Blob-imports installed sources, merges them
 into the registry, and stores only node references/data in each view. The
 `window.__FREEFORM_AGENT__` bridge lets a browser-controlling agent list views
-and install a bundle into a target view without rebuilding the app.
+and inspect renderer capabilities, validate a bundle without persistence, and
+install it into a target view without rebuilding the app.
 Package ids are browser-origin-wide immutable identities, while nodes remain
 view-scoped. Package and target workspace writes share one IndexedDB transaction;
 invalid targets and payloads are rejected before persistence. Loader failures
@@ -140,13 +141,26 @@ interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject>
   buildOption: (props: ArtifactRenderProps<TData, TConfig>) => EChartsOption;
 }
 
+interface ChartKitArtifactDefinition<TData = unknown, TConfig = JsonObject>
+  extends ArtifactBase<TData, TConfig> {
+  renderer: "chart-kit";
+  buildChart: (props: ArtifactRenderProps<TData, TConfig>) => ChartKitSpec;
+}
+
 type ArtifactDefinition<TData = unknown, TConfig = JsonObject> =
   | ReactArtifactDefinition<TData, TConfig>
-  | EChartsArtifactDefinition<TData, TConfig>;
+  | EChartsArtifactDefinition<TData, TConfig>
+  | ChartKitArtifactDefinition<TData, TConfig>;
 ```
 
 The registry maps `artifactId` to an `ArtifactDefinition`. Canvas nodes store
 only the `artifactId`, placement data, config, and normalized render data.
+
+Chart Kit is a declarative compatibility layer over managed ECharts. Version 1
+supports Cartesian bar, line, and combo specs. It owns dataset encoding, dual-
+theme tokens, axes, grid, tooltip, palette, ARIA, and SVG rendering. Raw ECharts
+remains an escape hatch for registered bar, line, and Sankey behavior; a browser
+bundle cannot register additional tree-shaken host modules.
 
 The registry is layered:
 
@@ -157,8 +171,10 @@ The registry is layered:
 The default demo board lives in `src/canvas/seeds/demoBoard.ts` so example
 layout does not become part of the registry contract.
 
-Generated artifacts have two trusted loading paths:
+Generated artifacts have three trusted loading paths:
 
+- browser-installed `.freeform-artifact.json` bundles, persisted in IndexedDB
+  and attached to one local view through the Agent API;
 - repo-compiled `src/artifacts/generated/**/*.artifact.tsx`, discovered by
   Vite `import.meta.glob`;
 - runtime external ESM modules listed in
@@ -166,10 +182,11 @@ Generated artifacts have two trusted loading paths:
   and imported as Blob-backed
   modules.
 
-External ESM modules are not sandboxed. They are intended for self-hosted
-deployments where the owner accepts the risk of running their own generated
-code. Runtime modules should be self-contained browser JavaScript because Blob
-module URLs do not provide a stable relative import base.
+Browser bundles and external ESM modules are not sandboxed. Browser bundles are
+trusted personal code scoped to one browser origin. External modules are for
+self-hosted deployments where the owner accepts the risk of running their own
+generated code. Both forms must be self-contained browser JavaScript because
+Blob module URLs do not provide a stable relative import base.
 
 This keeps AI generation bounded:
 
@@ -182,13 +199,16 @@ tooling, and current runtime validation uses Zod validators attached to artifact
 definitions. If validation fails, the canvas renders an invalid-artifact
 fallback instead of letting an artifact crash the board.
 
-Use `renderer: "echarts"` for normal chart families. In that path, artifacts
-provide `buildOption` and the ECharts host owns lifecycle, resize behavior, and
-the concrete SVG/canvas renderer. ECharts artifacts are non-interactive by
+Use `renderer: "chart-kit"` for ordinary bar, line, and combo charts. Artifacts
+provide analytical intent and normalized values; Chart Kit supplies the shared
+dataset, axes, grid, tooltip, palette, ARIA, and light/dark styling. Use raw
+`renderer: "echarts"` only for host-registered behavior Chart Kit cannot
+express. In both paths, the ECharts host owns lifecycle, resize behavior, and
+the concrete SVG/canvas renderer. Raw ECharts artifacts are non-interactive by
 default so the card body still drags like any other canvas node. Set
 `interactive: true` only for artifacts that need chart-level hover, tooltip,
-click, or brush behavior. Use React artifacts as the custom escape hatch for
-visuals or interaction patterns ECharts does not express well.
+click, or brush behavior. Use React artifacts for non-chart UI and bespoke
+composition.
 
 `ArtifactRenderProps.size` is the live artifact content-box size. The managed
 host updates it through `ResizeObserver`, calls `chart.resize()`, and rebuilds

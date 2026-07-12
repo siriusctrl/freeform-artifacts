@@ -26,6 +26,7 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   await page.getByTestId("build-artifact").click();
   await expect(page.getByTestId("agent-request")).toHaveCount(0);
   await expect(page.getByTestId("agent-instruction")).toContainText("ask the user what artifact they want to build");
+  await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_VIEW_BUNDLE");
   await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
   const dialogDimensions = await page.evaluate(() => ({
     innerWidth: window.innerWidth,

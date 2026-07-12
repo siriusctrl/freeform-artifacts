@@ -47,6 +47,16 @@ npm run verify:preview
 npm run verify:proof
 ```
 
+For Browser View Bundles, first run the non-persisting browser preflight:
+
+```js
+const validation = await window.__FREEFORM_AGENT__.validateArtifact(bundle);
+if (validation.persisted !== false) throw new Error("Preflight persisted data");
+```
+
+Then install into the requested view and perform the same visual checks on the
+live card. Structural preflight does not replace rendered bounds inspection.
+
 `verify:proof` writes:
 
 - `proof.gif` for user-facing review.

@@ -1,6 +1,7 @@
 import { AppWindow, Scaling, Trash2 } from "lucide-react";
 import type { PointerEvent } from "react";
 import { ArtifactErrorBoundary } from "../../artifacts/ArtifactErrorBoundary";
+import { ChartKitArtifactHost } from "../../artifacts/ChartKitArtifactHost";
 import { EChartsArtifactHost } from "../../artifacts/EChartsArtifactHost";
 import type { RegisteredArtifact } from "../../artifacts/registryTypes";
 import type { ArtifactRenderProps, CanvasNode, CanvasTheme } from "../../artifacts/types";
@@ -36,6 +37,8 @@ function ArtifactRenderer({
 }) {
   return artifact.renderer === "echarts" ? (
     <EChartsArtifactHost artifact={artifact} renderProps={renderProps} />
+  ) : artifact.renderer === "chart-kit" ? (
+    <ChartKitArtifactHost artifact={artifact} renderProps={renderProps} />
   ) : (
     artifact.render(renderProps)
   );

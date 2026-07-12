@@ -15,20 +15,31 @@ export function AgentHandoffDialog({ open, viewId, onClose, onInstallBundle }: A
   const copyButtonRef = useRef<HTMLButtonElement | null>(null);
   const bundleInputRef = useRef<HTMLInputElement | null>(null);
   const [copied, setCopied] = useState(false);
-  const instruction = `Install the project artifact skill for your agent:
+  const instruction = `Delivery mode: BROWSER_VIEW_BUNDLE
+Target Freeform view id: ${viewId}
+This request came from Build with AI inside an open Freeform browser. Use the Browser View Bundle workflow from the skill. Do not use the Self-Deployed Repo workflow.
+Output routing: this browser mode produces a .freeform-artifact.json bundle outside the app source tree and installs it into the target view. Self-deployed mode produces src/artifacts/generated/<name>.artifact.tsx, but that is not this request.
+
+Install the project artifact skill for your agent:
 ${INSTALL_COMMAND}
 
-After installation, ask the user what artifact they want to build and clarify the data, visual form, and layout they need. Then follow the freeform-artifact-builder bundle contract and create one trusted .freeform-artifact.json file. Do not modify, commit, or deploy the application repository.
+After installation, ask the user what artifact they want to build and clarify the data, visual form, and layout they need. Then create one trusted .freeform-artifact.json bundle outside the application source tree. Do not create src/artifacts/generated files. Do not modify, commit, or deploy the application repository.
 
-Include version, artifactId, self-contained ESM moduleSource, and serializable node title/data/config. Use ECharts options or window.React; do not use imports, network fetches, or external dependencies.
+Include version, artifactId, self-contained ESM moduleSource, and serializable node title/data/config. Use renderer: "chart-kit" for ordinary bar, line, or combo charts. Use raw ECharts only for a capability the Chart Kit cannot express, and use React only for non-chart composition. Do not use imports, network fetches, or external dependencies.
 
-Validate the finished artifact in a real browser. If you control the user's open Freeform page, install it directly into this view:
+If you control the user's open Freeform page, read window.__FREEFORM_AGENT__.capabilities, then validate without persistence:
+
+const validation = await page.evaluate(async (bundle) => {
+  return window.__FREEFORM_AGENT__.validateArtifact(bundle);
+}, bundle);
+
+Only after validation succeeds, install it directly into this view:
 
 await page.evaluate(async ({ bundle, viewId }) => {
   return window.__FREEFORM_AGENT__.installArtifact(bundle, { viewId });
 }, { bundle, viewId: ${JSON.stringify(viewId)} });
 
-Otherwise return the bundle file so the user can choose Install bundle in this dialog. Report the artifact id and target view.`;
+Inspect the installed card at default and minimum size in light and dark mode, including long labels and empty-data behavior. Otherwise return the bundle file so the user can choose Install bundle in this dialog. The final deliverable for this mode is the bundle or installed browser artifact, never a repository source file. Report the artifact id, validation result, and target view.`;
 
   useEffect(() => {
     if (!open) return;

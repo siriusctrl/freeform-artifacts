@@ -69,6 +69,10 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   previews, create/switch, and active-view reload recovery;
 - Agent API and file-fallback bundle installation plus registry/node recovery
   after reload;
+- Browser bundle capability discovery and non-persisting Chart Kit preflight at
+  default/minimum size in both themes;
+- Build with AI prompt selection of Browser View Bundle delivery, including the
+  prohibition on self-deployed source files;
 - one broken runtime renderer stays isolated to its card, package id collisions
   are rejected, invalid target views leave no package behind, and one corrupt
   installed package does not suppress healthy runtime artifacts;

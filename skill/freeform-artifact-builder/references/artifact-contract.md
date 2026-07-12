@@ -4,12 +4,16 @@ Use this reference when creating or editing artifact modules.
 
 ## File Placement
 
+- For Browser View Bundle delivery, write one `.freeform-artifact.json` outside
+  the application source tree and install it into the named local view. None of
+  the repository paths below apply to this mode.
+- For Self-Deployed Repo delivery, put the shipped artifact under
+  `src/artifacts/generated/` with the filename pattern `*.artifact.tsx`.
 - Put platform-provided artifacts in `src/artifacts/core/`.
 - Put demo or verification-only artifacts in `src/artifacts/examples/`.
-- Put repo-compiled user/AI-generated artifacts under
-  `src/artifacts/generated/` with the filename pattern `*.artifact.tsx`.
 - Put runtime external ESM artifacts under `public/artifacts/generated/` and
-  list them in `public/artifacts/generated/manifest.json`.
+  list them in `public/artifacts/generated/manifest.json` only when a
+  self-hosted deployment intentionally uses drop-in compiled modules.
 - Export one named artifact constant, for example `revenueBridgeArtifact`.
 - Import and register it in the matching layer registry.
 - Let `src/artifacts/registry.ts` only merge registry layers.
@@ -20,9 +24,11 @@ Use this reference when creating or editing artifact modules.
 
 ## Renderer Choice
 
-Prefer ECharts for line, bar, scatter, heatmap, treemap, graph, Sankey, and
-other standard chart families. Use React for bespoke cards, tables, compact
-flows, mixed UI, controls, or non-chart composition.
+Prefer Chart Kit for ordinary bar, line, and combo charts. Use raw ECharts only
+for a registered host capability Chart Kit cannot express; the current raw host
+supports bar, line, and Sankey. Use React for bespoke cards, tables, compact
+flows, mixed UI, controls, or non-chart composition. See
+[chart-kit.md](chart-kit.md).
 
 ## Generated Loading Paths
 
@@ -93,7 +99,38 @@ export const exampleArtifact: ArtifactDefinition<ExampleData> = {
 };
 ```
 
-## ECharts Artifact Shape
+## Chart Kit Artifact Shape
+
+```ts
+import type { ChartKitArtifactDefinition } from "../types";
+import { exampleChartDataSchema, type ChartData } from "../schemas";
+
+export const exampleChartArtifact: ChartKitArtifactDefinition<ChartData> = {
+  id: "example-chart",
+  renderer: "chart-kit",
+  title: "Example Chart",
+  version: "0.1.0",
+  defaultSize: { width: 640, height: 360 },
+  minSize: { width: 532, height: 304 },
+  dataValidator: exampleChartDataSchema,
+  buildChart: ({ data }) => ({
+    kind: "cartesian",
+    categories: data.points.map((point) => point.label),
+    series: [{
+      id: "value",
+      name: "Value",
+      type: "bar",
+      values: data.points.map((point) => point.value),
+    }],
+  }),
+};
+```
+
+Chart Kit supplies the normal theme, typography, grid, axes, tooltip, palette,
+ARIA, SVG renderer, and lifecycle. Do not duplicate those options in an
+artifact.
+
+## Raw ECharts Artifact Shape
 
 ```ts
 import type { EChartsArtifactDefinition } from "../types";
@@ -157,7 +194,7 @@ export const exampleChartArtifact: EChartsArtifactDefinition<ChartData> = {
 
 ## ECharts Host Modules
 
-If a chart type or component is not registered, update
+In a Self-Deployed Repo, if a chart type or component is not registered, update
 `src/artifacts/EChartsArtifactHost.tsx`:
 
 - Import the chart from `echarts/charts`.
@@ -165,6 +202,8 @@ If a chart type or component is not registered, update
 - Add them to the single `echarts.use([...])` call.
 
 Keep the host generic. Do not add artifact-specific lifecycle code there.
+Browser View Bundles cannot update host registration and must stay within
+`window.__FREEFORM_AGENT__.capabilities`.
 
 Read [visual-style-guide.md](visual-style-guide.md) before finalizing copy,
 spacing, color, or chart options. Dark mode is part of the artifact contract,

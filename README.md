@@ -5,8 +5,8 @@ Browser-first Freeform-style canvas for AI-generated data artifacts.
 `freeform-artifacts` is a demo product surface for placing JS/TS-rendered
 artifact cards on a zoomable and pannable canvas. The first use case is
 database-backed cards: raw rows can be transformed into normalized artifact data,
-then rendered by registry-approved React/TypeScript components or managed
-ECharts artifacts.
+then rendered by declarative Chart Kit specs, managed raw ECharts options, or
+registry-approved React/TypeScript components.
 
 ## Product Boundary
 
@@ -113,10 +113,10 @@ Current controls:
 - Use the **More** menu to load sample query rows, import/export a versioned
   workspace backup, or explicitly reset to the authored demo.
 - Click **Build with AI** and give its instruction to your coding agent. The
-  prompt installs the project skill, asks the agent to learn what artifact you
-  want, and then installs the result through `window.__FREEFORM_AGENT__` when
-  browser control is available. Otherwise install the returned
-  `.freeform-artifact.json` from the dialog.
+  prompt explicitly selects Browser View Bundle delivery, installs the project
+  skill, asks the agent to learn what artifact you want, validates the bundle
+  without persistence, and then installs it into the named local view. Otherwise
+  install the returned `.freeform-artifact.json` from the dialog.
 
 The canvas stores nodes in world coordinates. The viewport stores screen offset
 and scale. Rendering converts world coordinates into a single transformed DOM
@@ -136,15 +136,16 @@ The registry is layered:
   metric and table cards.
 - `src/artifacts/examples/` contains demo and verification artifacts such as the
   probability chart, Sankey, and flow diagram.
-- `src/artifacts/generated/` is the reserved entry point for future user or
+- `src/artifacts/generated/` is the entry point for self-deployed user or
   AI-generated artifacts.
 - `src/canvas/seeds/demoBoard.ts` chooses which artifacts appear on the default
   demo board.
 
 ## Adding A Customized Artifact
 
-There are three trusted-code paths. Runtime bundles are the default for personal
-views; repo changes remain available for app maintainers.
+There are separate trusted-code delivery modes. Runtime bundles are the default
+for personal browser views; repo-compiled TSX is for users who own and deploy the
+application. The skill requires this choice before files are created.
 
 The product's **Build with AI** dialog creates an agent-neutral handoff. It
 installs the public project skill with an interactive agent choice:
@@ -153,7 +154,8 @@ installs the public project skill with an interactive agent choice:
 npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder
 ```
 
-After installation, the generated instruction tells the agent to ask what the
+The generated instruction includes `Delivery mode: BROWSER_VIEW_BUNDLE` and the
+target view id. After skill installation, it tells the agent to ask what the
 user wants to build and clarify its data, visual form, and layout. It then asks
 for one self-contained trusted bundle with `artifactId`, ESM `moduleSource`,
 and initial node data, while explicitly forbidding application repo changes.
@@ -168,6 +170,11 @@ Use this for normal AI-created artifacts. An agent with browser control calls:
 
 ```js
 await page.evaluate(
+  (bundle) => window.__FREEFORM_AGENT__.validateArtifact(bundle),
+  bundle,
+);
+
+await page.evaluate(
   ({ bundle, viewId }) => window.__FREEFORM_AGENT__.installArtifact(bundle, { viewId }),
   { bundle, viewId },
 );
@@ -178,8 +185,8 @@ Bundle modules are trusted code and are not sandboxed.
 
 ### Repo-Compiled TSX
 
-Use this when Codex or Claude can write into the app repo and the app can be
-rebuilt.
+Use Self-Deployed Repo mode when an agent can write into the app repo and the
+user intends to rebuild and deploy it.
 
 1. Create `src/artifacts/generated/my-artifact.artifact.tsx`.
 2. Export `artifact`, `default`, or `artifacts`.
@@ -226,6 +233,22 @@ files cannot contain raw JSX unless they are compiled first.
 An artifact is a typed object with an id, version, default size, optional
 minimum size, schema hints, and a renderer-specific body.
 
+Chart Kit is the default for bar, line, and combo charts. It produces managed
+ECharts options with consistent light/dark tokens, dataset encoding, axes,
+tooltip, palette, ARIA, SVG rendering, and lifecycle:
+
+```ts
+export interface ChartKitArtifactDefinition<TData = unknown, TConfig = JsonObject> {
+  id: string;
+  title: string;
+  version: string;
+  renderer: "chart-kit";
+  defaultSize: ArtifactSize;
+  minSize?: ArtifactSize;
+  buildChart: (props: ArtifactRenderProps<TData, TConfig>) => ChartKitSpec;
+}
+```
+
 React artifacts own their component render function:
 
 ```ts
@@ -246,7 +269,8 @@ export interface ReactArtifactDefinition<TData = unknown, TConfig = JsonObject> 
 }
 ```
 
-ECharts artifacts only build chart options. The host owns `echarts.init`,
+Raw ECharts artifacts are the advanced escape hatch and only build chart
+options. The host owns `echarts.init`,
 `setOption`, `resize`, and `dispose`. Every render receives `size`, the live
 internal content-box dimensions. On this canvas, a card renders in its
 registered `defaultSize` coordinate system and the resize handle scales the
@@ -297,11 +321,12 @@ export interface CanvasNode<TConfig = JsonObject> {
 AI-generated artifacts should follow these rules:
 
 - Export exactly one `ArtifactDefinition`.
-- Prefer `renderer: "echarts"` for normal chart families such as line, bar,
-  scatter, heatmap, treemap, graph, and Sankey.
-- For ECharts artifacts, generate data transforms and `buildOption`; do not
+- Prefer `renderer: "chart-kit"` for ordinary bar, line, and combo charts.
+- Use raw `renderer: "echarts"` only for registered capabilities Chart Kit
+  cannot express. The current raw host registers bar, line, and Sankey.
+- For raw ECharts artifacts, generate data transforms and `buildOption`; do not
   call `echarts.init` or manage chart lifecycle inside the artifact.
-- Leave ECharts artifacts non-interactive by default so the whole card remains
+- Leave raw ECharts artifacts non-interactive by default so the whole card remains
   draggable. Set `interactive: true` only when the chart needs hover, tooltip,
   click, or brush behavior.
 - Use React artifacts when the visual is not well represented by ECharts or
@@ -326,7 +351,7 @@ flowchart LR
     transform --> artifactData["Normalized artifact data"]
     artifactData --> node["CanvasNode.data"]
     node --> registry["Artifact registry"]
-    registry --> render["React or ECharts artifact render"]
+    registry --> render["Chart Kit, raw ECharts, or React render"]
 ```
 
 ## Rendering Boundary
@@ -386,6 +411,8 @@ Implemented:
   prose and Geist Mono for comparable data values.
 - No-deploy artifact bundle installation through **Build with AI** and the
   browser Agent API.
+- Declarative Chart Kit with capability discovery and non-persisting browser
+  preflight for ordinary bar, line, and combo charts.
 - Hardened pointer dragging that suppresses browser text selection and native
   drag behavior during canvas moves.
 - Handoff docs for the next Codex session.
