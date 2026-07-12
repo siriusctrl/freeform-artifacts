@@ -110,6 +110,19 @@ async function sankeyNodeColors(page: Page) {
   );
 }
 
+async function pipelineConnectorGeometry(page: Page) {
+  return page.locator(".flow-grid").evaluate((grid) => {
+    const connector = grid.querySelector<HTMLElement>(".flow-connector")!.getBoundingClientRect();
+    const markers = [...grid.querySelectorAll<HTMLElement>(".flow-step-node")].map((marker) => marker.getBoundingClientRect());
+    return {
+      connectorLeft: connector.left,
+      connectorRight: connector.right,
+      firstCenter: markers[0].left + markers[0].width / 2,
+      lastCenter: markers.at(-1)!.left + markers.at(-1)!.width / 2,
+    };
+  });
+}
+
 test("freeform canvas supports spatial editing, AI handoff, and deletion", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
@@ -385,6 +398,9 @@ test("managed charts keep essential labels inside default and minimum card sizes
     steps.map((step) => step.getBoundingClientRect().width),
   );
   expect(flowStepWidths.every((width) => width >= 140)).toBe(true);
+  const connectorGeometry = await pipelineConnectorGeometry(page);
+  expect(connectorGeometry.connectorLeft).toBeCloseTo(connectorGeometry.firstCenter, 0);
+  expect(connectorGeometry.connectorRight).toBeCloseTo(connectorGeometry.lastCenter, 0);
   await expect.poll(() => chartLabelLayout(page, "echarts-sankey-flow", ["North", "South"])).toEqual({
     missing: [],
     overflow: [],

@@ -65,6 +65,8 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   after reload;
 - default examples hide internal implementation labels and keep simplified
   hierarchy at their authored sizes;
+- the Pipeline connector endpoints align with the first and last marker centers
+  within one rendered pixel;
 - ECharts labels remain contained and categorical node palettes contain the
   intended distinct colors in both light and dark mode;
 - published-example migrations refresh known demo payloads without restoring a

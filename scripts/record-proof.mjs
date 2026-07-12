@@ -199,6 +199,19 @@ async function sankeyNodeColors(page) {
   );
 }
 
+async function pipelineConnectorGeometry(page) {
+  return page.locator(".flow-grid").evaluate((grid) => {
+    const connector = grid.querySelector(".flow-connector").getBoundingClientRect();
+    const markers = [...grid.querySelectorAll(".flow-step-node")].map((marker) => marker.getBoundingClientRect());
+    return {
+      connectorLeft: connector.left,
+      connectorRight: connector.right,
+      firstCenter: markers[0].left + markers[0].width / 2,
+      lastCenter: markers.at(-1).left + markers.at(-1).width / 2,
+    };
+  });
+}
+
 function checkSampledFrames(gifFile) {
   const width = 64;
   const height = 40;
@@ -382,6 +395,19 @@ try {
   verifyUx("supply example stays generic", await page.getByText("Supply-demand probability", { exact: true }).isVisible() && await page.getByText("Supply Model", { exact: true }).isVisible());
   const lightSankeyColors = [...new Set(await sankeyNodeColors(page))];
   verifyUx("light Sankey assigns six distinct node colors", lightSankeyColors.length === 6, { lightSankeyColors });
+
+  await showProofStep(page, "Pipeline continuity • one line passes through all three stages", 900);
+  await stage.dispatchEvent("wheel", { deltaX: -170, deltaY: 390 });
+  await page.waitForTimeout(1400);
+  const connectorGeometry = await pipelineConnectorGeometry(page);
+  verifyUx(
+    "pipeline connector reaches the first and last marker centers",
+    Math.abs(connectorGeometry.connectorLeft - connectorGeometry.firstCenter) <= 1 &&
+      Math.abs(connectorGeometry.connectorRight - connectorGeometry.lastCenter) <= 1,
+    connectorGeometry,
+  );
+  await page.getByTitle("Reset view").click();
+  await page.waitForTimeout(700);
 
   await showProofStep(page, "Rename canvas • edit the centered title", 900);
   await page.getByTestId("canvas-title").dblclick();
