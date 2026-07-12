@@ -357,15 +357,21 @@ try {
     theme: Math.round(document.querySelector('[data-testid="theme-toggle"]')?.getBoundingClientRect().height ?? 0),
     more: Math.round(document.querySelector('[data-testid="workspace-menu"]')?.getBoundingClientRect().height ?? 0),
     status: Math.round(document.querySelector('[data-testid="board-status"]')?.getBoundingClientRect().height ?? 0),
+    statusWidth: Math.round(document.querySelector('[data-testid="board-status"]')?.getBoundingClientRect().width ?? 0),
+    statusRight: document.querySelector('[data-testid="board-status"]')?.getBoundingClientRect().right ?? 0,
+    themeLeft: document.querySelector('[data-testid="theme-toggle"]')?.getBoundingClientRect().left ?? 0,
+    moreLeft: document.querySelector('[data-testid="workspace-menu"]')?.getBoundingClientRect().left ?? 0,
+    buildLeft: document.querySelector('[data-testid="build-artifact"]')?.getBoundingClientRect().left ?? 0,
     build: Math.round(document.querySelector('[data-testid="build-artifact"]')?.getBoundingClientRect().height ?? 0),
     brandFont: getComputedStyle(document.querySelector(".title-block")).fontFamily,
     fontLoaded: document.fonts.check('16px "Instrument Sans Variable"'),
   }));
   verifyUx(
     "compact top bar uses a deliberate control hierarchy",
-    topbarMetrics.topbar === 54 && topbarMetrics.toolStrip === 36 && topbarMetrics.theme === 30 && topbarMetrics.more === 30 && topbarMetrics.status === 34 && topbarMetrics.build === 38,
+    topbarMetrics.topbar === 54 && topbarMetrics.toolStrip === 36 && topbarMetrics.theme === 30 && topbarMetrics.more === 30 && topbarMetrics.status === 34 && topbarMetrics.statusWidth === 128 && topbarMetrics.build === 38,
     topbarMetrics,
   );
+  verifyUx("save status sits before Theme and More", topbarMetrics.statusRight < topbarMetrics.themeLeft, topbarMetrics);
   verifyUx("Instrument Sans is loaded and applied to product chrome", topbarMetrics.fontLoaded && topbarMetrics.brandFont.includes("Instrument Sans Variable"), { fontFamily: topbarMetrics.brandFont, fontLoaded: topbarMetrics.fontLoaded });
   const moreIconCenterDelta = await page.getByTestId("workspace-menu").evaluate((button) => {
     const buttonRect = button.getBoundingClientRect();
@@ -441,6 +447,18 @@ try {
   await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saved locally");
   await page.waitForTimeout(900);
   verifyUx("keyboard rename persists the centered canvas title", await page.getByTestId("canvas-title").getByText("Market canvas").isVisible());
+  const topbarPositionsAfterSave = await page.evaluate(() => ({
+    themeLeft: document.querySelector('[data-testid="theme-toggle"]')?.getBoundingClientRect().left ?? 0,
+    moreLeft: document.querySelector('[data-testid="workspace-menu"]')?.getBoundingClientRect().left ?? 0,
+    buildLeft: document.querySelector('[data-testid="build-artifact"]')?.getBoundingClientRect().left ?? 0,
+  }));
+  verifyUx(
+    "save status changes do not shift toolbar commands",
+    topbarPositionsAfterSave.themeLeft === topbarMetrics.themeLeft &&
+      topbarPositionsAfterSave.moreLeft === topbarMetrics.moreLeft &&
+      topbarPositionsAfterSave.buildLeft === topbarMetrics.buildLeft,
+    { before: topbarMetrics, after: topbarPositionsAfterSave },
+  );
 
   await showProofStep(page, "Open Views • preview this canvas as the sidebar glides in", 900);
   const sidebarSlot = page.locator(".canvas-sidebar-slot");
