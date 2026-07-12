@@ -16,6 +16,38 @@ export interface ArtifactSize {
   height: number;
 }
 
+export type ChartKitValueFormat = "number" | "percent" | "currency";
+
+export interface ChartKitCartesianSeries {
+  id: string;
+  name: string;
+  type: "bar" | "line";
+  values: number[];
+  color?: string;
+  stack?: string;
+  smooth?: boolean;
+  area?: boolean;
+}
+
+export interface ChartKitReferenceLine {
+  value: number;
+  label: string;
+}
+
+export interface ChartKitCartesianSpec {
+  kind: "cartesian";
+  title?: string;
+  subtitle?: string;
+  categories: string[];
+  series: ChartKitCartesianSeries[];
+  legend?: boolean;
+  valueFormat?: ChartKitValueFormat;
+  currency?: string;
+  referenceLines?: ChartKitReferenceLine[];
+}
+
+export type ChartKitSpec = ChartKitCartesianSpec;
+
 export interface ArtifactRenderProps<TData = unknown, TConfig = JsonObject> {
   data: TData;
   config: TConfig;
@@ -48,9 +80,16 @@ export interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject
   buildOption: (props: ArtifactRenderProps<TData, TConfig>) => EChartsOption;
 }
 
+export interface ChartKitArtifactDefinition<TData = unknown, TConfig = JsonObject>
+  extends ArtifactBase<TData, TConfig> {
+  renderer: "chart-kit";
+  buildChart: (props: ArtifactRenderProps<TData, TConfig>) => ChartKitSpec;
+}
+
 export type ArtifactDefinition<TData = unknown, TConfig = JsonObject> =
   | ReactArtifactDefinition<TData, TConfig>
-  | EChartsArtifactDefinition<TData, TConfig>;
+  | EChartsArtifactDefinition<TData, TConfig>
+  | ChartKitArtifactDefinition<TData, TConfig>;
 
 export interface DataBinding {
   sourceId: string;

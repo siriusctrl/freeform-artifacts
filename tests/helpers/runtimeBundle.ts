@@ -4,19 +4,18 @@ export function agentArtifactBundle(artifactId = "agent-forecast-card") {
     artifactId,
     moduleSource: `export const artifact = {
       id: ${JSON.stringify(artifactId)},
-      renderer: "echarts",
-      chartRenderer: "svg",
+      renderer: "chart-kit",
       title: "Agent Forecast",
       version: "1.0.0",
       defaultSize: { width: 480, height: 300 },
-      buildOption: ({ data, theme }) => ({
-        animation: false,
-        backgroundColor: "transparent",
-        title: { text: data.title, left: 24, top: 20, textStyle: { color: theme.text, fontSize: 22 } },
-        xAxis: { type: "category", data: data.points.map((point) => point.label) },
-        yAxis: { type: "value" },
-        grid: { left: 48, right: 24, top: 76, bottom: 40 },
-        series: [{ type: "bar", data: data.points.map((point) => point.value), itemStyle: { color: theme.accent } }],
+      buildChart: ({ data }) => ({
+        kind: "cartesian",
+        title: data.title,
+        categories: data.points.map((point) => point.label),
+        series: [
+          { id: "forecast", name: "Forecast", type: "bar", values: data.points.map((point) => point.value) },
+          { id: "trend", name: "Trend", type: "line", values: data.points.map((point) => point.value * 0.92), smooth: true },
+        ],
       }),
     };`,
     node: {

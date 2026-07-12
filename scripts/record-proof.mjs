@@ -273,15 +273,12 @@ function proofArtifactBundle() {
     version: 1,
     artifactId: "agent-capacity-card",
     moduleSource: `export const artifact = {
-      id: "agent-capacity-card", renderer: "echarts", chartRenderer: "svg",
+      id: "agent-capacity-card", renderer: "chart-kit",
       title: "Agent Capacity", version: "1.0.0", defaultSize: { width: 480, height: 300 },
-      buildOption: ({ data, theme }) => ({
-        animation: false, backgroundColor: "transparent",
-        title: { text: data.title, left: 24, top: 20, textStyle: { color: theme.text, fontSize: 22 } },
-        grid: { left: 48, right: 24, top: 76, bottom: 40 },
-        xAxis: { type: "category", data: data.points.map((point) => point.label) },
-        yAxis: { type: "value" },
-        series: [{ type: "bar", data: data.points.map((point) => point.value), itemStyle: { color: theme.accent } }],
+      buildChart: ({ data }) => ({
+        kind: "cartesian", title: data.title,
+        categories: data.points.map((point) => point.label),
+        series: [{ id: "capacity", name: "Capacity", type: "bar", values: data.points.map((point) => point.value) }],
       }),
     };`,
     node: {
@@ -297,9 +294,10 @@ function brokenProofArtifactBundle() {
     version: 1,
     artifactId: "broken-proof-card",
     moduleSource: `export const artifact = {
-      id: "broken-proof-card", renderer: "echarts", title: "Broken proof card",
+      id: "broken-proof-card", renderer: "chart-kit", title: "Broken proof card",
       version: "1.0.0", defaultSize: { width: 420, height: 260 },
-      buildOption: () => { throw new Error("Proof renderer failure"); },
+      buildChart: () => ({ kind: "cartesian", categories: ["North", "South"],
+        series: [{ id: "capacity", name: "Capacity", type: "bar", values: [34] }] }),
     };`,
     node: { title: "Broken proof card", data: {}, config: {} },
   };
@@ -809,7 +807,8 @@ try {
   await page.waitForTimeout(900);
   const instruction = await page.getByTestId("agent-instruction").innerText();
   verifyUx("AI handoff is agent-neutral and asks the agent to discover the request", instruction.includes("Install the project artifact skill for your agent:") && instruction.includes("ask the user what artifact they want to build") && !instruction.includes("Claude Code"));
-  verifyUx("AI handoff targets bundle installation instead of a branch", instruction.includes("npx skills add siriusctrl/freeform-artifacts") && instruction.includes("window.__FREEFORM_AGENT__.installArtifact") && instruction.includes("Do not modify, commit, or deploy"));
+  verifyUx("AI handoff explicitly selects browser bundle delivery", instruction.includes("Delivery mode: BROWSER_VIEW_BUNDLE") && instruction.includes("Do not use the Self-Deployed Repo workflow") && instruction.includes("Do not create src/artifacts/generated files"));
+  verifyUx("AI handoff validates Chart Kit before browser installation", instruction.includes('renderer: "chart-kit"') && instruction.includes("window.__FREEFORM_AGENT__.validateArtifact") && instruction.includes("window.__FREEFORM_AGENT__.installArtifact"));
   await page.getByTestId("copy-agent-instruction").click();
   await page.getByTestId("copy-agent-instruction").getByText("Copied").waitFor({ state: "visible" });
   verifyUx("AI handoff can be copied", await page.getByTestId("copy-agent-instruction").getByText("Copied").isVisible());
@@ -823,23 +822,30 @@ try {
 
   await showProofStep(page, "Agent install • add a real artifact to this view", 1000);
   const beforeInstall = await page.evaluate(() => window.__FREEFORM_STATE__);
-  const installedArtifact = await page.evaluate((bundle) => window.__FREEFORM_AGENT__.installArtifact(bundle), proofArtifactBundle());
+  const proofBundle = proofArtifactBundle();
+  const proofValidation = await page.evaluate((bundle) => window.__FREEFORM_AGENT__.validateArtifact(bundle), proofBundle);
+  verifyUx("Agent API validates Chart Kit without persistence", proofValidation.renderer === "chart-kit" && proofValidation.renderChecks === 4 && proofValidation.persisted === false, proofValidation);
+  const installedArtifact = await page.evaluate((bundle) => window.__FREEFORM_AGENT__.installArtifact(bundle), proofBundle);
   await page.getByTestId(`node-${installedArtifact.nodeId}`).waitFor({ state: "visible" });
   await page.waitForTimeout(1500);
   const afterInstall = await page.evaluate(() => window.__FREEFORM_STATE__);
   verifyUx("Agent API installs and selects a persisted artifact without a deploy", afterInstall.nodes.length === beforeInstall.nodes.length + 1 && afterInstall.artifactIds.includes("agent-capacity-card"), { installedArtifact });
   verifyUx("installed artifact renders its generated content", await page.getByText("Installed directly into this view").isVisible());
 
-  await showProofStep(page, "Broken artifact • isolate failure to one card", 900);
-  const brokenArtifact = await page.evaluate((bundle) => window.__FREEFORM_AGENT__.installArtifact(bundle), brokenProofArtifactBundle());
-  const brokenNode = page.getByTestId(`node-${brokenArtifact.nodeId}`);
-  await brokenNode.waitFor({ state: "visible" });
-  verifyUx("broken runtime renderer shows a local fallback", await brokenNode.getByText("Unable to render this artifact").isVisible());
-  verifyUx("healthy runtime artifact remains rendered beside a broken card", await page.getByText("Installed directly into this view").isVisible());
+  await showProofStep(page, "Invalid artifact • reject before installation", 900);
+  const nodeCountBeforeRejection = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.length;
+  const rejectionMessage = await page.evaluate(async (bundle) => {
+    try {
+      await window.__FREEFORM_AGENT__.validateArtifact(bundle);
+      return "";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }, brokenProofArtifactBundle());
+  verifyUx("Chart Kit preflight rejects invalid series before persistence", rejectionMessage.includes("must match the category count"), { rejectionMessage });
+  verifyUx("preflight rejection leaves the canvas unchanged", (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.length === nodeCountBeforeRejection);
+  verifyUx("healthy runtime artifact remains rendered after rejection", await page.getByText("Installed directly into this view").isVisible());
   await page.waitForTimeout(1200);
-  await brokenNode.click({ position: { x: 100, y: 18 } });
-  await page.getByTestId(`delete-${brokenArtifact.nodeId}`).click();
-  await page.waitForTimeout(500);
 
   await showProofStep(page, "Delete artifact • remove it from this workspace", 550);
   await page.getByTestId("node-node-revenue").click({ position: { x: 100, y: 18 } });
@@ -961,7 +967,7 @@ try {
       "toggle dark mode",
       "generate and copy a no-code artifact bundle handoff",
       "install a runtime artifact through the browser Agent API",
-      "isolate a broken runtime artifact to its own fallback card",
+      "reject an invalid Chart Kit artifact before persistence",
       "delete an artifact with the selected-card control",
       "close, reopen, and restore the browser-local workspace",
       "capture screenshot",

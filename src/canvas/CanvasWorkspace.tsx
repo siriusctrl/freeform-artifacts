@@ -4,6 +4,8 @@ import {
   prepareArtifactBundle,
 } from "../artifacts/generated/bundles";
 import { artifactRegistry } from "../artifacts/registry";
+import { assertSupportedRawEChartsOption, buildChartKitOption, CHART_KIT_CAPABILITIES } from "../artifacts/chartKit";
+import type { RegisteredArtifact } from "../artifacts/registryTypes";
 import type { CanvasNode, CanvasViewport } from "../artifacts/types";
 import { useArtifactRuntime } from "../artifacts/useArtifactRuntime";
 import { validateArtifactPayload } from "../artifacts/validation";
@@ -259,6 +261,40 @@ export function CanvasWorkspace({
     setSnapToGrid((current) => !current);
   }
 
+  function validatePreparedArtifact(node: CanvasNode, artifact: RegisteredArtifact) {
+    const validation = validateArtifactPayload(node, artifact);
+    if (!validation.ok) throw new Error(validation.message);
+    const sizes = [artifact.defaultSize, artifact.minSize ?? artifact.defaultSize];
+    let renderChecks = 0;
+    for (const mode of ["light", "dark"] as const) {
+      for (const size of sizes) {
+        const props = { data: node.data, config: node.config, size, theme: themeFor(mode) };
+        if (artifact.renderer === "chart-kit") {
+          buildChartKitOption(artifact.buildChart(props), props);
+          renderChecks += 1;
+        } else if (artifact.renderer === "echarts") {
+          assertSupportedRawEChartsOption(artifact.buildOption(props));
+          renderChecks += 1;
+        }
+      }
+    }
+    return renderChecks;
+  }
+
+  async function validateBundle(value: unknown) {
+    const { artifact, bundle } = await prepareArtifactBundle(value, runtimeArtifactRegistry);
+    const stageRect = stageRef.current?.getBoundingClientRect();
+    const stageSize = stageRect ? { width: stageRect.width, height: stageRect.height } : undefined;
+    const node = createBundleNode(bundle, artifact, nodes, viewport, stageSize);
+    const renderChecks = validatePreparedArtifact(node, artifact);
+    return {
+      artifactId: artifact.id,
+      renderer: artifact.renderer ?? "react",
+      renderChecks,
+      persisted: false as const,
+    };
+  }
+
   async function installBundle(value: unknown, options: { viewId?: string } = {}) {
     const { artifact, bundle } = await prepareArtifactBundle(value, runtimeArtifactRegistry);
     const targetViewId = options.viewId ?? initialWorkspace.templateId;
@@ -267,8 +303,7 @@ export function CanvasWorkspace({
 
     if (targetViewId === initialWorkspace.templateId) {
       const node = createBundleNode(bundle, artifact, nodes, viewport, stageSize);
-      const validation = validateArtifactPayload(node, artifact);
-      if (!validation.ok) throw new Error(validation.message);
+      validatePreparedArtifact(node, artifact);
       const nextNodes = [...nodes, node];
       const workspace = {
         ...workspaceSnapshot,
@@ -293,8 +328,7 @@ export function CanvasWorkspace({
       target.workspace.board.viewport,
       stageSize,
     );
-    const validation = validateArtifactPayload(node, artifact);
-    if (!validation.ok) throw new Error(validation.message);
+    validatePreparedArtifact(node, artifact);
     const workspace = {
       ...target.workspace,
       updatedAt: new Date().toISOString(),
@@ -317,7 +351,11 @@ export function CanvasWorkspace({
   useEffect(() => {
     window.__FREEFORM_AGENT__ = {
       activeViewId: initialWorkspace.templateId,
+      capabilities: {
+        chartKit: CHART_KIT_CAPABILITIES,
+      },
       listViews: listWorkspaces,
+      validateArtifact: validateBundle,
       installArtifact: installBundle,
     };
     return () => {
@@ -393,7 +431,16 @@ declare global {
   interface Window {
     __FREEFORM_AGENT__?: {
       readonly activeViewId: string;
+      readonly capabilities: {
+        readonly chartKit: typeof CHART_KIT_CAPABILITIES;
+      };
       listViews: typeof listWorkspaces;
+      validateArtifact: (bundle: unknown) => Promise<{
+        artifactId: string;
+        renderer: string;
+        renderChecks: number;
+        persisted: false;
+      }>;
       installArtifact: (bundle: unknown, options?: { viewId?: string }) => Promise<{
         artifactId: string;
         nodeId: string;

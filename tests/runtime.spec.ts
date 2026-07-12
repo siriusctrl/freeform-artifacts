@@ -1,11 +1,32 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { agentArtifactBundle } from "./helpers/runtimeBundle";
+
+async function readArtifactPackage(page: Page, artifactId: string) {
+  return page.evaluate(async (id) => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("freeform-artifacts", 2);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const result = await new Promise((resolve, reject) => {
+      const request = database.transaction("artifact-packages", "readonly").objectStore("artifact-packages").get(id);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return result;
+  }, artifactId);
+}
 
 test("agent bundles install into a view without a repository change and survive reload", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await expect.poll(async () => page.evaluate(() => Boolean(window.__FREEFORM_AGENT__))).toBe(true);
   const bundle = agentArtifactBundle();
+  const validation = await page.evaluate(async (value) => window.__FREEFORM_AGENT__!.validateArtifact(value), bundle);
+  expect(validation).toMatchObject({ artifactId: bundle.artifactId, renderer: "chart-kit", renderChecks: 4, persisted: false });
+  expect(await readArtifactPackage(page, bundle.artifactId)).toBeUndefined();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_AGENT__!.capabilities.chartKit.series)).toEqual(["bar", "line"]);
   const result = await page.evaluate(async (value) => window.__FREEFORM_AGENT__!.installArtifact(value), bundle);
   expect(result.artifactId).toBe(bundle.artifactId);
   await expect(page.getByTestId(`node-${result.nodeId}`)).toBeVisible();
@@ -35,11 +56,11 @@ test("runtime artifacts isolate failures, reject code collisions, and commit onl
     ...agentArtifactBundle("broken-runtime-card"),
     moduleSource: `export const artifact = {
       id: "broken-runtime-card",
-      renderer: "echarts",
+      renderer: "react",
       title: "Broken runtime card",
       version: "1.0.0",
       defaultSize: { width: 420, height: 260 },
-      buildOption: () => { throw new Error("Intentional artifact failure"); },
+      render: () => { throw new Error("Intentional artifact failure"); },
     };`,
   };
   const brokenResult = await page.evaluate(
@@ -48,6 +69,44 @@ test("runtime artifacts isolate failures, reject code collisions, and commit onl
   );
   await expect(page.getByTestId(`node-${brokenResult.nodeId}`)).toContainText("Unable to render this artifact");
   await expect(page.getByTestId("node-node-revenue")).toBeVisible();
+
+  const invalidChartKit = {
+    ...agentArtifactBundle("invalid-chart-kit-card"),
+    moduleSource: `export const artifact = {
+      id: "invalid-chart-kit-card", renderer: "chart-kit", title: "Invalid Chart Kit",
+      version: "1.0.0", defaultSize: { width: 420, height: 260 },
+      buildChart: () => ({ kind: "cartesian", categories: ["Q1", "Q2"],
+        series: [{ id: "value", name: "Value", type: "bar", values: [1] }] }),
+    };`,
+  };
+  const preflightMessage = await page.evaluate(async (value) => {
+    try {
+      await window.__FREEFORM_AGENT__!.validateArtifact(value);
+      return "";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }, invalidChartKit);
+  expect(preflightMessage).toContain("must match the category count");
+
+  const unsupportedRawChart = {
+    ...agentArtifactBundle("unsupported-raw-chart"),
+    moduleSource: `export const artifact = {
+      id: "unsupported-raw-chart", renderer: "echarts", title: "Unsupported Raw Chart",
+      version: "1.0.0", defaultSize: { width: 420, height: 260 },
+      buildOption: () => ({ series: [{ type: "pie", data: [1, 2, 3] }] }),
+    };`,
+  };
+  const capabilityMessage = await page.evaluate(async (value) => {
+    try {
+      await window.__FREEFORM_AGENT__!.validateArtifact(value);
+      return "";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }, unsupportedRawChart);
+  expect(capabilityMessage).toContain("Raw ECharts series pie is not registered by this host");
+  expect(await readArtifactPackage(page, unsupportedRawChart.artifactId)).toBeUndefined();
 
   const original = agentArtifactBundle("immutable-runtime-card");
   await page.evaluate(async (value) => window.__FREEFORM_AGENT__!.installArtifact(value), original);
@@ -75,20 +134,7 @@ test("runtime artifacts isolate failures, reject code collisions, and commit onl
     }
   }, rejected);
   expect(targetMessage).toContain("Unknown canvas view");
-  const leakedPackage = await page.evaluate(async (artifactId) => {
-    const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("freeform-artifacts", 2);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    const result = await new Promise((resolve, reject) => {
-      const request = database.transaction("artifact-packages", "readonly").objectStore("artifact-packages").get(artifactId);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    database.close();
-    return result;
-  }, rejected.artifactId);
+  const leakedPackage = await readArtifactPackage(page, rejected.artifactId);
   expect(leakedPackage).toBeUndefined();
 });
 

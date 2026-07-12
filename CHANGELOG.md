@@ -62,6 +62,12 @@ All notable user-facing changes to this project should be documented here.
   package identities, atomic view installation, and partial-failure loading.
 - Debounced and per-view ordered workspace saves with page-close recovery.
 - Pull-request browser verification in GitHub Actions.
+- Declarative Chart Kit v1 for managed bar, line, and combo charts, including
+  dataset encoding, shared visual tokens, ARIA, and strict capability checks.
+- Non-persisting `validateArtifact()` and browser-visible renderer capabilities
+  for agent bundle preflight.
+- Explicit Browser View Bundle versus Self-Deployed Repo workflows in the
+  project skill and Build with AI handoff.
 
 ### Fixed
 

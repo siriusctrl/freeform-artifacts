@@ -23,7 +23,8 @@ Rules:
   node, but different source under an installed id is rejected; use a new id for
   a new implementation.
 - `moduleSource` is self-contained browser ESM. Do not import packages or fetch
-  code/data. ECharts artifacts return options; React artifacts may use
+  code/data. Prefer a `renderer: "chart-kit"` artifact returning a declarative
+  chart spec; raw ECharts artifacts return options, and React artifacts may use
   `window.React` without JSX.
 - Export one artifact as `artifact` or `default`.
 - Keep `node.data` and `node.config` serializable.
@@ -31,6 +32,8 @@ Rules:
   light/dark implementation and browser review in both modes.
 - Treat the module as trusted code. It executes in the page and is not sandboxed.
 - Validate the bundle in a real browser before installation.
+- When browser control is available, call `validateArtifact(bundle)` before
+  `installArtifact`. Preflight must report `persisted: false`.
 - A bundle package is browser-origin scoped while its node is view scoped. Board
   backup JSON does not include executable package source, so install the bundle
   separately when moving a board to another browser.
@@ -38,6 +41,11 @@ Rules:
 Direct installation when the agent controls the user's page:
 
 ```js
+await page.evaluate(
+  (bundle) => window.__FREEFORM_AGENT__.validateArtifact(bundle),
+  bundle,
+);
+
 await page.evaluate(
   ({ bundle, viewId }) => window.__FREEFORM_AGENT__.installArtifact(bundle, { viewId }),
   { bundle, viewId },

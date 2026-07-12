@@ -30,6 +30,10 @@ on navigation, invariants, verification, and handoff rules.
 - `src/canvas/seeds/demoBoard.ts`: default demo board nodes.
 - `src/lib/geometry.ts`: viewport math and screen/world coordinate conversion.
 - `src/artifacts/types.ts`: artifact contract.
+- `src/artifacts/chartKit.ts`: declarative Cartesian Chart Kit compiler,
+  capability manifest, and raw ECharts capability guard.
+- `src/artifacts/ChartKitArtifactHost.tsx`: adapts Chart Kit specs to the
+  managed ECharts host.
 - `src/artifacts/core/`: platform-provided artifacts.
 - `src/artifacts/examples/`: demo and verification artifacts.
 - `src/artifacts/generated/`: AI/user-generated repo-compiled artifact entry
@@ -61,6 +65,11 @@ on navigation, invariants, verification, and handoff rules.
 - Generated artifacts must not mutate canvas state directly.
 - Build with AI is bundle-first: trusted packages install into IndexedDB and a
   target local view without a repository change.
+- Artifact delivery mode must stay explicit: in-product Build with AI produces a
+  Browser View Bundle; self-deployed work belongs in
+  `src/artifacts/generated/*.artifact.tsx`.
+- Prefer Chart Kit for ordinary bar, line, and combo charts. Raw ECharts is a
+  registered-capability escape hatch, not the default generated interface.
 - Runtime package ids are immutable across the browser origin; package and view
   writes must remain atomic, while node placement stays view-scoped.
 - Keep Build with AI agent-neutral. Its copied prompt installs the skill first,
@@ -71,7 +80,8 @@ on navigation, invariants, verification, and handoff rules.
 - ECharts lifecycle stays inside `EChartsArtifactHost`.
 - Dense artifacts declare `minSize`; essential labels must fit at both default
   and minimum dimensions.
-- Prefer managed ECharts artifacts for standard charts.
+- Prefer Chart Kit artifacts for standard charts; use managed raw ECharts only
+  for registered capabilities that Chart Kit cannot express.
 - Use custom React artifacts for visuals or interactions ECharts cannot express
   cleanly.
 - Runtime external artifacts are trusted self-hosted code, not sandboxed

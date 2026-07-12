@@ -358,12 +358,23 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   await expect(page.getByTestId("agent-instruction")).toContainText(
     "Install the project artifact skill for your agent:",
   );
+  await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_VIEW_BUNDLE");
+  await expect(page.getByTestId("agent-instruction")).toContainText("Do not use the Self-Deployed Repo workflow");
+  await expect(page.getByTestId("agent-instruction")).toContainText(
+    "this browser mode produces a .freeform-artifact.json bundle outside the app source tree",
+  );
+  await expect(page.getByTestId("agent-instruction")).toContainText(
+    "Self-deployed mode produces src/artifacts/generated/<name>.artifact.tsx",
+  );
   await expect(page.getByTestId("agent-instruction")).toContainText(
     "npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder",
   );
   await expect(page.getByTestId("agent-instruction")).toContainText("ask the user what artifact they want to build");
   await expect(page.getByTestId("agent-instruction")).not.toContainText("Claude Code");
   await expect(page.getByTestId("agent-instruction")).toContainText("window.__FREEFORM_AGENT__.installArtifact");
+  await expect(page.getByTestId("agent-instruction")).toContainText("window.__FREEFORM_AGENT__.validateArtifact");
+  await expect(page.getByTestId("agent-instruction")).toContainText('renderer: "chart-kit"');
+  await expect(page.getByTestId("agent-instruction")).toContainText("Do not create src/artifacts/generated files");
   await expect(page.getByTestId("agent-instruction")).toContainText("Do not modify, commit, or deploy");
   await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
   expect((await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length).toBe(beforeHandoffCount);

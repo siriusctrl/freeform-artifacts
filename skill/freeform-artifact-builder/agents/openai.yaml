@@ -1,4 +1,4 @@
 interface:
   display_name: "Freeform Artifact Builder"
   short_description: "Create canvas-ready data artifacts"
-  default_prompt: "Use $freeform-artifact-builder to create and place a compliant artifact on the freeform canvas."
+  default_prompt: "Use $freeform-artifact-builder. Determine Browser View Bundle vs Self-Deployed Repo delivery before writing files, prefer Chart Kit for ordinary charts, and complete the mode-specific quality gate."

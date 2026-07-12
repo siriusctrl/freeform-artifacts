@@ -44,6 +44,8 @@ Code orientation:
 - `src/App.tsx` owns view bootstrap and switching.
 - `src/canvas/CanvasWorkspace.tsx` composes active-view state and product actions;
   focused hooks/services own persistence, runtime loading, and node creation.
+- `src/artifacts/chartKit.ts` turns declarative bar/line/combo specs into managed
+  ECharts options and publishes browser-visible capabilities.
 - `src/canvas/components/` contains the toolbar, default-collapsed view sidebar,
   AI handoff dialog, board, node, and zoom controls.
 - `src/canvas/hooks/useCanvasInteractions.ts` owns pan, zoom, drag, resize, and
@@ -89,6 +91,8 @@ Code orientation:
   references for future artifact-building agents.
 - `skill/freeform-artifact-builder/references/artifact-bundle.md` defines the
   no-commit personal bundle contract and installation routes.
+- `skill/freeform-artifact-builder/references/chart-kit.md` defines the managed
+  chart contract, capabilities, and raw ECharts escape hatch.
 - `skill/freeform-artifact-builder/references/visual-style-guide.md` defines
   artifact hierarchy, spacing, chart composition, and required dark-mode rules.
 

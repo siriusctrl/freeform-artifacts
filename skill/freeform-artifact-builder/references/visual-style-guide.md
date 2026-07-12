@@ -48,9 +48,11 @@ canvas, not a miniature dashboard squeezed into a card.
 
 ## Required Dark Mode
 
-Every artifact must deliberately implement and verify both theme modes.
+Every artifact must deliberately verify both theme modes. Chart Kit artifacts
+receive the managed dual-theme palette, typography, grid, tooltip, and axes; do
+not restyle those without a domain reason.
 
-For ECharts, branch on `theme.mode` inside `buildOption` and theme all of these
+For raw ECharts, branch on `theme.mode` inside `buildOption` and theme all of these
 when present:
 
 - title and subtitle text;
@@ -71,6 +73,8 @@ project CSS must derive inline values from the provided `theme` object.
 
 ## Chart Composition
 
+- Prefer Chart Kit for Cartesian charts so spacing, axes, palette, tooltip, and
+  ARIA stay consistent across generated artifacts.
 - Reserve explicit space for titles, legends, labels, and bottom annotations;
   the plot must use the remaining rectangle, not overlap those regions.
 - Use `containLabel` for axes, but still verify rendered SVG text bounds.
