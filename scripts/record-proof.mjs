@@ -289,9 +289,26 @@ try {
   verifyUx("published template has a meaningful initial board", initialLayout.state?.nodes.length >= 5, {
     nodeCount: initialLayout.state?.nodes.length,
   });
-  for (const control of ["snap-toggle", "theme-toggle", "workspace-menu", "build-artifact", "zoom-level"]) {
+  for (const control of ["theme-toggle", "workspace-menu", "build-artifact", "zoom-level"]) {
     verifyUx(`control is visible: ${control}`, await page.getByTestId(control).isVisible());
   }
+  const topControlHeights = await page.evaluate(() =>
+    ["theme-toggle", "workspace-menu", "board-status", "build-artifact"].map((testId) =>
+      Math.round(document.querySelector(`[data-testid="${testId}"]`)?.getBoundingClientRect().height ?? 0),
+    ),
+  );
+  verifyUx("top-level toolbar controls share one height", new Set(topControlHeights).size === 1 && topControlHeights[0] === 44, {
+    heights: topControlHeights,
+  });
+  await page.getByTestId("workspace-menu").click();
+  verifyUx("snap setting is labeled and initially on", await page.getByTestId("snap-toggle").getByText("On").isVisible());
+  await page.getByTestId("snap-toggle").click();
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.snapToGrid === false);
+  verifyUx("snap setting shows immediate off feedback", await page.getByTestId("snap-toggle").getByText("Off").isVisible());
+  await page.getByTestId("snap-toggle").click();
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.snapToGrid === true);
+  verifyUx("snap setting returns to on", await page.getByTestId("snap-toggle").getByText("On").isVisible());
+  await page.getByTestId("workspace-menu").click();
   verifyUx("redundant select control is absent", (await page.getByTitle("Select").count()) === 0);
   verifyUx("selection inspector is absent from the product UI", (await page.locator(".inspector").count()) === 0);
   const initialProbabilityLayout = await chartLabelLayout(page, "echarts-inflection-probability", ["P75"]);

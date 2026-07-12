@@ -164,10 +164,6 @@
     justify-self: center;
     min-width: 0;
     max-width: 100%;
-    height: 42px;
-    padding: 0 6px;
-    overflow: hidden;
-    box-shadow: 0 8px 20px var(--shadow);
   }
 
   .topbar-actions {
@@ -183,10 +179,17 @@
   }
 
   .theme-toggle {
-    min-width: 34px;
-    width: 34px;
+    min-width: 42px;
+    width: 42px;
+    height: 42px;
     grid-template-columns: 20px;
     padding: 0 7px;
+  }
+
+  .tool-strip .toolbar-menu-wrap > .icon-button {
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
   }
 
   .theme-toggle span {

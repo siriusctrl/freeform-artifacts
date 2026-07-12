@@ -100,7 +100,8 @@ Current controls:
 - Delete the selected artifact from its title bar, or press `Delete` or
   `Backspace` while canvas focus is outside an input.
 - Keep snap-to-grid on by default for 38px world-coordinate placement; toggle
-  it with the grid button in the top toolbar when free placement is needed.
+  it from **More > Snap to 38px grid**, where the current On/Off state remains
+  visible while changing the setting.
 - Drag empty canvas space to pan.
 - Scroll with a trackpad or mouse wheel to pan naturally in either direction.
 - Pinch on a trackpad to zoom around the pointer.
@@ -335,7 +336,7 @@ Implemented:
 - Draggable artifact nodes.
 - Resizable selected artifact nodes.
 - Selected-artifact deletion through a title-bar control and keyboard shortcuts.
-- Default-on 38px snap-to-grid placement with a toolbar toggle.
+- Default-on 38px snap-to-grid placement with a labeled More-menu toggle.
 - Artifact-specific minimum sizes and responsive ECharts reflow.
 - Published demo template with a per-browser local workspace fork.
 - IndexedDB workspace persistence with a synchronous local-storage recovery

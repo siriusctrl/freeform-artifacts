@@ -49,13 +49,7 @@
 }
 
 .tool-strip {
-  height: 46px;
   gap: 8px;
-  padding: 0 10px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  box-shadow: 0 12px 28px var(--shadow);
 }
 
 .toolbar-menu-wrap {
@@ -68,7 +62,7 @@
   top: calc(100% + 10px);
   right: 0;
   z-index: 20;
-  width: 210px;
+  width: 228px;
   padding: 6px;
   color: var(--text);
   background: var(--panel);
@@ -80,7 +74,7 @@
 .toolbar-menu button {
   width: 100%;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
   min-height: 38px;
@@ -95,6 +89,16 @@
 
 .toolbar-menu button:hover {
   background: var(--panel-soft);
+}
+
+.menu-state {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.menu-state.active {
+  color: var(--accent-strong);
 }
 
 .icon-button,
@@ -125,26 +129,37 @@
   display: grid;
   grid-template-columns: 20px auto;
   gap: 7px;
-  min-width: 82px;
-  height: 34px;
-  padding: 0 10px;
+  min-width: 98px;
+  height: 44px;
+  padding: 0 16px;
   color: var(--text);
-  background: transparent;
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 999px;
   font-size: 13px;
   font-weight: 730;
   line-height: 1;
+  box-shadow: 0 10px 24px var(--shadow);
 }
 
 .theme-toggle svg {
   justify-self: center;
 }
 
+.tool-strip .toolbar-menu-wrap > .icon-button {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 24px var(--shadow);
+}
+
 .primary-action {
   display: grid;
   grid-template-columns: 18px auto;
   gap: 8px;
-  height: 42px;
+  height: 44px;
   min-width: 142px;
   padding: 0 15px;
   color: var(--primary-text);
@@ -186,7 +201,8 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 7px 11px;
+  height: 44px;
+  padding: 0 13px;
   font-size: 12px;
   font-weight: 690;
   box-shadow: 0 10px 24px var(--shadow);

@@ -155,10 +155,22 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
     return probability ? [probability.width % state.snapGridSize, probability.height % state.snapGridSize] : null;
   }).toEqual([0, 0]);
 
+  await page.getByTestId("workspace-menu").click();
+  await expect(page.getByTestId("snap-toggle")).toContainText("On");
   await page.getByTestId("snap-toggle").click();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.snapToGrid)).toBe(false);
+  await expect(page.getByTestId("snap-toggle")).toContainText("Off");
   await page.getByTestId("snap-toggle").click();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.snapToGrid)).toBe(true);
+  await expect(page.getByTestId("snap-toggle")).toContainText("On");
+  await page.getByTestId("workspace-menu").click();
+
+  const topControlHeights = await page.evaluate(() =>
+    ["theme-toggle", "workspace-menu", "board-status", "build-artifact"].map((testId) =>
+      Math.round(document.querySelector(`[data-testid="${testId}"]`)!.getBoundingClientRect().height),
+    ),
+  );
+  expect(new Set(topControlHeights)).toEqual(new Set([44]));
 
   const panStart = { x: stageBox!.x + 100, y: stageBox!.y + stageBox!.height - 120 };
   await page.mouse.move(panStart.x, panStart.y);
