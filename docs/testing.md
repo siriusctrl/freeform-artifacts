@@ -35,7 +35,8 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - dragging empty canvas space changes the viewport offset;
 - the visual grid follows viewport pan and zoom instead of staying fixed to the
   browser glass;
-- wheel input changes zoom scale;
+- ordinary wheel input pans on both axes without changing zoom scale;
+- a browser pinch gesture changes zoom scale around the pointer;
 - zoom controls change zoom scale;
 - resize handles change card dimensions;
 - the snap-to-grid toolbar toggle can switch free placement off and back on;

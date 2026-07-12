@@ -25,6 +25,20 @@ type DragState =
     };
 
 const MIN_NODE_SIZE = { width: 180, height: 130 };
+const WHEEL_LINE_HEIGHT = 16;
+const PINCH_ZOOM_SENSITIVITY = 0.002;
+
+function wheelDeltaScale(event: WheelEvent, pageHeight: number) {
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+    return WHEEL_LINE_HEIGHT;
+  }
+
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+    return pageHeight;
+  }
+
+  return 1;
+}
 
 interface UseCanvasInteractionsOptions {
   stageRef: RefObject<HTMLDivElement | null>;
@@ -158,11 +172,27 @@ export function useCanvasInteractions({
     if (!stage) {
       return;
     }
+    const pageHeight = stage.clientHeight;
 
     function handleWheel(event: WheelEvent) {
       event.preventDefault();
-      const delta = event.deltaY > 0 ? 0.9 : 1.1;
-      setViewport((current) => zoomAt(current, { x: event.clientX, y: event.clientY }, current.scale * delta));
+      const deltaScale = wheelDeltaScale(event, pageHeight);
+      const deltaX = event.deltaX * deltaScale;
+      const deltaY = event.deltaY * deltaScale;
+
+      if (event.ctrlKey) {
+        const zoomFactor = Math.exp(-deltaY * PINCH_ZOOM_SENSITIVITY);
+        setViewport((current) =>
+          zoomAt(current, { x: event.clientX, y: event.clientY }, current.scale * zoomFactor),
+        );
+        return;
+      }
+
+      setViewport((current) => ({
+        ...current,
+        x: current.x - deltaX,
+        y: current.y - deltaY,
+      }));
     }
 
     stage.addEventListener("wheel", handleWheel, { passive: false });

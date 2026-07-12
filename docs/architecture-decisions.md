@@ -181,9 +181,9 @@ Date: 2026-07-07
 
 ### Context
 
-The canvas must support card drag, blank-stage pan, and wheel zoom without the
-browser interpreting the same gesture as text selection, native element drag, or
-page-level scrolling/zooming.
+The canvas must support card drag, blank-stage pan, and wheel navigation without
+the browser interpreting the same gesture as text selection, native element
+drag, or page-level scrolling/zooming.
 
 The first prototype used React pointer handlers attached mostly to the stage and
 nodes. That worked in automated happy paths but could let browser selection
@@ -198,7 +198,7 @@ The canvas shell owns pointer interaction during active gestures:
 - drag targets call `preventDefault`;
 - canvas nodes are marked `draggable={false}`;
 - the stage disables user selection and touch browser gestures;
-- wheel zoom uses a non-passive DOM listener on the stage.
+- wheel navigation uses a non-passive DOM listener on the stage.
 
 ### Why this route
 
@@ -633,3 +633,51 @@ at the portfolio site and fail after deployment.
   production project base.
 
 Revisit if the project moves to a custom domain root or another static host.
+
+## ADR-0013: Separate wheel panning from trackpad pinch zoom
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+The first interaction model treated every browser `wheel` event as zoom. On a
+trackpad, that turns ordinary two-finger vertical scrolling into unexpected
+zooming and conflicts with the spatial navigation users expect from Freeform.
+Chromium reports trackpad pinch gestures as control-modified wheel events, so
+the host can distinguish the two intents without device detection.
+
+### Decision
+
+- Ordinary wheel events pan the viewport by the inverse of their horizontal and
+  vertical deltas, matching native content scrolling.
+- Control-modified wheel events zoom continuously around the pointer and do not
+  pan the viewport.
+- Normalize line- and page-mode wheel deltas into pixels; trackpad pixel deltas
+  pass through unchanged.
+- Keep the stage listener non-passive so canvas navigation does not also scroll
+  or zoom the browser page.
+- Keep toolbar zoom controls as an explicit mouse and keyboard-accessible path.
+
+### Why this route
+
+The browser already applies the operating system's natural-scrolling preference
+to wheel deltas. Consuming those values directly preserves the user's platform
+setting and supports two-axis trackpad movement without user-agent or hardware
+detection. An exponential pinch factor also converts high-resolution trackpad
+deltas into smooth scale changes instead of fixed ten-percent jumps.
+
+### Tradeoffs
+
+- A mouse wheel pans instead of zooming while the pointer is over the full-screen
+  canvas; explicit zoom controls remain visible.
+- The control-modified wheel convention depends on browser behavior, although it
+  is the standard Chromium representation used by the deployed app and tests.
+- Preventing the default wheel action means the surrounding page will not scroll
+  while the pointer is over the canvas. This is intentional for the full-screen
+  workspace, but should be revisited if the canvas is embedded inside a longer
+  document.
+
+Revisit when native touch gestures, a configurable input map, or an embedded
+canvas layout is introduced.

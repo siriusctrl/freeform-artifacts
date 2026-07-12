@@ -103,24 +103,61 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
     return style;
   }).not.toBe(initialGrid.backgroundPosition);
 
+  const beforeWheelPan = await page.evaluate(() => window.__FREEFORM_STATE__!.viewport);
+  const beforeWheelGrid = await grid.evaluate((element) => {
+    const style = window.getComputedStyle(element);
+    return { backgroundPosition: style.backgroundPosition, backgroundSize: style.backgroundSize };
+  });
   await page.mouse.move(stageBox!.x + 650, stageBox!.y + 360);
-  await page.mouse.wheel(0, -420);
+  await page.mouse.wheel(90, 140);
 
   await expect.poll(async () => {
     const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
-    return state.viewport.scale;
-  }).toBeGreaterThan(initial.viewport.scale);
+    return Math.round(state.viewport.x);
+  }).toBe(Math.round(beforeWheelPan.x - 90));
+  await expect.poll(async () => {
+    const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
+    return Math.round(state.viewport.y);
+  }).toBe(Math.round(beforeWheelPan.y - 140));
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.viewport.scale)).toBe(
+    beforeWheelPan.scale,
+  );
+  await expect.poll(async () => {
+    const style = await grid.evaluate((element) => window.getComputedStyle(element).backgroundPosition);
+    return style;
+  }).not.toBe(beforeWheelGrid.backgroundPosition);
   await expect.poll(async () => {
     const style = await grid.evaluate((element) => window.getComputedStyle(element).backgroundSize);
     return style;
-  }).not.toBe(initialGrid.backgroundSize);
+  }).toBe(beforeWheelGrid.backgroundSize);
 
-  const scaleAfterWheel = await page.evaluate(() => window.__FREEFORM_STATE__!.viewport.scale);
+  await stage.evaluate((element, point) => {
+    element.dispatchEvent(
+      new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        clientX: point.x,
+        clientY: point.y,
+        ctrlKey: true,
+        deltaY: -120,
+      }),
+    );
+  }, { x: stageBox!.x + 650, y: stageBox!.y + 360 });
+
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.viewport.scale)).toBeGreaterThan(
+    beforeWheelPan.scale,
+  );
+  await expect.poll(async () => {
+    const style = await grid.evaluate((element) => window.getComputedStyle(element).backgroundSize);
+    return style;
+  }).not.toBe(beforeWheelGrid.backgroundSize);
+
+  const scaleAfterPinch = await page.evaluate(() => window.__FREEFORM_STATE__!.viewport.scale);
   await page.getByTestId("zoom-out").click();
   await expect.poll(async () => {
     const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
     return state.viewport.scale;
-  }).toBeLessThan(scaleAfterWheel);
+  }).toBeLessThan(scaleAfterPinch);
 
   await page.getByTestId("theme-toggle").click();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
