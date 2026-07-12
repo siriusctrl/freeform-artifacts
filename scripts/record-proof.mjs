@@ -157,6 +157,39 @@ async function chartLabelLayout(page, hostTestId, labels) {
   }, labels);
 }
 
+async function probabilityNoteLayout(page) {
+  return page.getByTestId("echarts-inflection-probability").evaluate((host) => {
+    const hostRect = host.getBoundingClientRect();
+    const compact = hostRect.width < 640 || hostRect.height < 400;
+    const horizontalPadding = compact ? 18 : 24;
+    const noteTop = compact ? 52 : 62;
+    const noteHeight = compact ? 90 : 76;
+    const panel = {
+      left: hostRect.left + horizontalPadding,
+      right: hostRect.right - horizontalPadding,
+      top: hostRect.top + noteTop,
+      bottom: hostRect.top + noteTop + noteHeight,
+    };
+    const labels = ["What:", "Read:", "Logic:"];
+    const textElements = Array.from(host.querySelectorAll("svg text"));
+    const matches = labels.map((label) => ({
+      label,
+      element: textElements.find((element) => element.textContent?.includes(label)),
+    }));
+
+    return {
+      missing: matches.filter(({ element }) => !element).map(({ label }) => label),
+      tops: matches.flatMap(({ element }) => element ? [Math.round(element.getBoundingClientRect().top)] : []),
+      overflow: matches.flatMap(({ label, element }) => {
+        if (!element) return [];
+        const rect = element.getBoundingClientRect();
+        const outside = rect.left < panel.left - 1 || rect.right > panel.right + 1 || rect.top < panel.top - 1 || rect.bottom > panel.bottom + 1;
+        return outside ? [{ label, panel, rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom } }] : [];
+      }),
+    };
+  });
+}
+
 function checkSampledFrames(gifFile) {
   const width = 64;
   const height = 40;
@@ -228,6 +261,7 @@ try {
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
+    permissions: ["clipboard-read", "clipboard-write"],
     recordVideo: {
       dir: videoDir,
       size: { width: 1440, height: 900 },
@@ -255,9 +289,10 @@ try {
   verifyUx("published template has a meaningful initial board", initialLayout.state?.nodes.length >= 5, {
     nodeCount: initialLayout.state?.nodes.length,
   });
-  for (const control of ["snap-toggle", "import-data", "theme-toggle", "add-artifact", "zoom-level"]) {
+  for (const control of ["snap-toggle", "theme-toggle", "workspace-menu", "build-artifact", "zoom-level"]) {
     verifyUx(`control is visible: ${control}`, await page.getByTestId(control).isVisible());
   }
+  verifyUx("redundant select control is absent", (await page.getByTitle("Select").count()) === 0);
   verifyUx("selection inspector is absent from the product UI", (await page.locator(".inspector").count()) === 0);
   const initialProbabilityLayout = await chartLabelLayout(page, "echarts-inflection-probability", ["P75"]);
   verifyUx(
@@ -265,7 +300,14 @@ try {
     initialProbabilityLayout.missing.length === 0 && initialProbabilityLayout.overflow.length === 0,
     initialProbabilityLayout,
   );
-  const initialSankeyLayout = await chartLabelLayout(page, "echarts-sankey-flow", ["AI servers", "Client"]);
+  const initialProbabilityNote = await probabilityNoteLayout(page);
+  verifyUx(
+    "probability note uses three contained lines",
+    initialProbabilityNote.missing.length === 0 && initialProbabilityNote.overflow.length === 0 && new Set(initialProbabilityNote.tops).size === 3,
+    initialProbabilityNote,
+  );
+  verifyUx("published example contains no DRAM wording", !(await page.locator("body").innerText()).match(/DRAM/i));
+  const initialSankeyLayout = await chartLabelLayout(page, "echarts-sankey-flow", ["North", "South"]);
   verifyUx(
     "Sankey labels fit inside the chart host",
     initialSankeyLayout.missing.length === 0 && initialSankeyLayout.overflow.length === 0,
@@ -338,6 +380,12 @@ try {
     "probability markers remain contained after resize",
     probabilityLabelLayout.missing.length === 0 && probabilityLabelLayout.overflow.length === 0,
     probabilityLabelLayout,
+  );
+  const resizedProbabilityNote = await probabilityNoteLayout(page);
+  verifyUx(
+    "probability note remains contained after resize",
+    resizedProbabilityNote.missing.length === 0 && resizedProbabilityNote.overflow.length === 0 && new Set(resizedProbabilityNote.tops).size === 3,
+    resizedProbabilityNote,
   );
 
   await showProofStep(page, "Drag background • pan the whole world", 550);
@@ -450,7 +498,7 @@ try {
   verifyUx("Sankey resize respects its artifact minimum", resizedSankey?.width === 532 && resizedSankey?.height === 342, {
     node: resizedSankey,
   });
-  const sankeyLabelLayout = await chartLabelLayout(page, "echarts-sankey-flow", ["AI servers", "Client"]);
+  const sankeyLabelLayout = await chartLabelLayout(page, "echarts-sankey-flow", ["North", "South"]);
   verifyUx(
     "Sankey labels remain contained at minimum size",
     sankeyLabelLayout.missing.length === 0 && sankeyLabelLayout.overflow.length === 0,
@@ -460,6 +508,7 @@ try {
   await page.waitForTimeout(500);
 
   await showProofStep(page, "Import database rows • verify transformed UI", 550);
+  await page.getByTestId("workspace-menu").click();
   await page.getByTestId("import-data").click();
   await page.waitForTimeout(550);
   verifyUx("imported data reaches the rendered artifacts", await page.getByText("$232,400").isVisible());
@@ -469,31 +518,33 @@ try {
   await page.waitForTimeout(600);
   verifyUx("theme switch reaches dark mode", (await page.evaluate(() => window.__FREEFORM_STATE__.themeMode)) === "dark");
 
-  await showProofStep(page, "Add artifact • move it into the composition", 550);
-  const beforeAdd = await page.evaluate(() => window.__FREEFORM_STATE__);
-  await page.getByTestId("add-artifact").click();
-  await page.waitForTimeout(350);
-  const afterAdd = await page.evaluate(() => window.__FREEFORM_STATE__);
-  verifyUx("add artifact inserts and selects one node", afterAdd.nodes.length === beforeAdd.nodes.length + 1 && afterAdd.selectedNodeId.startsWith("node-ai-"), {
-    beforeCount: beforeAdd.nodes.length,
-    afterCount: afterAdd.nodes.length,
-    selectedNodeId: afterAdd.selectedNodeId,
+  await showProofStep(page, "Build with AI • generate a Claude Code handoff", 550);
+  const beforeHandoff = await page.evaluate(() => window.__FREEFORM_STATE__);
+  await page.getByTestId("build-artifact").click();
+  await page.getByTestId("agent-request").fill("A regional renewable capacity mix chart with quarterly forecasts");
+  await page.waitForTimeout(500);
+  const instruction = await page.getByTestId("agent-instruction").innerText();
+  verifyUx("AI handoff installs and invokes the public artifact skill", instruction.includes("npx skills add siriusctrl/freeform-artifacts") && instruction.includes("regional renewable capacity mix chart"));
+  await page.getByTestId("copy-agent-instruction").click();
+  await page.getByTestId("copy-agent-instruction").getByText("Copied").waitFor({ state: "visible" });
+  verifyUx("AI handoff can be copied", await page.getByTestId("copy-agent-instruction").getByText("Copied").isVisible());
+  const afterHandoff = await page.evaluate(() => window.__FREEFORM_STATE__);
+  verifyUx("AI handoff does not insert a fake template card", afterHandoff.nodes.length === beforeHandoff.nodes.length, {
+    beforeCount: beforeHandoff.nodes.length,
+    afterCount: afterHandoff.nodes.length,
   });
-  const addedNode = page.getByTestId(`node-${afterAdd.selectedNodeId}`);
-  const addedBox = await addedNode.boundingBox();
-  if (!addedBox) throw new Error("Added artifact was not visible enough to move");
-  const addedBeforeMove = afterAdd.nodes.find((node) => node.id === afterAdd.selectedNodeId);
-  await page.mouse.move(addedBox.x + 80, addedBox.y + 20);
-  await page.mouse.down();
-  await page.mouse.move(addedBox.x + 170, addedBox.y + 95, { steps: 16 });
-  await page.mouse.up();
+  await page.getByTitle("Close").click();
+  await page.waitForTimeout(400);
+
+  await showProofStep(page, "Delete artifact • remove it from this workspace", 550);
+  const beforeDelete = await page.evaluate(() => window.__FREEFORM_STATE__);
+  await page.getByTestId("delete-node-revenue").click();
   await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saved locally");
   await page.waitForTimeout(450);
-  const afterAddedMove = await page.evaluate(() => window.__FREEFORM_STATE__);
-  const addedAfterMove = afterAddedMove.nodes.find((node) => node.id === afterAddedMove.selectedNodeId);
-  verifyUx("new artifact remains draggable and snapped", (addedAfterMove?.x !== addedBeforeMove?.x || addedAfterMove?.y !== addedBeforeMove?.y) && addedAfterMove?.x % afterAddedMove.snapGridSize === 0 && addedAfterMove?.y % afterAddedMove.snapGridSize === 0, {
-    before: addedBeforeMove,
-    after: addedAfterMove,
+  const afterDelete = await page.evaluate(() => window.__FREEFORM_STATE__);
+  verifyUx("delete control removes exactly the selected artifact", afterDelete.nodes.length === beforeDelete.nodes.length - 1 && !afterDelete.nodes.some((node) => node.id === "node-revenue"), {
+    beforeCount: beforeDelete.nodes.length,
+    afterCount: afterDelete.nodes.length,
   });
 
   await showProofStep(page, "Close page • preserve this browser’s workspace", 750);
@@ -514,12 +565,7 @@ try {
     beforeCount: persistedSnapshot.nodes.length,
     afterCount: restoredState.nodes.length,
   });
-  const persistedAddedNode = persistedSnapshot.nodes.find((node) => node.id === persistedSnapshot.selectedNodeId);
-  const restoredAddedNode = restoredState.nodes.find((node) => node.id === persistedSnapshot.selectedNodeId);
-  verifyUx("reload restores the moved artifact position", restoredAddedNode?.x === persistedAddedNode?.x && restoredAddedNode?.y === persistedAddedNode?.y, {
-    before: persistedAddedNode,
-    after: restoredAddedNode,
-  });
+  verifyUx("reload preserves artifact deletion", !restoredState.nodes.some((node) => node.id === "node-revenue"));
   verifyUx("reload restores theme and storage mode", restoredState.themeMode === "dark" && restoredState.storageMode === "indexeddb", {
     themeMode: restoredState.themeMode,
     storageMode: restoredState.storageMode,
@@ -602,7 +648,8 @@ try {
       "toolbar zoom and viewport reset",
       "import query result",
       "toggle dark mode",
-      "add and move artifact",
+      "generate and copy a Claude Code artifact handoff",
+      "delete an artifact with the selected-card control",
       "close, reopen, and restore the browser-local workspace",
       "capture screenshot",
     ],

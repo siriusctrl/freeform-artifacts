@@ -30,6 +30,8 @@ canvas.
    `public/artifacts/generated/manifest.json`.
 8. Register core/example artifacts in the right registry layer and add or update
    `src/canvas/seeds/demoBoard.ts` only when the demo should show it by default.
+   Increment the published template version in `src/workspaces/templates.ts`
+   whenever the authored demo board changes.
 9. Run `npm run check`, `npm run verify:ui`, `npm run verify:preview`, and
    `npm run verify:proof` for user-facing visual or interaction changes.
 10. Inspect the generated GIF, internal `contact-sheet.png`, and
@@ -52,6 +54,9 @@ canvas.
   render prop to reflow content at default and minimum dimensions.
 - Keep every essential chart label and annotation inside the artifact host;
   verify SVG text bounds instead of assuming `chart.resize()` prevents clipping.
+- Treat line wrapping and annotation layout as artifact responsibilities. A
+  newline in rich text is not proof of separate SVG lines; inspect rendered
+  element positions at default and minimum sizes.
 - Attach a Zod `dataValidator` to new artifacts.
 - Treat runtime external ESM artifacts as trusted self-hosted code, not
   sandboxed plugins.

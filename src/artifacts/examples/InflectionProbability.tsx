@@ -34,6 +34,11 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
     const grid = isDark ? "rgba(238,243,243,0.26)" : "rgba(23,23,23,0.22)";
     const panel = isDark ? "rgba(53,200,220,0.09)" : "rgba(0,152,184,0.08)";
     const alert = isDark ? "#ff6b70" : "#ef4444";
+    const noteLines = [
+      ["What", data.note.what],
+      ["Read", data.note.read],
+      ["Logic", data.note.logic],
+    ];
 
     return {
       backgroundColor: "transparent",
@@ -63,22 +68,19 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
             lineWidth: 1,
           },
         },
-        {
-          type: "text",
+        ...noteLines.map(([label, value], index) => ({
+          type: "text" as const,
           left: horizontalPadding + 18,
-          top: noteTop + 16,
+          top: noteTop + 14 + index * 20,
           style: {
-            text: `{b|What:} ${data.note.what}\n{b|Read:} ${data.note.read}\n{b|Logic:} ${data.note.logic}`,
+            text: `{b|${label}:} ${value}`,
             rich: {
               b: { fill: text, fontWeight: 760 },
             },
             fill: muted,
             font: "12px Geist Variable",
-            lineHeight: 19,
-            width: noteWidth - 36,
-            overflow: "break",
           },
-        },
+        })),
         {
           type: "text",
           left: "center",

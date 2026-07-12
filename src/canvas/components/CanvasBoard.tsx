@@ -13,6 +13,7 @@ interface CanvasBoardProps {
   stageRef: RefObject<HTMLDivElement | null>;
   viewport: CanvasViewport;
   onChangeZoom: (factor: number) => void;
+  onDeleteNode: (nodeId: string) => void;
   onNodePointerDown: (event: PointerEvent<HTMLDivElement>, node: CanvasNode) => void;
   onResetView: () => void;
   onResizePointerDown: (event: PointerEvent<HTMLButtonElement>, node: CanvasNode) => void;
@@ -27,6 +28,7 @@ export function CanvasBoard({
   stageRef,
   viewport,
   onChangeZoom,
+  onDeleteNode,
   onNodePointerDown,
   onResetView,
   onResizePointerDown,
@@ -64,6 +66,7 @@ export function CanvasBoard({
             canvasTheme={canvasTheme}
             isSelected={node.id === selectedNodeId}
             node={node}
+            onDeleteNode={onDeleteNode}
             onNodePointerDown={onNodePointerDown}
             onResizePointerDown={onResizePointerDown}
           />

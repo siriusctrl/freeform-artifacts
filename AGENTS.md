@@ -8,6 +8,8 @@ on navigation, invariants, verification, and handoff rules.
 
 - `src/App.tsx`: app orchestration only.
 - `src/canvas/components/`: canvas UI pieces.
+- `src/canvas/components/AgentHandoffDialog.tsx`: the copyable Claude Code
+  artifact-generation handoff; it must not mutate the board.
 - `src/canvas/hooks/useCanvasInteractions.ts`: drag, resize, pan, zoom, snap,
   and z-order interaction mechanics.
 - `src/canvas/board.ts`: serializable board schema and legacy persistence
@@ -44,6 +46,8 @@ on navigation, invariants, verification, and handoff rules.
 - Keep workspace keys scoped by template ID and preserve versioned migration
   boundaries.
 - Generated artifacts must not mutate canvas state directly.
+- The Build with AI surface generates instructions only; adding a real artifact
+  remains a reviewed repository change.
 - Database shaping belongs in transforms, not render components.
 - ECharts lifecycle stays inside `EChartsArtifactHost`.
 - Dense artifacts declare `minSize`; essential labels must fit at both default

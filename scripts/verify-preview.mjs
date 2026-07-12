@@ -23,10 +23,10 @@ const server = spawn(
   "npm",
   ["exec", "vite", "--", "preview", "--host", host, "--port", String(port), "--strictPort"],
   {
-  cwd: root,
-  detached: true,
-  stdio: "ignore",
-  env: { ...process.env, VITE_BASE_PATH: basePath },
+    cwd: root,
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env, VITE_BASE_PATH: basePath },
   },
 );
 
@@ -40,6 +40,7 @@ try {
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.getByTestId("node-node-probability").waitFor({ state: "visible" });
   await page.waitForFunction(() => window.__FREEFORM_STATE__?.artifactIds?.includes("runtime-margin-chart"));
+  await page.getByTestId("workspace-menu").click();
   await page.getByTestId("import-data").click();
   await page.getByText("$232,400").waitFor({ state: "visible" });
   await page.getByTestId("theme-toggle").click();

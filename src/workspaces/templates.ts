@@ -15,7 +15,7 @@ function initialTemplateViewport() {
 const templates: Record<string, WorkspaceTemplate> = {
   [DEFAULT_TEMPLATE_ID]: {
     id: DEFAULT_TEMPLATE_ID,
-    version: 1,
+    version: 2,
     title: "Market overview",
     description: "A working canvas of database-backed metrics, probability, and flow artifacts.",
     createBoard: () =>

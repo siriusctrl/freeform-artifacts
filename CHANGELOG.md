@@ -7,8 +7,8 @@ All notable user-facing changes to this project should be documented here.
 ### Added
 
 - Initial React/TypeScript/Vite freeform artifact canvas.
-- DOM-based artifact nodes with pan, zoom, drag, selection, and add-artifact
-  interaction.
+- DOM-based artifact nodes with pan, zoom, drag, selection, resize, and deletion
+  interactions.
 - Light/dark mode support.
 - Artifact contract and registry with metric, table, and flow-diagram examples.
 - Managed ECharts artifact host for standard chart artifacts.
@@ -20,6 +20,8 @@ All notable user-facing changes to this project should be documented here.
 - Versioned workspace JSON import/export and explicit reset-to-demo control.
 - Default-on 38px snap-to-grid placement and resizing with a toolbar toggle.
 - Selected-card resize handles.
+- Selected-artifact deletion from the title bar and with `Delete`/`Backspace`.
+- Repository-aware **Build with AI** handoff generation for Claude Code.
 - Transform registry with checked raw-row fixtures.
 - Zod-backed artifact payload validation with invalid-artifact fallback UI.
 - Playwright browser smoke test for core canvas interactions.
@@ -41,6 +43,10 @@ All notable user-facing changes to this project should be documented here.
 
 ### Fixed
 
+- Split probability chart guidance into three independently positioned SVG
+  lines so What, Read, and Logic remain inside the note panel.
+- Replaced semiconductor-specific demo wording with a generic renewable supply
+  and allocation scenario.
 - Reflowed managed ECharts options from live content-box dimensions so
   probability markers and Sankey labels stay inside their hosts.
 - Added artifact-specific minimum resize dimensions for dense charts.
@@ -59,7 +65,7 @@ All notable user-facing changes to this project should be documented here.
   behavior do not take over the gesture.
 - Made zoom verification cover both pinch zoom and toolbar zoom controls.
 - Improved theme toggle affordance with explicit Light/Dark labeling.
-- Centered the add-artifact action content optically.
+- Centered the primary toolbar action content optically.
 - Reflowed the mobile toolbar into the topbar so controls do not cover the
   product title or canvas.
 - Kept static ECharts artifacts from refreshing or entering hover states during
@@ -78,4 +84,5 @@ All notable user-facing changes to this project should be documented here.
 
 - Removed the read-only selection inspector from the canvas UI; browser debug
   state remains available to verification tooling.
+- Removed the redundant select tool and placeholder Add artifact behavior.
 - Removed the low-value sidebar so the first screen prioritizes the canvas.

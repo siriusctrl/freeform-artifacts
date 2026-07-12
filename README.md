@@ -96,7 +96,9 @@ npx skills add . --list --full-depth
 Current controls:
 
 - Drag an artifact card to move it.
-- Drag the selected card's bottom-right handle to resize it.
+- Drag the selected card's labeled bottom-right resize control to resize it.
+- Delete the selected artifact from its title bar, or press `Delete` or
+  `Backspace` while canvas focus is outside an input.
 - Keep snap-to-grid on by default for 38px world-coordinate placement; toggle
   it with the grid button in the top toolbar when free placement is needed.
 - Drag empty canvas space to pan.
@@ -104,11 +106,11 @@ Current controls:
 - Pinch on a trackpad to zoom around the pointer.
 - Use the bottom-left zoom controls to zoom or reset the view.
 - Toggle light/dark mode from the top toolbar.
-- Import a sample query result from the data toolbar button; this runs raw rows
-  through the transform registry before updating cards.
-- Export or import a versioned workspace backup from the toolbar.
-- Reset to the authored demo only through the explicit reset action.
-- Click **Add artifact** to insert a registry-backed example card.
+- Use the **More** menu to load sample query rows, import/export a versioned
+  workspace backup, or explicitly reset to the authored demo.
+- Click **Build with AI**, describe an artifact, and copy the generated
+  repository-aware instruction into Claude Code. The browser does not insert a
+  fake template card; the agent implements and verifies the real artifact.
 
 The canvas stores nodes in world coordinates. The viewport stores screen offset
 and scale. Rendering converts world coordinates into a single transformed DOM
@@ -136,6 +138,19 @@ The registry is layered:
 ## Adding A Customized Artifact
 
 There are two trusted-code paths.
+
+The product's **Build with AI** dialog creates a handoff for Claude Code. It
+installs the public project skill with:
+
+```sh
+npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder --agent claude-code -y
+```
+
+The generated instruction asks the agent to implement the artifact, add its
+initial node when appropriate, increment the published template version, run
+the full browser verification loop, and commit/push the result. After a new
+template is deployed, an existing browser workspace remains intentionally
+unchanged until its owner chooses **More > Reset demo**.
 
 ### Repo-Compiled TSX
 
@@ -319,6 +334,7 @@ Implemented:
 - Pannable and zoomable dotted canvas.
 - Draggable artifact nodes.
 - Resizable selected artifact nodes.
+- Selected-artifact deletion through a title-bar control and keyboard shortcuts.
 - Default-on 38px snap-to-grid placement with a toolbar toggle.
 - Artifact-specific minimum sizes and responsive ECharts reflow.
 - Published demo template with a per-browser local workspace fork.
@@ -337,6 +353,7 @@ Implemented:
 - Browser proof GIF recorder.
 - Lightweight proof frame checks and production preview verification.
 - Light/dark theme support.
+- Repository-aware Claude Code handoff generation through **Build with AI**.
 - Hardened pointer dragging that suppresses browser text selection and native
   drag behavior during canvas moves.
 - Handoff docs for the next Codex session.
@@ -354,7 +371,7 @@ TODO:
 
 The public URL opens the `market-overview` template. The template is immutable:
 on first visit, the app copies it into a workspace owned by that browser origin.
-Every later drag, resize, zoom, theme change, data import, or artifact insertion
+Every later drag, resize, delete, zoom, theme change, or data import
 is saved locally and restored when the page is reopened.
 
 ```text
