@@ -657,6 +657,78 @@ test("agent bundles install into a view without a repository change and survive 
   await expect(page.getByText("Installed without a deploy")).toHaveCount(2);
 });
 
+test("published example migration refreshes copy without replacing personal layout", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  const movedX = await page.evaluate(async () => {
+    const state = window.__FREEFORM_STATE__!;
+    const nextX = state.nodes.find((node) => node.id === "node-probability")!.x + 38;
+    const workspace = {
+      version: 1,
+      templateId: "market-overview",
+      title: "Market overview",
+      templateVersion: 2,
+      updatedAt: new Date(Date.now() + 10_000).toISOString(),
+      board: {
+        version: 1,
+        nodes: state.nodes
+          .filter((node) => node.id !== "node-revenue")
+          .map((node) => {
+            if (node.id === "node-probability") return { ...node, x: nextX, title: "Old model", data: { ...(node.data as object), title: "Old probability" } };
+            if (node.id === "node-flow") return { ...node, data: { ...(node.data as object), title: "Old pipeline" } };
+            if (node.id === "node-sankey") return { ...node, data: { ...(node.data as object), title: "Old allocation" } };
+            return node;
+          }),
+        viewport: state.viewport,
+        selectedNodeId: "",
+        themeMode: state.themeMode,
+        snapToGrid: state.snapToGrid,
+      },
+    };
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("freeform-artifacts", 2);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction("workspaces", "readwrite");
+      transaction.objectStore("workspaces").put(workspace);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+    return nextX;
+  });
+
+  await page.reload();
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await expect(page.getByTestId("node-node-revenue")).toHaveCount(0);
+  const migrated = await page.evaluate(async () => {
+    const nodes = window.__FREEFORM_STATE__!.nodes;
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("freeform-artifacts", 2);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const workspace = await new Promise<any>((resolve, reject) => {
+      const request = database.transaction("workspaces", "readonly").objectStore("workspaces").get("market-overview");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return {
+      templateVersion: workspace.templateVersion,
+      probability: nodes.find((node) => node.id === "node-probability"),
+      flow: nodes.find((node) => node.id === "node-flow"),
+      sankey: nodes.find((node) => node.id === "node-sankey"),
+    };
+  });
+  expect(migrated.templateVersion).toBe(3);
+  expect(migrated.probability).toMatchObject({ x: movedX, title: "Supply Model", data: { title: "Supply-demand probability" } });
+  expect(migrated.flow).toMatchObject({ data: { title: "Rows to artifact" } });
+  expect(migrated.sankey).toMatchObject({ data: { title: "Supply allocation" } });
+});
+
 test("each browser gets an isolated local fork that survives closing and reopening the page", async ({ browser }) => {
   const visitorA = await browser.newContext();
   const visitorB = await browser.newContext();

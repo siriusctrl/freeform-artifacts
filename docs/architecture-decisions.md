@@ -1001,6 +1001,9 @@ tooltips, axes, nodes, or links.
   mode, including SVG bounds and categorical color counts.
 - Capture these constraints in the project skill's visual style guide so
   personal bundles follow the same quality bar as shared examples.
+- Migrate only the payload and title of existing published Probability,
+  Pipeline, and Sankey node ids. Preserve geometry, deletion, viewport, theme,
+  personal artifacts, and every unknown node.
 
 ### Tradeoffs
 
@@ -1009,6 +1012,8 @@ tooltips, axes, nodes, or links.
   contact-sheet, and GIF inspection remain required.
 - Distinct palettes need deliberate contrast review in both themes rather than
   automatic reuse of the product accent.
+- Known published example ids are reserved migration points; users who want a
+  permanently divergent card should create a personal artifact with its own id.
 
 Revisit shared theme-token helpers when three or more artifacts repeat the same
 complete chart palette; do not centralize prematurely at the cost of chart-

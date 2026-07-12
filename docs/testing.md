@@ -67,6 +67,8 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   hierarchy at their authored sizes;
 - ECharts labels remain contained and categorical node palettes contain the
   intended distinct colors in both light and dark mode;
+- published-example migrations refresh known demo payloads without restoring a
+  deleted node or changing its saved position;
 - title-bar, `Delete`, and `Backspace` deletion paths remove only the selected
   artifact and persist the removal;
 - IndexedDB restores the workspace after reload and after closing/reopening the
