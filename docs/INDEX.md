@@ -88,6 +88,8 @@ Code orientation:
   references for future artifact-building agents.
 - `skill/freeform-artifact-builder/references/artifact-bundle.md` defines the
   no-commit personal bundle contract and installation routes.
+- `skill/freeform-artifact-builder/references/visual-style-guide.md` defines
+  artifact hierarchy, spacing, chart composition, and required dark-mode rules.
 
 Keep README user-facing. Keep maintainer-only workflows in docs and link them
 from `AGENTS.md`.

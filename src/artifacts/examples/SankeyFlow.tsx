@@ -16,12 +16,15 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
   dataValidator: sankeyFlowDataSchema,
   buildOption: ({ data, size, theme }) => {
     const isDark = theme.mode === "dark";
-    const horizontalPadding = 22;
-    const rightLabelSpace = 94;
+    const horizontalPadding = 24;
+    const rightLabelSpace = 76;
     const text = isDark ? "#eef3f3" : "#171717";
     const muted = isDark ? "#a4afb1" : "#667174";
-    const nodeFill = isDark ? "#202628" : "#f5f7f7";
     const border = isDark ? "rgba(238,243,243,0.16)" : "rgba(23,23,23,0.12)";
+    const tooltipBackground = isDark ? "#202628" : "#ffffff";
+    const palette = isDark
+      ? ["#22d3ee", "#2dd4bf", "#facc15", "#60a5fa", "#fb7185", "#a8a29e"]
+      : ["#0891b2", "#0f766e", "#ca8a04", "#2563eb", "#dc5a5f", "#78716c"];
 
     return {
       backgroundColor: "transparent",
@@ -30,13 +33,13 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
         text: data.title,
         subtext: data.subtitle,
         left: horizontalPadding,
-        top: 20,
-        itemGap: 8,
+        top: 18,
+        itemGap: 7,
         textStyle: {
           color: text,
           fontFamily: "Geist Variable",
-          fontSize: 22,
-          fontWeight: 800,
+          fontSize: 23,
+          fontWeight: 780,
           width: size.width - horizontalPadding * 2,
           overflow: "truncate",
         },
@@ -52,37 +55,53 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
       tooltip: {
         trigger: "item",
         triggerOn: "mousemove",
+        backgroundColor: tooltipBackground,
+        borderColor: border,
+        textStyle: {
+          color: text,
+          fontFamily: "Geist Variable",
+        },
       },
       series: [
         {
           type: "sankey",
-          top: 92,
+          top: 96,
           left: horizontalPadding,
           right: rightLabelSpace,
-          bottom: 20,
-          nodeGap: 14,
-          nodeWidth: 18,
+          bottom: 24,
+          nodeGap: 18,
+          nodeWidth: 12,
+          nodeAlign: "justify",
+          layoutIterations: 24,
           draggable: false,
           emphasis: {
             focus: "adjacency",
+            lineStyle: {
+              opacity: 0.72,
+            },
           },
           lineStyle: {
             color: "gradient",
-            curveness: 0.55,
-            opacity: 0.42,
+            curveness: 0.5,
+            opacity: isDark ? 0.3 : 0.36,
           },
           itemStyle: {
-            color: nodeFill,
             borderColor: border,
-            borderWidth: 1,
+            borderWidth: 0,
           },
           label: {
             color: text,
             fontFamily: "Geist Variable",
             fontSize: 12,
-            fontWeight: 680,
+            fontWeight: 650,
+            distance: 8,
           },
-          data: data.nodes,
+          data: data.nodes.map((node, index) => ({
+            ...node,
+            itemStyle: {
+              color: palette[index % palette.length],
+            },
+          })),
           links: data.links,
         },
       ],

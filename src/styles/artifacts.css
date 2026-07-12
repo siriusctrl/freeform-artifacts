@@ -65,13 +65,7 @@
 
 .table-card {
   overflow: hidden;
-}
-
-.table-title {
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 780;
-  margin-bottom: 12px;
+  padding: 12px 18px 16px;
 }
 
 table {
@@ -87,7 +81,7 @@ td {
 
 th,
 td {
-  padding: 9px 8px;
+  padding: 10px 8px;
   border-bottom: 1px solid var(--line);
   text-align: left;
   white-space: nowrap;
@@ -99,138 +93,107 @@ th {
   text-transform: uppercase;
 }
 
+.table-card tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .flow-diagram {
   position: relative;
   display: grid;
-  grid-template-rows: auto 1fr 34px;
-  gap: 18px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 24px;
+  padding: 22px 24px 24px;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--accent), transparent 78%), transparent 34%),
-    linear-gradient(135deg, color-mix(in srgb, var(--panel), #ffffff 4%) 0%, var(--panel) 100%);
+  background: var(--panel);
 }
 
 .flow-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px;
-  gap: 18px;
-  align-items: start;
+  gap: 6px;
 }
 
 .flow-title {
-  margin-top: 5px;
   color: var(--text);
-  font-size: 20px;
-  line-height: 1.08;
-  font-weight: 820;
+  font-size: 22px;
+  line-height: 1.12;
+  font-weight: 780;
   text-wrap: balance;
 }
 
 .flow-summary {
   color: var(--muted);
   font-size: 12px;
-  line-height: 1.35;
-  text-align: right;
+  line-height: 1.45;
 }
 
 .flow-grid {
   position: relative;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  align-items: stretch;
+  gap: 28px;
+  align-items: start;
 }
 
 .flow-grid::before {
   content: "";
   position: absolute;
-  left: 12%;
-  right: 12%;
-  top: 29px;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: 0.72;
+  left: calc(16.666% - 1px);
+  right: calc(16.666% - 1px);
+  top: 7px;
+  height: 1px;
+  background: color-mix(in srgb, var(--accent), transparent 54%);
 }
 
 .flow-step {
   position: relative;
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  min-height: 130px;
-  padding: 13px;
-  background: color-mix(in srgb, var(--panel), var(--stage-bg) 24%);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff, transparent 86%);
+  grid-template-rows: 16px minmax(50px, auto) auto;
+  gap: 10px;
+  min-width: 0;
 }
 
-.flow-step-index {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent), transparent 88%);
-  border: 1px solid color-mix(in srgb, var(--accent), transparent 62%);
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 820;
-  font-variant-numeric: tabular-nums;
+.flow-step-node {
+  position: relative;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  border: 4px solid var(--panel);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent), transparent 35%);
 }
 
 .flow-step-body {
-  align-self: end;
   display: grid;
-  gap: 6px;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
 }
 
 .flow-step-body strong {
   color: var(--text);
-  font-size: 16px;
-  line-height: 1;
+  font-size: 15px;
+  line-height: 1.2;
+  font-weight: 720;
 }
 
 .flow-step-body span {
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.35;
+  text-wrap: pretty;
 }
 
 .flow-step-metric {
-  justify-self: start;
-  margin-top: 12px;
-  padding: 4px 8px;
-  color: var(--text);
-  background: var(--panel-soft);
-  border-radius: 6px;
+  color: var(--faint);
   font-size: 11px;
-  font-weight: 780;
-  text-transform: uppercase;
-}
-
-.flow-rail {
-  display: grid;
-  grid-template-columns: 1fr 1.6fr 1fr;
-  gap: 8px;
-  align-items: end;
-}
-
-.flow-rail span {
-  height: 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent), transparent 72%);
-}
-
-.flow-rail span:nth-child(2) {
-  height: 12px;
-  background: var(--accent);
+  font-weight: 680;
 }
 
 .echarts-host {
   width: 100%;
   height: 100%;
-  background:
-    radial-gradient(circle at 84% 0%, color-mix(in srgb, var(--accent), transparent 86%), transparent 28%),
-    var(--panel);
+  background: var(--panel);
 }
 
 .echarts-host:not(.interactive) {

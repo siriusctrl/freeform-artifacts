@@ -51,7 +51,6 @@ export const revenueTableTransform: TransformDefinition<
   inputSchema: revenueRowsSchema,
   outputSchema: tablePreviewDataSchema,
   apply: (rows) => ({
-    title: "revenue_rows",
     columns: [
       { key: "month", label: "Month" },
       { key: "revenue", label: "Revenue" },

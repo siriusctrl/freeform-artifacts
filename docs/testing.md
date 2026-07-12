@@ -63,6 +63,10 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   previews, create/switch, and active-view reload recovery;
 - Agent API and file-fallback bundle installation plus registry/node recovery
   after reload;
+- default examples hide internal implementation labels and keep simplified
+  hierarchy at their authored sizes;
+- ECharts labels remain contained and categorical node palettes contain the
+  intended distinct colors in both light and dark mode;
 - title-bar, `Delete`, and `Backspace` deletion paths remove only the selected
   artifact and persist the removal;
 - IndexedDB restores the workspace after reload and after closing/reopening the

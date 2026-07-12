@@ -34,6 +34,7 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
     const grid = isDark ? "rgba(238,243,243,0.26)" : "rgba(23,23,23,0.22)";
     const panel = isDark ? "rgba(53,200,220,0.09)" : "rgba(0,152,184,0.08)";
     const alert = isDark ? "#ff6b70" : "#ef4444";
+    const tooltipBackground = isDark ? "#202628" : "#ffffff";
     const noteLines = [
       ["What", data.note.what],
       ["Read", data.note.read],
@@ -96,6 +97,12 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
       tooltip: {
         trigger: "axis",
         valueFormatter: (value) => pct(Number(value)),
+        backgroundColor: tooltipBackground,
+        borderColor: grid,
+        textStyle: {
+          color: text,
+          fontFamily: "Geist Variable",
+        },
       },
       legend: {
         top: legendTop,

@@ -10,7 +10,6 @@ export const metricDataSchema = z.object({
 export type MetricData = z.infer<typeof metricDataSchema>;
 
 export const tablePreviewDataSchema = z.object({
-  title: z.string(),
   columns: z.array(
     z.object({
       key: z.string(),

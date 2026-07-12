@@ -235,6 +235,13 @@ ECharts artifacts still live in the DOM world. Their host mounts a chart inside
 the card body and keeps the chart lifecycle separate from AI-generated
 artifact definitions.
 
+Theme adaptation belongs to each artifact definition because ECharts option
+colors are not inherited from host CSS. Every ECharts artifact must derive its
+title, axis, legend, annotation, tooltip, mark, node, link, and emphasis colors
+from `theme.mode`; the generic host owns lifecycle only. React artifacts should
+use host theme variables or the provided `CanvasTheme` rather than fixed light
+surfaces.
+
 Use a pure drawing engine only if the product boundary shifts toward freehand
 ink, geometric shapes, or extremely large visual primitive counts.
 

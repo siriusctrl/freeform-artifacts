@@ -38,6 +38,8 @@ on navigation, invariants, verification, and handoff rules.
 - `tests/canvas.spec.ts`: Playwright interaction smoke test.
 - `scripts/`: preview and proof verification.
 - `skill/freeform-artifact-builder/`: project-local artifact authoring skill.
+- `skill/freeform-artifact-builder/references/visual-style-guide.md`: required
+  hierarchy, spacing, chart color, and light/dark design rules.
 
 ## Engineering Invariants
 
@@ -68,6 +70,11 @@ on navigation, invariants, verification, and handoff rules.
 - Keep custom lifecycle-heavy artifacts trusted and compiled until a sandbox is
   implemented.
 - Prefer typed interfaces before adding new runtime behavior.
+- Artifact review must inspect both light and dark mode. ECharts artifacts must
+  theme titles, axes, legends, annotations, tooltips, marks, nodes, links, and
+  emphasis states rather than inheriting library defaults.
+- Do not expose internal data names or retain counters, badges, nested panels,
+  and decorative rails that do not improve interpretation.
 
 ## Verification
 
