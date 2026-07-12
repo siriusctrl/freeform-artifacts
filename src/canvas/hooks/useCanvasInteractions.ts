@@ -26,7 +26,7 @@ type DragState =
 
 const MIN_NODE_SIZE = { width: 180, height: 130 };
 const WHEEL_LINE_HEIGHT = 16;
-const PINCH_ZOOM_SENSITIVITY = 0.002;
+const PINCH_ZOOM_SENSITIVITY = 0.014;
 
 function wheelDeltaScale(event: WheelEvent, pageHeight: number) {
   if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {

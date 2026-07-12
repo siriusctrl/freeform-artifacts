@@ -11,15 +11,20 @@ Use:
 npm run verify:proof
 ```
 
-The helper starts the local Vite server, opens Chromium through Playwright,
-performs a fixed interaction script, captures video, converts it to GIF, and
-writes:
+The helper starts the local Vite server, opens Chromium through Playwright, and
+runs an asserted user journey across layout, drag, resize, pan, zoom, data,
+theme, artifact insertion, and close/reopen persistence. A verification-only
+cursor and step label make each gesture legible in the recording. The helper
+captures video, converts it to GIF, and writes:
 
 - `proof.gif` for quick user-facing review.
 - `recording.webm` as the original Playwright recording.
 - `final-screenshot.png` for static inspection.
-- `contact-sheet.png` for internal keyframe inspection across the GIF timeline.
+- `contact-sheet.png` with 30 uniformly sampled cells for internal keyframe
+  inspection across the complete GIF timeline.
 - `frame-check.json` with sampled frame statistics for blank-like frame checks.
+- `ux-checks.json` with the assertion result and details from every journey
+  checkpoint.
 - `manifest.json` with action list and final debug state.
 - `inspection.txt` with a short human-readable checklist.
 
@@ -43,8 +48,9 @@ Playwright.
 
 ## Manual Review
 
-Inspect the GIF and `contact-sheet.png` before reporting completion. Use the
-final screenshot and `frame-check.json` as supplementary checks. Look for:
+Inspect the GIF and the full 30-cell `contact-sheet.png` before reporting
+completion. Read `ux-checks.json`, the final screenshot, and `frame-check.json`
+as supplementary checks. Look for:
 
 - blank canvas on startup;
 - missing cards;

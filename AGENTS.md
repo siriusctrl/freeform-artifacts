@@ -62,8 +62,8 @@ on navigation, invariants, verification, and handoff rules.
 - Persistence changes must prove close/reopen recovery and isolation between
   two Playwright browser contexts.
 - Run `npm run verify:proof` for user-facing visual changes.
-- Inspect `proof.gif`, `contact-sheet.png`, and `frame-check.json` before
-  claiming visual behavior works.
+- Inspect `proof.gif`, every cell in `contact-sheet.png`, `ux-checks.json`, and
+  `frame-check.json` before claiming visual behavior works.
 - Report the absolute proof GIF path in the final handoff when visual behavior
   changed.
 - If Chromium is missing, run `npm run setup:browsers` and retry.
