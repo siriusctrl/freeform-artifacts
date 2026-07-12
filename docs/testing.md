@@ -45,7 +45,10 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - artifact-specific minimum dimensions are enforced during resize;
 - imported legacy workspaces with undersized charts are normalized to current
   artifact minimums;
-- the snap-to-grid toolbar toggle can switch free placement off and back on;
+- the labeled snap-to-grid menu setting visibly switches from On to Off and
+  back again;
+- Theme, More, saved status, and Build with AI share one top-level control
+  height;
 - theme toggle switches light/dark mode;
 - importing sample query rows runs transforms and updates artifacts;
 - Build with AI creates a skill-backed Claude Code instruction without changing

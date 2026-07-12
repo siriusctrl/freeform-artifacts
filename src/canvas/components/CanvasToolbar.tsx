@@ -74,16 +74,6 @@ export function CanvasToolbar({
         </div>
       </div>
       <div className="tool-strip" aria-label="Canvas tools">
-        <button
-          type="button"
-          className={`icon-button ${snapToGrid ? "active" : ""}`}
-          title={snapToGrid ? `Snap to ${CANVAS_GRID_SIZE}px grid is on` : "Snap to grid is off"}
-          aria-pressed={snapToGrid}
-          onClick={onToggleSnapToGrid}
-          data-testid="snap-toggle"
-        >
-          <Grid3X3 size={20} />
-        </button>
         <input
           ref={importInputRef}
           className="visually-hidden"
@@ -121,6 +111,19 @@ export function CanvasToolbar({
           </button>
           {menuOpen ? (
             <div className="toolbar-menu" role="menu">
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={snapToGrid}
+                data-testid="snap-toggle"
+                onClick={onToggleSnapToGrid}
+              >
+                <Grid3X3 size={17} />
+                <span>Snap to {CANVAS_GRID_SIZE}px grid</span>
+                <span className={`menu-state ${snapToGrid ? "active" : ""}`}>
+                  {snapToGrid ? "On" : "Off"}
+                </span>
+              </button>
               <button
                 type="button"
                 role="menuitem"

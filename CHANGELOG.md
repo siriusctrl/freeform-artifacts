@@ -18,7 +18,7 @@ All notable user-facing changes to this project should be documented here.
 - Published template forking into per-browser IndexedDB workspaces.
 - Synchronous localStorage recovery mirrors for close/reopen resilience.
 - Versioned workspace JSON import/export and explicit reset-to-demo control.
-- Default-on 38px snap-to-grid placement and resizing with a toolbar toggle.
+- Default-on 38px snap-to-grid placement and resizing with a toolbar setting.
 - Selected-card resize handles.
 - Selected-artifact deletion from the title bar and with `Delete`/`Backspace`.
 - Repository-aware **Build with AI** handoff generation for Claude Code.
@@ -43,6 +43,8 @@ All notable user-facing changes to this project should be documented here.
 
 ### Fixed
 
+- Moved snap-to-grid into a labeled More-menu setting with immediate On/Off
+  feedback, and aligned all top-level toolbar controls to one height.
 - Split probability chart guidance into three independently positioned SVG
   lines so What, Read, and Logic remain inside the note panel.
 - Replaced semiconductor-specific demo wording with a generic renewable supply

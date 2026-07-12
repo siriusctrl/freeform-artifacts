@@ -529,7 +529,7 @@ Add default-on snap-to-grid behavior in the canvas host:
 - the grid interval is 38px, matching the visual dotted grid;
 - dragged node positions snap in world coordinates;
 - resized node dimensions snap in world coordinates;
-- the toolbar grid button toggles snap on and off;
+- the labeled toolbar setting toggles snap on and off;
 - the snap preference is saved in the versioned board JSON.
 
 ### Why this route
@@ -755,9 +755,9 @@ selection is direct manipulation and sample data is an occasional demo action.
   `src/artifacts/generated/`, add a demo node only when intended, bump the
   template version, verify, commit, push, and deploy.
 - Do not mutate the current board when generating the handoff.
-- Keep grid snap and theme as primary toolbar controls. Put sample data,
-  workspace import/export, and reset in a More menu; remove the redundant
-  select tool.
+- Keep theme as a primary toolbar control. Put labeled grid snap with visible
+  On/Off feedback, sample data, workspace import/export, and reset in a More
+  menu; remove the redundant select tool.
 - Expose deletion on the selected card and through `Delete`/`Backspace`, while
   ignoring keyboard shortcuts inside editable controls.
 - Use a recognizable scaling icon and tooltip for the selected-card resize

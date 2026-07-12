@@ -5,7 +5,6 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   await expect(page.getByTestId("canvas-stage")).toBeVisible();
   await expect(page.getByTestId("build-artifact")).toBeVisible();
   await expect(page.getByTestId("theme-toggle")).toBeVisible();
-  await expect(page.getByTestId("snap-toggle")).toBeVisible();
   await expect(page.getByTestId("workspace-menu")).toBeVisible();
 
   const dimensions = await page.evaluate(() => ({
@@ -30,5 +29,6 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   await page.getByTitle("Close").click();
 
   await page.getByTestId("workspace-menu").click();
+  await expect(page.getByTestId("snap-toggle")).toContainText("On");
   await expect(page.getByRole("menuitem", { name: "Load sample data" })).toBeVisible();
 });
