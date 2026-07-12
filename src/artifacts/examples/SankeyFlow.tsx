@@ -37,15 +37,15 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
         itemGap: 7,
         textStyle: {
           color: text,
-          fontFamily: "Geist Variable",
+          fontFamily: "Instrument Sans Variable",
           fontSize: 23,
-          fontWeight: 780,
+          fontWeight: 650,
           width: size.width - horizontalPadding * 2,
           overflow: "truncate",
         },
         subtextStyle: {
           color: muted,
-          fontFamily: "Geist Variable",
+          fontFamily: "Instrument Sans Variable",
           fontSize: 12,
           lineHeight: 17,
           width: Math.max(220, size.width - horizontalPadding * 2),
@@ -59,7 +59,7 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
         borderColor: border,
         textStyle: {
           color: text,
-          fontFamily: "Geist Variable",
+          fontFamily: "Instrument Sans Variable",
         },
       },
       series: [
@@ -91,9 +91,9 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
           },
           label: {
             color: text,
-            fontFamily: "Geist Variable",
+            fontFamily: "Instrument Sans Variable",
             fontSize: 12,
-            fontWeight: 650,
+            fontWeight: 560,
             distance: 8,
           },
           data: data.nodes.map((node, index) => ({

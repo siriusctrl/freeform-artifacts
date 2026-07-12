@@ -47,8 +47,10 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   artifact minimums;
 - the labeled snap-to-grid menu setting visibly switches from On to Off and
   back again;
-- Theme, More, saved status, and Build with AI share one top-level control
-  height;
+- the compact top bar keeps its 54px frame and deliberate 30/34/38px tool,
+  status, and command hierarchy;
+- Instrument Sans is applied to product chrome while Geist Mono remains scoped
+  to data-oriented text;
 - the More icon is centered on both axes;
 - a real resize-handle drag preserves artifact aspect ratio while the ECharts
   client width remains fixed and its screen width, labels, and selected-card

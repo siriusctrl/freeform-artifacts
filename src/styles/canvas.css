@@ -80,7 +80,7 @@
   background: var(--panel-soft);
   border-bottom: 1px solid var(--line);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 580;
 }
 
 .node-title {
@@ -138,7 +138,7 @@
 .zoom-controls span {
   min-width: 54px;
   text-align: center;
-  font-weight: 780;
+  font-weight: 650;
 }
 
 @media (max-width: 900px) {
@@ -168,9 +168,9 @@
   }
 
   .topbar {
-    grid-template-columns: 42px minmax(0, 1fr) auto;
-    gap: 8px;
-    padding: 10px;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 6px 8px;
   }
 
   .title-block {
@@ -207,17 +207,17 @@
   }
 
   .theme-toggle {
-    min-width: 42px;
-    width: 42px;
-    height: 42px;
-    grid-template-columns: 20px;
-    padding: 0 7px;
+    min-width: 30px;
+    width: 30px;
+    height: 30px;
+    grid-template-columns: 18px;
+    padding: 0 6px;
   }
 
   .tool-strip .toolbar-menu-wrap > .icon-button {
-    width: 42px;
-    height: 42px;
-    flex-basis: 42px;
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
   }
 
   .theme-toggle span {
@@ -239,10 +239,10 @@
   }
 
   .primary-action {
-    min-width: 42px;
-    width: 42px;
+    min-width: 36px;
+    width: 36px;
     grid-template-columns: 18px;
-    padding: 0 12px;
+    padding: 0 9px;
   }
 
   .primary-action span {

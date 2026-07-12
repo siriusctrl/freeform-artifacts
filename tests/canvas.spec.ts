@@ -245,12 +245,19 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   await expect(page.getByTestId("snap-toggle")).toHaveAttribute("aria-checked", "true");
   await page.getByTestId("workspace-menu").click();
 
-  const topControlHeights = await page.evaluate(() =>
-    ["theme-toggle", "workspace-menu", "board-status", "build-artifact"].map((testId) =>
-      Math.round(document.querySelector(`[data-testid="${testId}"]`)!.getBoundingClientRect().height),
-    ),
-  );
-  expect(new Set(topControlHeights)).toEqual(new Set([44]));
+  const topbarMetrics = await page.evaluate(() => ({
+    topbar: Math.round(document.querySelector(".topbar")!.getBoundingClientRect().height),
+    toolStrip: Math.round(document.querySelector(".tool-strip")!.getBoundingClientRect().height),
+    theme: Math.round(document.querySelector('[data-testid="theme-toggle"]')!.getBoundingClientRect().height),
+    more: Math.round(document.querySelector('[data-testid="workspace-menu"]')!.getBoundingClientRect().height),
+    status: Math.round(document.querySelector('[data-testid="board-status"]')!.getBoundingClientRect().height),
+    build: Math.round(document.querySelector('[data-testid="build-artifact"]')!.getBoundingClientRect().height),
+    brandFont: getComputedStyle(document.querySelector(".title-block")!).fontFamily,
+    fontLoaded: document.fonts.check('16px "Instrument Sans Variable"'),
+  }));
+  expect(topbarMetrics).toMatchObject({ topbar: 54, toolStrip: 36, theme: 30, more: 30, status: 34, build: 38 });
+  expect(topbarMetrics.brandFont).toContain("Instrument Sans Variable");
+  expect(topbarMetrics.fontLoaded).toBe(true);
   const moreAlignment = await page.getByTestId("workspace-menu").evaluate((button) => {
     const buttonRect = button.getBoundingClientRect();
     const iconRect = button.querySelector("svg")!.getBoundingClientRect();
@@ -424,6 +431,8 @@ test("managed charts keep essential labels inside default and minimum card sizes
     "#a8a29e",
   ]));
   await expect(page.getByText("Supply-demand probability", { exact: true })).toBeVisible();
+  const chartTitleFont = await page.getByTestId("echarts-inflection-probability").locator("svg text").filter({ hasText: "Supply-demand probability" }).first().evaluate((element) => getComputedStyle(element).fontFamily);
+  expect(chartTitleFont).toContain("Instrument Sans Variable");
   await expect(page.getByText("Rows to artifact", { exact: true })).toBeVisible();
   await expect(page.locator(".inspector")).toHaveCount(0);
 

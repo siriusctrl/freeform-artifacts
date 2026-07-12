@@ -6,6 +6,12 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   await expect(page.getByTestId("build-artifact")).toBeVisible();
   await expect(page.getByTestId("theme-toggle")).toBeVisible();
   await expect(page.getByTestId("workspace-menu")).toBeVisible();
+  const topbarMetrics = await page.evaluate(() => ({
+    height: Math.round(document.querySelector(".topbar")!.getBoundingClientRect().height),
+    fontFamily: getComputedStyle(document.querySelector(".canvas-title-slot")!).fontFamily,
+  }));
+  expect(topbarMetrics.height).toBe(54);
+  expect(topbarMetrics.fontFamily).toContain("Instrument Sans Variable");
 
   const dimensions = await page.evaluate(() => ({
     innerWidth: window.innerWidth,

@@ -92,9 +92,9 @@ export function CanvasToolbar({
           data-testid="sidebar-toggle"
           onClick={onToggleSidebar}
         >
-          <PanelLeft size={19} />
+          <PanelLeft size={18} />
         </button>
-        <Frame size={22} />
+        <Frame size={20} />
         <div>
           <span>Freeform Artifacts</span>
         </div>
@@ -142,7 +142,7 @@ export function CanvasToolbar({
             title={themeMode === "light" ? "Switch to dark mode" : "Switch to light mode"}
             data-testid="theme-toggle"
           >
-            {themeMode === "light" ? <Moon size={20} /> : <Sun size={20} />}
+            {themeMode === "light" ? <Moon size={18} /> : <Sun size={18} />}
             <span>{themeMode === "light" ? "Dark" : "Light"}</span>
           </button>
           <div ref={menuRef} className="toolbar-menu-wrap">
@@ -155,7 +155,7 @@ export function CanvasToolbar({
               data-testid="workspace-menu"
               onClick={() => setMenuOpen((current) => !current)}
             >
-              <Ellipsis size={20} />
+              <Ellipsis size={18} />
             </button>
             {menuOpen ? (
               <div className="toolbar-menu" role="menu">
@@ -185,7 +185,7 @@ export function CanvasToolbar({
             <span className="status-mark" aria-hidden="true" /><span>{status}</span>
           </div>
           <button type="button" className="primary-action" onClick={onBuildArtifact} data-testid="build-artifact">
-            <Sparkles size={18} /><span>Build with AI</span>
+            <Sparkles size={17} /><span>Build with AI</span>
           </button>
         </div>
       </div>

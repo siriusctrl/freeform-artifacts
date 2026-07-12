@@ -125,7 +125,7 @@ export const exampleChartArtifact: EChartsArtifactDefinition<ChartData> = {
         text: data.title,
         left: 24,
         top: 20,
-        textStyle: { color: text, fontFamily: "Geist Variable" },
+        textStyle: { color: text, fontFamily: "Instrument Sans Variable" },
       },
       grid: { left: 48, right: Math.max(24, size.width * 0.06), top: 76, bottom: 42 },
       xAxis: {

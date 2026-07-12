@@ -70,7 +70,7 @@ async function installProofOverlay(page) {
       [data-proof-overlay] { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; }
       .proof-step { position: absolute; left: 24px; top: 72px; padding: 9px 13px; color: #fff;
         background: rgba(17, 20, 24, .9); border: 1px solid rgba(255,255,255,.18); border-radius: 6px;
-        font: 600 13px/1.2 Geist, system-ui, sans-serif; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+        font: 600 13px/1.2 "Instrument Sans Variable", system-ui, sans-serif; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
       .proof-cursor { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px;
         border: 2px solid #111418; border-radius: 50%; background: rgba(255,255,255,.72);
         box-shadow: 0 0 0 3px rgba(82,196,218,.55); transform: translate(-30px,-30px); }
@@ -322,7 +322,7 @@ try {
   const grid = page.getByTestId("grid-plane");
   await stage.waitFor({ state: "visible" });
   await installProofOverlay(page);
-  await showProofStep(page, "Inspect initial workspace", 900);
+  await showProofStep(page, "Compact top bar • lighter type and grouped controls", 1300);
 
   const initialLayout = await page.evaluate(() => ({
     viewportWidth: window.innerWidth,
@@ -338,14 +338,22 @@ try {
   for (const control of ["theme-toggle", "workspace-menu", "build-artifact", "zoom-level"]) {
     verifyUx(`control is visible: ${control}`, await page.getByTestId(control).isVisible());
   }
-  const topControlHeights = await page.evaluate(() =>
-    ["theme-toggle", "workspace-menu", "board-status", "build-artifact"].map((testId) =>
-      Math.round(document.querySelector(`[data-testid="${testId}"]`)?.getBoundingClientRect().height ?? 0),
-    ),
+  const topbarMetrics = await page.evaluate(() => ({
+    topbar: Math.round(document.querySelector(".topbar")?.getBoundingClientRect().height ?? 0),
+    toolStrip: Math.round(document.querySelector(".tool-strip")?.getBoundingClientRect().height ?? 0),
+    theme: Math.round(document.querySelector('[data-testid="theme-toggle"]')?.getBoundingClientRect().height ?? 0),
+    more: Math.round(document.querySelector('[data-testid="workspace-menu"]')?.getBoundingClientRect().height ?? 0),
+    status: Math.round(document.querySelector('[data-testid="board-status"]')?.getBoundingClientRect().height ?? 0),
+    build: Math.round(document.querySelector('[data-testid="build-artifact"]')?.getBoundingClientRect().height ?? 0),
+    brandFont: getComputedStyle(document.querySelector(".title-block")).fontFamily,
+    fontLoaded: document.fonts.check('16px "Instrument Sans Variable"'),
+  }));
+  verifyUx(
+    "compact top bar uses a deliberate control hierarchy",
+    topbarMetrics.topbar === 54 && topbarMetrics.toolStrip === 36 && topbarMetrics.theme === 30 && topbarMetrics.more === 30 && topbarMetrics.status === 34 && topbarMetrics.build === 38,
+    topbarMetrics,
   );
-  verifyUx("top-level toolbar controls share one height", new Set(topControlHeights).size === 1 && topControlHeights[0] === 44, {
-    heights: topControlHeights,
-  });
+  verifyUx("Instrument Sans is loaded and applied to product chrome", topbarMetrics.fontLoaded && topbarMetrics.brandFont.includes("Instrument Sans Variable"), { fontFamily: topbarMetrics.brandFont, fontLoaded: topbarMetrics.fontLoaded });
   const moreIconCenterDelta = await page.getByTestId("workspace-menu").evaluate((button) => {
     const buttonRect = button.getBoundingClientRect();
     const iconRect = button.querySelector("svg")?.getBoundingClientRect();

@@ -13,7 +13,8 @@ All notable user-facing changes to this project should be documented here.
 - Artifact contract and registry with metric, table, and flow-diagram examples.
 - Managed ECharts artifact host for standard chart artifacts.
 - Probability chart and Sankey examples backed by ECharts options.
-- Self-hosted Geist Sans and Geist Mono typography.
+- Self-hosted Instrument Sans interface typography and Geist Mono data
+  typography.
 - Sample database rows and transform helpers.
 - Published template forking into per-browser IndexedDB workspaces.
 - Synchronous localStorage recovery mirrors for close/reopen resilience.
@@ -56,6 +57,8 @@ All notable user-facing changes to this project should be documented here.
 - Published-example migration that refreshes the three shared demo payloads in
   existing local forks while preserving personal layout, deletions, and added
   artifacts.
+- Compact 54px top bar with a grouped display control, flat save state, and
+  restrained command button hierarchy.
 
 ### Fixed
 
@@ -70,7 +73,7 @@ All notable user-facing changes to this project should be documented here.
 - Made browser proof journeys visibly demonstrate every changed product
   function instead of relying on hidden structured assertions alone.
 - Moved snap-to-grid into a labeled More-menu setting with immediate On/Off
-  feedback, and aligned all top-level toolbar controls to one height.
+  feedback.
 - Split probability chart guidance into three independently positioned SVG
   lines so What, Read, and Logic remain inside the note panel.
 - Replaced domain-specific demo wording with a generic supply and allocation

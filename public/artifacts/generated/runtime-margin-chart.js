@@ -31,7 +31,7 @@ export const artifact = {
         top: 18,
         textStyle: {
           color: text,
-          fontFamily: "Geist Variable",
+          fontFamily: "Instrument Sans Variable",
           fontSize: 21,
           fontWeight: 800,
         },
