@@ -161,7 +161,10 @@ Keep the host generic. Do not add artifact-specific lifecycle code there.
   payload shapes.
 - Use stable IDs with lowercase words and hyphens.
 - Use `CanvasTheme` values for theme-sensitive colors.
-- Treat `size` as the live content-box dimensions; reflow labels, annotations,
-  legends, and plot margins instead of uniformly scaling text.
-- Declare a grid-friendly `minSize` for dense visuals.
-- Keep essential content inside the host at both `defaultSize` and `minSize`.
+- Treat `defaultSize` as the fixed internal coordinate system used by canvas
+  object scaling. Use `size` to lay out labels, annotations, legends, and plot
+  margins inside that coordinate system.
+- Declare `minSize` for dense visuals; the canvas converts it into the smallest
+  permitted proportional object scale.
+- Keep essential content inside the host at `defaultSize`; browser verification
+  must also inspect the uniformly scaled minimum object.

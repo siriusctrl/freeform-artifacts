@@ -30,7 +30,7 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - the canvas renders;
 - the initial artifact nodes are visible;
 - dragging a card changes its world coordinates;
-- default snap-to-grid is on and dragged/resized nodes land on grid multiples;
+- default snap-to-grid is on and dragged nodes land on grid multiples;
 - dragging a card does not create a browser text selection;
 - dragging empty canvas space changes the viewport offset;
 - the visual grid follows viewport pan and zoom instead of staying fixed to the
@@ -50,8 +50,10 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - Theme, More, saved status, and Build with AI share one top-level control
   height;
 - the More icon is centered on both axes;
-- Sankey labels and selected-card controls follow card resize scale, then both
-  follow the same outer canvas zoom ratio;
+- a real resize-handle drag preserves artifact aspect ratio while the ECharts
+  client width remains fixed and its screen width, labels, and selected-card
+  controls all follow one object scale;
+- canvas zoom then applies the same second scale to the complete node;
 - theme toggle switches light/dark mode;
 - importing sample query rows runs transforms and updates artifacts;
 - Build with AI creates a skill-backed Claude Code instruction without changing

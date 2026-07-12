@@ -689,7 +689,7 @@ canvas layout is introduced.
 
 ## ADR-0014: Reflow managed artifacts from live container size
 
-Status: Accepted
+Status: Partially superseded by ADR-0017
 
 Date: 2026-07-12
 
@@ -785,7 +785,7 @@ packages, or a sandboxed runtime that can safely support in-browser generation.
 
 ## ADR-0016: Combine responsive card reflow with bounded visual scaling
 
-Status: Accepted
+Status: Superseded by ADR-0017
 
 Date: 2026-07-12
 
@@ -825,3 +825,54 @@ correspondingly larger visual system.
 
 Revisit if artifacts need an explicit choice between responsive reflow,
 aspect-ratio-locked scaling, and hybrid behavior.
+
+## ADR-0017: Resize artifacts as aspect-locked objects
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+The bounded visual-scale approach changed selected controls and selected Sankey
+values, but the card was still a responsive container: ECharts received a new
+client size and rebuilt its layout. That did not match the user's Freeform
+mental model, where dragging one object's corner scales the entire object. A
+font-size measurement changing was therefore insufficient evidence that object
+resize worked correctly.
+
+### Decision
+
+- Treat every registered artifact `defaultSize` as a fixed internal coordinate
+  system.
+- Store the object's visual world-space bounds in `CanvasNode.width/height`.
+- Normalize loaded and imported nodes to the artifact's default aspect ratio.
+- Project resize-handle pointer movement onto that aspect ratio and enforce a
+  proportional minimum derived from `minSize`.
+- Render the node at `defaultSize` and apply one local CSS `scale()` to the full
+  node, including ECharts/React content, chrome, Delete, and resize handle.
+- Apply viewport zoom separately at `.canvas-world`; never counter-scale object
+  controls.
+- Verify real pointer resize by asserting that ECharts `clientWidth` stays fixed
+  while its screen-space width and internal labels scale with the node.
+
+### Why this route
+
+One transform gives every descendant exactly the same ratio and makes the
+interaction visually predictable. It also provides a crisp test boundary:
+responsive resize changes `clientWidth`, while object scaling does not.
+
+### Tradeoffs
+
+- Card resize is aspect-locked; users cannot independently stretch width and
+  height.
+- Very small objects also have smaller controls. Artifact `minSize` is the
+  usability boundary and must be chosen carefully.
+- Responsive reflow remains available inside an artifact host if its internal
+  coordinate size changes for another reason, but canvas object resize does not
+  trigger that path.
+- Existing non-proportional saved sizes are migrated to the smallest
+  proportional bounds that contain the prior width and height.
+
+Revisit only if the product introduces an explicit resize-mode selector rather
+than silently mixing reflow and object scaling.

@@ -11,7 +11,7 @@ import {
 import type { CanvasNode, CanvasViewport } from "../../artifacts/types";
 import type { RegisteredArtifact } from "../../artifacts/registryTypes";
 import { INITIAL_VIEWPORT } from "../constants";
-import { artifactMinSize } from "../nodeSize";
+import { resizeNodeToArtifactAspect } from "../nodeSize";
 import { screenToWorld, snapToGrid, zoomAt } from "../../lib/geometry";
 
 type DragState =
@@ -82,21 +82,20 @@ export function useCanvasInteractions({
             return node;
           }
 
-          const minSize = artifactMinSize(node, artifactRegistry);
-          const clampedWidth = Math.max(minSize.width, width);
-          const clampedHeight = Math.max(minSize.height, height);
-          const nextWidth = shouldSnapToGrid ? snapToGrid(clampedWidth) : Math.round(clampedWidth);
-          const nextHeight = shouldSnapToGrid ? snapToGrid(clampedHeight) : Math.round(clampedHeight);
+          const nextSize = resizeNodeToArtifactAspect(
+            artifactRegistry[node.artifactId],
+            width,
+            height,
+          );
 
           return {
             ...node,
-            width: Math.max(minSize.width, nextWidth),
-            height: Math.max(minSize.height, nextHeight),
+            ...nextSize,
           };
         }),
       );
     },
-    [artifactRegistry, setNodes, shouldSnapToGrid],
+    [artifactRegistry, setNodes],
   );
 
   const bringToFront = useCallback(
