@@ -6,6 +6,7 @@ import {
   Frame,
   Grid3X3,
   Moon,
+  PanelLeft,
   RotateCcw,
   Sparkles,
   Sun,
@@ -17,7 +18,8 @@ interface CanvasToolbarProps {
   importInputRef: RefObject<HTMLInputElement | null>;
   status: string;
   storageMode: "indexeddb" | "localstorage";
-  templateTitle: string;
+  viewTitle: string;
+  sidebarOpen: boolean;
   themeMode: ThemeMode;
   snapToGrid: boolean;
   onBuildArtifact: () => void;
@@ -25,7 +27,9 @@ interface CanvasToolbarProps {
   onImportData: () => void;
   onImportWorkspace: (file: File) => void;
   onResetWorkspace: () => void;
+  onRenameView: (title: string) => void;
   onThemeToggle: () => void;
+  onToggleSidebar: () => void;
   onToggleSnapToGrid: () => void;
 }
 
@@ -33,7 +37,8 @@ export function CanvasToolbar({
   importInputRef,
   status,
   storageMode,
-  templateTitle,
+  viewTitle,
+  sidebarOpen,
   themeMode,
   snapToGrid,
   onBuildArtifact,
@@ -41,11 +46,24 @@ export function CanvasToolbar({
   onImportData,
   onImportWorkspace,
   onResetWorkspace,
+  onRenameView,
   onThemeToggle,
+  onToggleSidebar,
   onToggleSnapToGrid,
 }: CanvasToolbarProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(viewTitle);
+
+  useEffect(() => setTitleDraft(viewTitle), [viewTitle]);
+
+  function commitTitle() {
+    const nextTitle = titleDraft.trim();
+    if (nextTitle && nextTitle !== viewTitle) onRenameView(nextTitle);
+    else setTitleDraft(viewTitle);
+    setEditingTitle(false);
+  }
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -66,128 +84,110 @@ export function CanvasToolbar({
   return (
     <header className="topbar">
       <div className="title-block">
+        <button
+          type="button"
+          className={`icon-button sidebar-toggle ${sidebarOpen ? "active" : ""}`}
+          title={sidebarOpen ? "Hide canvases" : "Show canvases"}
+          aria-pressed={sidebarOpen}
+          data-testid="sidebar-toggle"
+          onClick={onToggleSidebar}
+        >
+          <PanelLeft size={19} />
+        </button>
         <Frame size={22} />
         <div>
           <span>Freeform Artifacts</span>
-          <small>{templateTitle}</small>
         </div>
       </div>
-      <div className="tool-strip" aria-label="Canvas tools">
-        <input
-          ref={importInputRef}
-          className="visually-hidden"
-          type="file"
-          accept="application/json,.json"
-          data-testid="workspace-file"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            if (file) {
-              onImportWorkspace(file);
-            }
-          }}
-        />
-        <button
-          type="button"
-          className="theme-toggle"
-          onClick={onThemeToggle}
-          title={themeMode === "light" ? "Switch to dark mode" : "Switch to light mode"}
-          data-testid="theme-toggle"
-        >
-          {themeMode === "light" ? <Moon size={20} /> : <Sun size={20} />}
-          <span>{themeMode === "light" ? "Dark" : "Light"}</span>
-        </button>
-        <div ref={menuRef} className="toolbar-menu-wrap">
+      <div className="canvas-title-slot">
+        {editingTitle ? (
+          <input
+            autoFocus
+            data-testid="canvas-title-input"
+            value={titleDraft}
+            maxLength={80}
+            onChange={(event) => setTitleDraft(event.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") commitTitle();
+              if (event.key === "Escape") {
+                setTitleDraft(viewTitle);
+                setEditingTitle(false);
+              }
+            }}
+          />
+        ) : (
+          <button type="button" data-testid="canvas-title" onDoubleClick={() => setEditingTitle(true)}>
+            {viewTitle}
+          </button>
+        )}
+      </div>
+      <div className="topbar-controls">
+        <div className="tool-strip" aria-label="Canvas tools">
+          <input
+            ref={importInputRef}
+            className="visually-hidden"
+            type="file"
+            accept="application/json,.json"
+            data-testid="workspace-file"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) onImportWorkspace(file);
+            }}
+          />
           <button
             type="button"
-            className="icon-button"
-            title="More workspace actions"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            data-testid="workspace-menu"
-            onClick={() => setMenuOpen((current) => !current)}
+            className="theme-toggle"
+            onClick={onThemeToggle}
+            title={themeMode === "light" ? "Switch to dark mode" : "Switch to light mode"}
+            data-testid="theme-toggle"
           >
-            <Ellipsis size={20} />
+            {themeMode === "light" ? <Moon size={20} /> : <Sun size={20} />}
+            <span>{themeMode === "light" ? "Dark" : "Light"}</span>
           </button>
-          {menuOpen ? (
-            <div className="toolbar-menu" role="menu">
-              <button
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={snapToGrid}
-                data-testid="snap-toggle"
-                onClick={onToggleSnapToGrid}
-              >
-                <Grid3X3 size={17} />
-                <span>Snap to grid</span>
-                <span className={`menu-switch ${snapToGrid ? "active" : ""}`} aria-hidden="true">
-                  <span className="menu-switch-thumb" />
-                </span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                data-testid="import-data"
-                onClick={() => {
-                  onImportData();
-                  setMenuOpen(false);
-                }}
-              >
-                <Database size={17} />
-                <span>Load sample data</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                data-testid="import-workspace"
-                onClick={() => {
-                  importInputRef.current?.click();
-                  setMenuOpen(false);
-                }}
-              >
-                <Upload size={17} />
-                <span>Import backup</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                data-testid="export-workspace"
-                onClick={() => {
-                  onExportWorkspace();
-                  setMenuOpen(false);
-                }}
-              >
-                <ArrowDownToLine size={17} />
-                <span>Export backup</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                data-testid="reset-workspace"
-                onClick={() => {
-                  onResetWorkspace();
-                  setMenuOpen(false);
-                }}
-              >
-                <RotateCcw size={17} />
-                <span>Reset demo</span>
-              </button>
-            </div>
-          ) : null}
+          <div ref={menuRef} className="toolbar-menu-wrap">
+            <button
+              type="button"
+              className="icon-button"
+              title="More workspace actions"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              data-testid="workspace-menu"
+              onClick={() => setMenuOpen((current) => !current)}
+            >
+              <Ellipsis size={20} />
+            </button>
+            {menuOpen ? (
+              <div className="toolbar-menu" role="menu">
+                <button type="button" role="menuitemcheckbox" aria-checked={snapToGrid} data-testid="snap-toggle" onClick={onToggleSnapToGrid}>
+                  <Grid3X3 size={17} />
+                  <span>Snap to grid</span>
+                  <span className={`menu-switch ${snapToGrid ? "active" : ""}`} aria-hidden="true"><span className="menu-switch-thumb" /></span>
+                </button>
+                <button type="button" role="menuitem" data-testid="import-data" onClick={() => { onImportData(); setMenuOpen(false); }}>
+                  <Database size={17} /><span>Load sample data</span>
+                </button>
+                <button type="button" role="menuitem" data-testid="import-workspace" onClick={() => { importInputRef.current?.click(); setMenuOpen(false); }}>
+                  <Upload size={17} /><span>Import backup</span>
+                </button>
+                <button type="button" role="menuitem" data-testid="export-workspace" onClick={() => { onExportWorkspace(); setMenuOpen(false); }}>
+                  <ArrowDownToLine size={17} /><span>Export backup</span>
+                </button>
+                <button type="button" role="menuitem" data-testid="reset-workspace" onClick={() => { onResetWorkspace(); setMenuOpen(false); }}>
+                  <RotateCcw size={17} /><span>Reset demo</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
-      </div>
-      <div className="topbar-actions">
-        <div
-          className="status-pill"
-          data-testid="board-status"
-          title={`${status}. Storage: ${storageMode === "indexeddb" ? "IndexedDB" : "localStorage fallback"}`}
-        >
-          <span className="status-mark" aria-hidden="true" />
-          <span>{status}</span>
+        <div className="topbar-actions">
+          <div className="status-pill" data-testid="board-status" title={`${status}. Storage: ${storageMode === "indexeddb" ? "IndexedDB" : "localStorage fallback"}`}>
+            <span className="status-mark" aria-hidden="true" /><span>{status}</span>
+          </div>
+          <button type="button" className="primary-action" onClick={onBuildArtifact} data-testid="build-artifact">
+            <Sparkles size={18} /><span>Build with AI</span>
+          </button>
         </div>
-        <button type="button" className="primary-action" onClick={onBuildArtifact} data-testid="build-artifact">
-          <Sparkles size={18} />
-          <span>Build with AI</span>
-        </button>
       </div>
     </header>
   );

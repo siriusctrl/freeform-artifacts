@@ -40,6 +40,10 @@ All notable user-facing changes to this project should be documented here.
   a base-aware `artifacts/generated/manifest.json`.
 - GitHub Pages deployment under `/freeform-artifacts/`.
 - Mobile-first template framing that opens the primary chart at a useful scale.
+- Multiple named browser-local canvas views with a collapsed sidebar and
+  centered inline title editing.
+- Trusted artifact bundles persisted in IndexedDB, with direct Agent API and
+  file-import installation paths that require no app commit or deployment.
 
 ### Fixed
 
@@ -49,6 +53,8 @@ All notable user-facing changes to this project should be documented here.
 - Replaced responsive frame resizing with aspect-locked whole-object scaling:
   artifact content, chrome, Delete, and resize controls now share one local
   scale before the outer canvas zoom is applied.
+- Made browser proof journeys visibly demonstrate every changed product
+  function instead of relying on hidden structured assertions alone.
 - Moved snap-to-grid into a labeled More-menu setting with immediate On/Off
   feedback, and aligned all top-level toolbar controls to one height.
 - Split probability chart guidance into three independently positioned SVG

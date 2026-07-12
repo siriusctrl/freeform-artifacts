@@ -142,12 +142,20 @@
 }
 
 @media (max-width: 900px) {
-  .app-shell {
+  .app-shell,
+  .app-shell.sidebar-open {
     grid-template-columns: 1fr;
   }
 
+  .canvas-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(280px, calc(100vw - 56px));
+    box-shadow: 18px 0 48px var(--shadow);
+  }
+
   .topbar {
-    grid-template-columns: 22px minmax(0, 1fr) auto;
+    grid-template-columns: 42px minmax(0, 1fr) auto;
     gap: 8px;
     padding: 10px;
   }
@@ -156,8 +164,14 @@
     gap: 0;
   }
 
+  .title-block > svg,
   .title-block > div {
     display: none;
+  }
+
+  .canvas-title-slot button,
+  .canvas-title-slot input {
+    width: min(220px, 34vw);
   }
 
   .tool-strip {
@@ -205,8 +219,10 @@
 }
 
 @media (max-width: 560px) {
-  .title-block small {
-    display: none;
+  .canvas-title-slot button,
+  .canvas-title-slot input {
+    width: min(132px, 34vw);
+    padding: 0 6px;
   }
 
   .primary-action {

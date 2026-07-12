@@ -1,33 +1,40 @@
-import { Check, Copy, Sparkles, X } from "lucide-react";
+import { Check, Copy, PackagePlus, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 interface AgentHandoffDialogProps {
   open: boolean;
+  viewId: string;
   onClose: () => void;
+  onInstallBundle: (file: File) => void;
 }
 
 const INSTALL_COMMAND =
   "npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder --agent claude-code -y";
 
-export function AgentHandoffDialog({ open, onClose }: AgentHandoffDialogProps) {
+export function AgentHandoffDialog({ open, viewId, onClose, onInstallBundle }: AgentHandoffDialogProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const bundleInputRef = useRef<HTMLInputElement | null>(null);
   const [description, setDescription] = useState("");
   const [copied, setCopied] = useState(false);
   const instruction = useMemo(
-    () => `Work in a local clone of https://github.com/siriusctrl/freeform-artifacts.
+    () => `Create a trusted Freeform Artifact bundle for this request. Do not modify, commit, or deploy the application repository.
 
 1. Install the project artifact skill for Claude Code:
    ${INSTALL_COMMAND}
-2. Read and follow the installed freeform-artifact-builder skill and this repository's AGENTS.md.
-3. Implement this artifact request:
+2. Follow the freeform-artifact-builder bundle contract and create one .freeform-artifact.json file.
+3. Build this artifact:
 
    ${description.trim() || "Describe the artifact here."}
 
-4. Put repo-compiled code under src/artifacts/generated/ and keep data transforms outside rendering code.
-5. Add a well-positioned initial node to src/canvas/seeds/demoBoard.ts and increment the market-overview template version.
-6. Run npm run check, npm run verify:ui, npm run verify:preview, and npm run verify:proof. Inspect the GIF and every contact-sheet frame.
-7. Commit and push the verified change. Report the public URL and remind the owner to use More > Reset demo to load the updated published board into an existing browser workspace.`,
-    [description],
+4. Include version, artifactId, self-contained ESM moduleSource, and serializable node title/data/config. Use ECharts options or window.React; do not use imports, network fetches, or external dependencies.
+5. Validate in a real browser. If you control the user's open Freeform page, install directly:
+
+   await page.evaluate(async ({ bundle, viewId }) => {
+     return window.__FREEFORM_AGENT__.installArtifact(bundle, { viewId });
+   }, { bundle, viewId: ${JSON.stringify(viewId)} });
+
+6. Otherwise return the bundle file so the user can choose Install bundle in this dialog. Report the artifact id and target view.`,
+    [description, viewId],
   );
 
   useEffect(() => {
@@ -61,7 +68,7 @@ export function AgentHandoffDialog({ open, onClose }: AgentHandoffDialogProps) {
             <Sparkles size={20} />
             <div>
               <h2 id="agent-dialog-title">Build with AI</h2>
-              <p>Generate a repository-aware Claude Code handoff.</p>
+              <p>Generate and install an artifact bundle without changing the app.</p>
             </div>
           </div>
           <button type="button" className="icon-button" title="Close" onClick={onClose}>
@@ -89,6 +96,22 @@ export function AgentHandoffDialog({ open, onClose }: AgentHandoffDialogProps) {
         </pre>
 
         <footer className="agent-dialog-actions">
+          <input
+            ref={bundleInputRef}
+            className="visually-hidden"
+            type="file"
+            accept="application/json,.json"
+            data-testid="artifact-bundle-file"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) onInstallBundle(file);
+              event.currentTarget.value = "";
+            }}
+          />
+          <button type="button" className="secondary-action install-bundle-action" data-testid="install-bundle" onClick={() => bundleInputRef.current?.click()}>
+            <PackagePlus size={17} />
+            <span>Install bundle</span>
+          </button>
           <button type="button" className="secondary-action" onClick={onClose}>
             Cancel
           </button>

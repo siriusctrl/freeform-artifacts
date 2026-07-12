@@ -77,6 +77,10 @@ button {
   background: var(--app-bg);
 }
 
+.app-shell.sidebar-open {
+  grid-template-columns: 244px minmax(0, 1fr);
+}
+
 .app-shell[data-theme="dark"] {
   --accent: #35c8dc;
   --app-bg: #101314;

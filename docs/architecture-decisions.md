@@ -734,7 +734,7 @@ an explicit aspect-ratio-locked scale mode for illustration-style artifacts.
 
 ## ADR-0015: Make artifact creation an agent handoff, not a placeholder insert
 
-Status: Accepted
+Status: Superseded by ADR-0018
 
 Date: 2026-07-12
 
@@ -748,10 +748,14 @@ selection is direct manipulation and sample data is an occasional demo action.
 
 ### Decision
 
+This decision is superseded by ADR-0018 for personal artifacts. Repository
+generation remains available only for maintainers changing shared examples or
+host capabilities.
+
 - Replace Add artifact with **Build with AI**.
 - Ask for an artifact description and generate a copyable Claude Code
   instruction that installs the public `freeform-artifact-builder` skill.
-- Keep generation as a trusted repository workflow: implement under
+- For shared application artifacts, keep generation as a trusted repository workflow: implement under
   `src/artifacts/generated/`, add a demo node only when intended, bump the
   template version, verify, commit, push, and deploy.
 - Do not mutate the current board when generating the handoff.
@@ -876,3 +880,48 @@ responsive resize changes `clientWidth`, while object scaling does not.
 
 Revisit only if the product introduces an explicit resize-mode selector rather
 than silently mixing reflow and object scaling.
+
+## ADR-0018: Store multiple local views and install personal artifacts as bundles
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+A single workspace could not represent multiple canvases, and the first Build
+with AI handoff still asked an agent to modify and deploy the application repo.
+That workflow was too heavy for personal artifacts and could not install an
+artifact into one user's browser-local canvas without changing everyone’s app.
+The static GitHub Pages deployment also cannot accept server-side uploads.
+
+### Decision
+
+- Keep the existing IndexedDB `workspaces` store and treat its historical
+  `templateId` key as a local view id, preserving old data without a store
+  migration.
+- Add a persisted title to each workspace, expose it as a centered inline-edit
+  control, and list named views in a default-collapsed sidebar.
+- Create new views as empty boards and remember the active view locally.
+- Add an IndexedDB `artifact-packages` store for trusted bundle ESM source.
+- Define a versioned bundle with `artifactId`, self-contained `moduleSource`,
+  and serializable initial node data/config.
+- Expose `window.__FREEFORM_AGENT__.listViews()` and `installArtifact()` for an
+  agent controlling the same browser page.
+- Provide file installation as the fallback when the agent cannot control the
+  user's browser profile.
+- Keep repo-compiled and deployed external modules as maintainer paths, not the
+  default personal-view workflow.
+
+### Tradeoffs
+
+- Bundle modules execute as trusted page code and are not sandboxed.
+- Automation can write only to the browser profile it controls. Cross-profile
+  installation requires the user to import the generated bundle file.
+- Artifact packages are browser-origin local and disappear when site data is
+  cleared; cross-device sync remains outside this static architecture.
+- The `templateId` field is now historically named, but retaining it avoids a
+  destructive IndexedDB key migration.
+
+Revisit when the product adds accounts, a shared artifact registry, or a
+sandboxed package runtime.

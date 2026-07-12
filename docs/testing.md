@@ -57,7 +57,10 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - theme toggle switches light/dark mode;
 - importing sample query rows runs transforms and updates artifacts;
 - Build with AI creates a skill-backed Claude Code instruction without changing
-  board state;
+  board state until a bundle is installed;
+- centered-title rename, sidebar create/switch, and active-view reload recovery;
+- Agent API and file-fallback bundle installation plus registry/node recovery
+  after reload;
 - title-bar, `Delete`, and `Backspace` deletion paths remove only the selected
   artifact and persist the removal;
 - IndexedDB restores the workspace after reload and after closing/reopening the

@@ -71,7 +71,8 @@ verification. Do not build product features on that debug handle.
 
 Canvas board state is serialized inside a versioned `WorkspaceRecord`. Published
 templates are immutable seeds. On first visit, the selected template is copied
-to a browser-local workspace keyed by template ID. IndexedDB is the primary
+to the first browser-local view. Additional named views use unique ids while
+retaining the historical `templateId` field as their IndexedDB key. IndexedDB is the primary
 store, and a synchronous localStorage mirror provides recovery if a page closes
 before an asynchronous IndexedDB transaction finishes. The persisted board
 includes nodes, viewport, selected node, theme mode, and the snap-to-grid
@@ -85,6 +86,13 @@ workspaces. Clearing site data removes the workspace, and cross-device sync is
 outside the current product boundary. Versioned `.freeform.json` import/export
 is the explicit portability path.
 Artifact render data remains serializable and is validated when rendered.
+
+Trusted runtime artifact bundles are stored separately in the IndexedDB
+`artifact-packages` store. A bundle contains self-contained ESM source and one
+initial node payload. The runtime Blob-imports installed sources, merges them
+into the registry, and stores only node references/data in each view. The
+`window.__FREEFORM_AGENT__` bridge lets a browser-controlling agent list views
+and install a bundle into a target view without rebuilding the app.
 
 ## Artifact Registry
 
@@ -230,12 +238,13 @@ ink, geometric shapes, or extremely large visual primitive counts.
 
 ## Runtime Module Boundaries
 
-`src/App.tsx` is intentionally a thin orchestration layer. It loads external
-artifacts, persists board state, publishes the debug state used by Playwright,
-and wires product actions such as import/export, theme switching, snap
-preference, deletion, and opening the AI handoff dialog. The dialog emits a
-repository-aware instruction; it never creates a placeholder node. Artifact
-creation remains a code-generation, review, verification, and deployment step.
+`src/App.tsx` is the orchestration boundary. It loads external and locally
+installed artifacts, switches named views, persists board state, publishes the
+debug state used by Playwright, and wires product actions such as import/export,
+theme switching, snap preference, deletion, and the AI handoff dialog. Personal
+artifact creation is bundle-first: an agent installs a trusted ESM bundle into
+one browser-local view through `window.__FREEFORM_AGENT__`, or the user imports
+the same bundle file. Neither path requires an application commit or deploy.
 
 Canvas runtime behavior lives under `src/canvas/`:
 

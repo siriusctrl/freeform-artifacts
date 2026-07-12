@@ -41,9 +41,10 @@ Read these when the task matches:
 Code orientation:
 
 - `src/main.tsx` mounts the React application.
-- `src/App.tsx` owns demo-level orchestration: workspace bootstrap,
-  import/export, theme, snap preference, deletion, and AI handoff visibility.
-- `src/canvas/components/` contains the toolbar, board, node, and zoom controls.
+- `src/App.tsx` owns view bootstrap/switching, persistence, runtime artifact
+  installation, import/export, theme, snap preference, and deletion.
+- `src/canvas/components/` contains the toolbar, default-collapsed view sidebar,
+  AI handoff dialog, board, node, and zoom controls.
 - `src/canvas/hooks/useCanvasInteractions.ts` owns pan, zoom, drag, resize, and
   snap interaction mechanics.
 - `src/canvas/nodeSize.ts` enforces artifact minimums for live resize, loaded
@@ -60,8 +61,11 @@ Code orientation:
   registries.
 - `src/artifacts/core/` contains platform-provided artifact modules.
 - `src/artifacts/examples/` contains demo and verification artifact modules.
-- `src/artifacts/generated/` is the reserved entry point for future user or
-  AI-generated repo-compiled artifacts.
+- `src/artifacts/generated/bundles.ts` validates, loads, and persists trusted
+  personal artifact bundles installed through the browser Agent API or file
+  fallback.
+- `src/artifacts/generated/` also remains the entry point for shared,
+  repo-compiled artifacts.
 - `public/artifacts/generated/manifest.json` lists trusted runtime ESM
   artifacts loaded without rebuilding the main app.
 - `src/canvas/seeds/demoBoard.ts` defines the default demo board nodes.
@@ -80,6 +84,8 @@ Code orientation:
   scripts.
 - `skill/freeform-artifact-builder/` contains the project-local Codex skill and
   references for future artifact-building agents.
+- `skill/freeform-artifact-builder/references/artifact-bundle.md` defines the
+  no-commit personal bundle contract and installation routes.
 
 Keep README user-facing. Keep maintainer-only workflows in docs and link them
 from `AGENTS.md`.
