@@ -87,7 +87,7 @@ export function CanvasToolbar({
         <button
           type="button"
           className={`icon-button sidebar-toggle ${sidebarOpen ? "active" : ""}`}
-          title={sidebarOpen ? "Hide canvases" : "Show canvases"}
+          title={sidebarOpen ? "Hide views" : "Show views"}
           aria-pressed={sidebarOpen}
           data-testid="sidebar-toggle"
           onClick={onToggleSidebar}

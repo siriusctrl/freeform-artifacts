@@ -18,8 +18,9 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
   const nodeCount = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length;
   await page.getByTestId("build-artifact").click();
-  await page.getByTestId("agent-request").fill("A compact regional supply chart");
-  await expect(page.getByTestId("agent-instruction")).toContainText("compact regional supply chart");
+  await expect(page.getByTestId("agent-request")).toHaveCount(0);
+  await expect(page.getByTestId("agent-instruction")).toContainText("ask the user what artifact they want to build");
+  await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
   const dialogDimensions = await page.evaluate(() => ({
     innerWidth: window.innerWidth,
     scrollWidth: document.documentElement.scrollWidth,

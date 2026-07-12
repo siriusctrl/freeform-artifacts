@@ -380,14 +380,22 @@ try {
   await page.waitForTimeout(900);
   verifyUx("double-click rename persists the centered canvas title", await page.getByTestId("canvas-title").getByText("Market canvas").isVisible());
 
-  await showProofStep(page, "Open canvases • create a second local view", 900);
+  await showProofStep(page, "Open Views • preview this canvas as the sidebar glides in", 900);
+  const sidebarSlot = page.locator(".canvas-sidebar-slot");
+  const closedSidebarWidth = await sidebarSlot.evaluate((element) => element.getBoundingClientRect().width);
   await page.getByTestId("sidebar-toggle").click();
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(100);
+  const movingSidebarWidth = await sidebarSlot.evaluate((element) => element.getBoundingClientRect().width);
+  await page.waitForTimeout(700);
+  const openSidebarWidth = await sidebarSlot.evaluate((element) => element.getBoundingClientRect().width);
+  verifyUx("Views sidebar animates through an intermediate width", closedSidebarWidth === 0 && movingSidebarWidth > 0 && movingSidebarWidth < openSidebarWidth, { closedSidebarWidth, movingSidebarWidth, openSidebarWidth });
   verifyUx("sidebar opens only on request", await page.getByTestId("canvas-sidebar").isVisible());
+  verifyUx("saved canvas preview reflects real board nodes", (await page.getByTestId("view-preview-market-overview").locator(".view-preview-node").count()) === 5);
   await page.getByTestId("create-view").click();
   await page.waitForTimeout(900);
   const secondViewId = await page.evaluate(() => window.__FREEFORM_AGENT__.activeViewId);
   verifyUx("new canvas is an empty independent view", secondViewId !== "market-overview" && (await page.evaluate(() => window.__FREEFORM_STATE__.nodes.length)) === 0, { secondViewId });
+  verifyUx("new empty view has an empty page preview", (await page.getByTestId(`view-preview-${secondViewId}`).locator(".view-preview-node").count()) === 0);
   await page.getByTestId("canvas-title").dblclick();
   const secondTitleInput = page.getByTestId("canvas-title-input");
   await secondTitleInput.press("Control+A");
@@ -693,9 +701,9 @@ try {
   await showProofStep(page, "Build with AI • generate a no-code bundle handoff", 900);
   const beforeHandoff = await page.evaluate(() => window.__FREEFORM_STATE__);
   await page.getByTestId("build-artifact").click();
-  await page.getByTestId("agent-request").fill("A regional renewable capacity mix chart with quarterly forecasts");
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(900);
   const instruction = await page.getByTestId("agent-instruction").innerText();
+  verifyUx("AI handoff is agent-neutral and asks the agent to discover the request", instruction.includes("Install the project artifact skill for your agent:") && instruction.includes("ask the user what artifact they want to build") && !instruction.includes("Claude Code"));
   verifyUx("AI handoff targets bundle installation instead of a branch", instruction.includes("npx skills add siriusctrl/freeform-artifacts") && instruction.includes("window.__FREEFORM_AGENT__.installArtifact") && instruction.includes("Do not modify, commit, or deploy"));
   await page.getByTestId("copy-agent-instruction").click();
   await page.getByTestId("copy-agent-instruction").getByText("Copied").waitFor({ state: "visible" });

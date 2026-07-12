@@ -925,3 +925,46 @@ The static GitHub Pages deployment also cannot accept server-side uploads.
 
 Revisit when the product adds accounts, a shared artifact registry, or a
 sandboxed package runtime.
+
+## ADR-0019: Keep AI request discovery in the handoff and previews lightweight
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+The first bundle handoff asked for an artifact description inside the app and
+targeted Claude Code explicitly. That duplicated a conversation the coding
+agent is better equipped to conduct and excluded other agents supported by the
+Skills CLI. The first Views sidebar also used text-only rows and appeared or
+disappeared without transition, which made switching canvases feel detached
+from the Freeform spatial model.
+
+### Decision
+
+- Remove the artifact-request field from the app dialog.
+- Copy an agent-neutral prompt that installs `freeform-artifact-builder`, then
+  instructs the agent to ask the user what artifact they want and clarify data,
+  visual form, and layout before building.
+- Let the Skills CLI interactively choose the installed agent rather than
+  hard-coding an `--agent` target.
+- Keep the bundle file fallback and target-view Agent API unchanged.
+- Keep the Views rail mounted but inert while closed, and animate its grid
+  track, opacity, and translation when toggled.
+- Build each view preview from saved node geometry and artifact ids. Never mount
+  artifact code in the sidebar or persist screenshot blobs.
+
+### Tradeoffs
+
+- Users perform artifact discovery in their agent conversation rather than in
+  the browser dialog.
+- Preview thumbnails communicate composition and density, not exact chart
+  pixels or live data values.
+- The open/close animation causes a short continuous workspace resize; the
+  canvas and managed chart hosts must tolerate container resize throughout it.
+- Interactive agent selection adds one CLI prompt but keeps the handoff usable
+  across supported agents.
+
+Revisit screenshot previews only if exact visual recognition becomes more
+valuable than storage size, freshness, and renderer isolation.

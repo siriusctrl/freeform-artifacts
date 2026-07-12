@@ -77,8 +77,14 @@ button {
   background: var(--app-bg);
 }
 
-.app-shell.sidebar-open {
-  grid-template-columns: 244px minmax(0, 1fr);
+.canvas-app-shell {
+  --sidebar-width: 264px;
+  grid-template-columns: 0 minmax(0, 1fr);
+  transition: grid-template-columns 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.canvas-app-shell.sidebar-open {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
 }
 
 .app-shell[data-theme="dark"] {

@@ -8,8 +8,10 @@ on navigation, invariants, verification, and handoff rules.
 
 - `src/App.tsx`: app orchestration only.
 - `src/canvas/components/`: canvas UI pieces.
-- `src/canvas/components/AgentHandoffDialog.tsx`: the copyable Claude Code
-  artifact-generation handoff; it must not mutate the board.
+- `src/canvas/components/AgentHandoffDialog.tsx`: the copyable agent-neutral
+  artifact handoff; it must not mutate the board.
+- `src/canvas/components/CanvasSidebar.tsx`: named view navigation and
+  data-derived board previews; it must not execute artifact renderers.
 - `src/canvas/hooks/useCanvasInteractions.ts`: drag, resize, pan, zoom, snap,
   and z-order interaction mechanics.
 - `src/canvas/board.ts`: serializable board schema and legacy persistence
@@ -18,6 +20,8 @@ on navigation, invariants, verification, and handoff rules.
   normalization.
 - `src/workspaces/`: published templates, IndexedDB/localStorage persistence,
   and workspace bundle import/export.
+- `src/workspaces/preview.ts`: strips boards down to navigation-safe preview
+  geometry.
 - `src/canvas/debugState.ts`: Playwright/browser debug state only.
 - `src/canvas/seeds/demoBoard.ts`: default demo board nodes.
 - `src/lib/geometry.ts`: viewport math and screen/world coordinate conversion.
@@ -48,6 +52,10 @@ on navigation, invariants, verification, and handoff rules.
 - Generated artifacts must not mutate canvas state directly.
 - Build with AI is bundle-first: trusted packages install into IndexedDB and a
   target local view without a repository change.
+- Keep Build with AI agent-neutral. Its copied prompt installs the skill first,
+  then asks the agent to question the user about the requested artifact.
+- View thumbnails are geometry summaries, not cached screenshots or a second
+  artifact rendering runtime.
 - Database shaping belongs in transforms, not render components.
 - ECharts lifecycle stays inside `EChartsArtifactHost`.
 - Dense artifacts declare `minSize`; essential labels must fit at both default

@@ -72,8 +72,10 @@ verification. Do not build product features on that debug handle.
 Canvas board state is serialized inside a versioned `WorkspaceRecord`. Published
 templates are immutable seeds. On first visit, the selected template is copied
 to the first browser-local view. Additional named views use unique ids while
-retaining the historical `templateId` field as their IndexedDB key. IndexedDB is the primary
-store, and a synchronous localStorage mirror provides recovery if a page closes
+retaining the historical `templateId` field as their IndexedDB key. Navigation
+summaries retain only node geometry and artifact ids for page previews; they do
+not cache screenshots or mount artifact renderers a second time. IndexedDB is
+the primary store, and a synchronous localStorage mirror provides recovery if a page closes
 before an asynchronous IndexedDB transaction finishes. The persisted board
 includes nodes, viewport, selected node, theme mode, and the snap-to-grid
 preference. Node positions and dimensions can be snapped to the 38px
@@ -245,6 +247,8 @@ theme switching, snap preference, deletion, and the AI handoff dialog. Personal
 artifact creation is bundle-first: an agent installs a trusted ESM bundle into
 one browser-local view through `window.__FREEFORM_AGENT__`, or the user imports
 the same bundle file. Neither path requires an application commit or deploy.
+The copyable handoff is agent-neutral: it installs the project skill, then asks
+the agent to question the user about the artifact before authoring the bundle.
 
 Canvas runtime behavior lives under `src/canvas/`:
 

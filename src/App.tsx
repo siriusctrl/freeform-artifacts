@@ -32,6 +32,7 @@ import {
   setActiveWorkspaceId,
 } from "./workspaces/storage";
 import { createWorkspaceFromTemplate, getRequestedTemplate } from "./workspaces/templates";
+import { createWorkspacePreview } from "./workspaces/preview";
 import type { WorkspaceLoadResult, WorkspaceRecord, WorkspaceSummary, WorkspaceTemplate } from "./workspaces/types";
 
 interface BootstrappedWorkspace {
@@ -94,6 +95,12 @@ export default function App() {
     setViews((current) => current.map((view) => view.id === id ? { ...view, title } : view));
   }
 
+  async function toggleSidebar() {
+    const opening = !sidebarOpen;
+    setSidebarOpen(opening);
+    if (opening) setViews(await listWorkspaces());
+  }
+
   if (bootstrapError) {
     return (
       <main className="app-shell" data-theme="light">
@@ -130,7 +137,7 @@ export default function App() {
       sidebarOpen={sidebarOpen}
       onCreateView={addView}
       onSelectView={selectView}
-      onToggleSidebar={() => setSidebarOpen((current) => !current)}
+      onToggleSidebar={toggleSidebar}
       onViewTitleChange={updateViewTitle}
     />
   );
@@ -454,16 +461,23 @@ function CanvasWorkspace({
     };
   });
 
+  const previewViews = useMemo(
+    () => views.map((view) => view.id === initialWorkspace.templateId
+      ? { ...view, previewNodes: createWorkspacePreview(nodes) }
+      : view),
+    [initialWorkspace.templateId, nodes, views],
+  );
+
   return (
-    <main className={`app-shell ${sidebarOpen ? "sidebar-open" : ""}`} data-theme={themeMode}>
-      {sidebarOpen ? (
+    <main className={`app-shell canvas-app-shell ${sidebarOpen ? "sidebar-open" : ""}`} data-theme={themeMode}>
+      <div className="canvas-sidebar-slot" aria-hidden={!sidebarOpen} inert={!sidebarOpen}>
         <CanvasSidebar
           activeViewId={initialWorkspace.templateId}
-          views={views}
+          views={previewViews}
           onCreateView={onCreateView}
           onSelectView={onSelectView}
         />
-      ) : null}
+      </div>
       <section className="workspace">
         <CanvasToolbar
           importInputRef={importInputRef}

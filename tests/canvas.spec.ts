@@ -328,11 +328,15 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   const beforeHandoffCount = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length;
   await page.getByTestId("build-artifact").click();
   await expect(page.getByRole("heading", { name: "Build with AI" })).toBeVisible();
-  await page.getByTestId("agent-request").fill("A regional renewable capacity mix chart with quarterly forecasts");
+  await expect(page.getByTestId("agent-request")).toHaveCount(0);
   await expect(page.getByTestId("agent-instruction")).toContainText(
-    "npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder --agent claude-code -y",
+    "Install the project artifact skill for your agent:",
   );
-  await expect(page.getByTestId("agent-instruction")).toContainText("regional renewable capacity mix chart");
+  await expect(page.getByTestId("agent-instruction")).toContainText(
+    "npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder",
+  );
+  await expect(page.getByTestId("agent-instruction")).toContainText("ask the user what artifact they want to build");
+  await expect(page.getByTestId("agent-instruction")).not.toContainText("Claude Code");
   await expect(page.getByTestId("agent-instruction")).toContainText("window.__FREEFORM_AGENT__.installArtifact");
   await expect(page.getByTestId("agent-instruction")).toContainText("Do not modify, commit, or deploy");
   await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
@@ -552,7 +556,8 @@ test("card resize and canvas zoom scale Sankey visuals and selected controls tog
 test("named canvas views can be created, renamed, switched, and restored", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
-  await expect(page.getByTestId("canvas-sidebar")).toHaveCount(0);
+  await expect(page.getByTestId("canvas-sidebar")).not.toBeVisible();
+  await expect(page.locator(".canvas-sidebar-slot")).toHaveAttribute("inert", "");
   await expect(page.getByTestId("canvas-title")).toHaveText("Market overview");
 
   await page.getByTestId("canvas-title").dblclick();
@@ -563,7 +568,10 @@ test("named canvas views can be created, renamed, switched, and restored", async
 
   await page.getByTestId("sidebar-toggle").click();
   await expect(page.getByTestId("canvas-sidebar")).toBeVisible();
+  await expect(page.getByTestId("canvas-sidebar").getByText("Views", { exact: true })).toBeVisible();
   await expect(page.getByTestId("view-market-overview")).toContainText("Energy room");
+  await expect(page.getByTestId("view-market-overview").getByText("Energy room", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("view-preview-market-overview").locator(".view-preview-node")).toHaveCount(5);
   await page.getByTestId("create-view").click();
   await expect(page.getByTestId("canvas-title")).toHaveText("Untitled canvas");
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(0);
@@ -575,6 +583,7 @@ test("named canvas views can be created, renamed, switched, and restored", async
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
   const activeViewId = await page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId);
   expect(activeViewId).not.toBe("market-overview");
+  await expect(page.getByTestId(`view-preview-${activeViewId}`).locator(".view-preview-node")).toHaveCount(0);
 
   await page.getByTestId("view-market-overview").click();
   await expect(page.getByTestId("canvas-title")).toHaveText("Energy room");
@@ -585,7 +594,7 @@ test("named canvas views can be created, renamed, switched, and restored", async
 
   await page.reload();
   await expect(page.getByTestId("canvas-title")).toHaveText("Scenario lab");
-  await expect(page.getByTestId("canvas-sidebar")).toHaveCount(0);
+  await expect(page.getByTestId("canvas-sidebar")).not.toBeVisible();
 });
 
 test("agent bundles install into a view without a repository change and survive reload", async ({ page }) => {
