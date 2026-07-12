@@ -72,8 +72,8 @@ Code orientation:
 - `tests/canvas.spec.ts` drives a real Chromium browser and asserts core
   canvas interactions.
 - `scripts/record-proof.mjs` records the browser proof WebM, converts it to
-  GIF, and writes manifest, screenshot, contact-sheet, frame-check, and inspection
-  artifacts.
+  GIF, asserts a complete UX journey, and writes manifest, screenshot,
+  contact-sheet, UX-check, frame-check, and inspection artifacts.
 - `scripts/verify-preview.mjs` verifies the production build through Vite
   preview and Chromium.
 - `scripts/lib/` contains shared browser-server helpers for verification

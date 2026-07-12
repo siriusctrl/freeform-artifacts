@@ -43,6 +43,15 @@ All notable user-facing changes to this project should be documented here.
 
 - Made ordinary trackpad and mouse-wheel scrolling pan the canvas naturally;
   trackpad pinch now performs smooth pointer-anchored zoom.
+- Increased pinch responsiveness for the small, high-frequency deltas emitted
+  by real trackpads.
+- Expanded proof recording into an asserted end-to-end UX journey with a
+  visible verification cursor, close/reopen persistence, structured checks,
+  and a denser internal keyframe review sheet.
+- Enlarged the selected-card resize handle hit target for more reliable pointer
+  and trackpad interaction.
+- Let pointer input pass through the read-only selection inspector so it cannot
+  block cards or resize handles placed beneath it.
 - Hardened card drag and canvas pan so browser text selection and native drag
   behavior do not take over the gesture.
 - Made zoom verification cover both pinch zoom and toolbar zoom controls.

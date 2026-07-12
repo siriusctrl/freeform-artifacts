@@ -149,10 +149,13 @@ pan, zoom, selection, or rendered artifact behavior.
 Use Playwright Chromium for browser verification and recording:
 
 - `npm run verify:ui` runs assertions against real interactions.
-- `npm run verify:proof` records a browser session.
+- `npm run verify:proof` records an asserted end-to-end browser journey with a
+  verification-only cursor and action label.
 - `ffmpeg` converts the Playwright WebM recording to `proof.gif`.
 - `ffmpeg` also writes `contact-sheet.png` so agents can inspect keyframes for
   temporal glitches before reporting completion.
+- The journey writes `ux-checks.json` with layout, gesture, pointer-anchor,
+  rendering, and persistence assertions collected during the recording.
 - Proof artifacts are written under `artifacts/verification/<timestamp>/`.
 
 ### Why this route
@@ -666,7 +669,9 @@ The browser already applies the operating system's natural-scrolling preference
 to wheel deltas. Consuming those values directly preserves the user's platform
 setting and supports two-axis trackpad movement without user-agent or hardware
 detection. An exponential pinch factor also converts high-resolution trackpad
-deltas into smooth scale changes instead of fixed ten-percent jumps.
+deltas into smooth scale changes instead of fixed ten-percent jumps. The pinch
+sensitivity is tuned against sequences of small deltas rather than a single
+large synthetic wheel event, matching how physical trackpads report the gesture.
 
 ### Tradeoffs
 

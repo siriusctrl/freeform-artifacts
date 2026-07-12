@@ -67,6 +67,12 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   await expect(resizeHandle).toBeVisible();
   const resizeBox = await resizeHandle.boundingBox();
   expect(resizeBox).not.toBeNull();
+  expect(
+    await page.evaluate(({ x, y }) => {
+      const target = document.elementFromPoint(x, y);
+      return target instanceof Element && Boolean(target.closest(".resize-handle"));
+    }, { x: resizeBox!.x + resizeBox!.width / 2, y: resizeBox!.y + resizeBox!.height / 2 }),
+  ).toBe(true);
 
   await page.mouse.move(resizeBox!.x + 8, resizeBox!.y + 8);
   await page.mouse.down();
@@ -132,21 +138,28 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   }).toBe(beforeWheelGrid.backgroundSize);
 
   await stage.evaluate((element, point) => {
-    element.dispatchEvent(
-      new WheelEvent("wheel", {
-        bubbles: true,
-        cancelable: true,
-        clientX: point.x,
-        clientY: point.y,
-        ctrlKey: true,
-        deltaY: -120,
-      }),
-    );
+    for (let index = 0; index < 8; index += 1) {
+      element.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: point.x,
+          clientY: point.y,
+          ctrlKey: true,
+          deltaY: -4,
+        }),
+      );
+    }
   }, { x: stageBox!.x + 650, y: stageBox!.y + 360 });
 
-  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.viewport.scale)).toBeGreaterThan(
-    beforeWheelPan.scale,
-  );
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        (beforeScale) => window.__FREEFORM_STATE__!.viewport.scale / beforeScale,
+        beforeWheelPan.scale,
+      ),
+    )
+    .toBeGreaterThan(1.5);
   await expect.poll(async () => {
     const style = await grid.evaluate((element) => window.getComputedStyle(element).backgroundSize);
     return style;

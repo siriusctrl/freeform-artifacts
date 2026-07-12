@@ -36,7 +36,8 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - the visual grid follows viewport pan and zoom instead of staying fixed to the
   browser glass;
 - ordinary wheel input pans on both axes without changing zoom scale;
-- a browser pinch gesture changes zoom scale around the pointer;
+- a sequence of high-resolution browser pinch deltas changes zoom scale around
+  the pointer with a responsive magnitude;
 - zoom controls change zoom scale;
 - resize handles change card dimensions;
 - the snap-to-grid toolbar toggle can switch free placement off and back on;
@@ -67,10 +68,13 @@ Run:
 npm run verify:proof
 ```
 
-This is the visual evidence path. It opens Chromium, performs the same class of
-real mouse interactions, records WebM video, writes a final screenshot, converts
-the recording to GIF with `ffmpeg`, writes a keyframe contact sheet for internal
-inspection, runs a lightweight blank-frame check, and writes a manifest.
+This is the visual evidence path. It opens Chromium and runs a complete asserted
+journey through layout, drag, resize, pan, pinch in/out, toolbar zoom/reset, data
+import, theme switching, artifact insertion, and persistence after reopening. It
+records WebM video with a verification-only cursor and step label, writes a
+final screenshot, converts the recording to GIF with `ffmpeg`, writes a 30-cell
+contact sheet sampled across the full timeline, runs a blank-frame check, and
+saves structured UX checks plus a manifest.
 
 This is the browser equivalent of a PTY visual smoke test. It proves the app can
 be operated through a real browser, not just through static tests.
@@ -86,9 +90,10 @@ After a user-facing visual change:
 5. Inspect `artifacts/verification/<timestamp>/proof.gif`.
 6. Inspect `contact-sheet.png` to catch temporal flicker or hover artifacts that
    a final screenshot can miss.
-7. Inspect `frame-check.json` for sampled frame statistics.
-8. Inspect `final-screenshot.png` only as a supplementary static check.
-9. Report the absolute proof directory path in the handoff.
+7. Inspect `ux-checks.json` and confirm every journey checkpoint passed.
+8. Inspect `frame-check.json` for sampled frame statistics.
+9. Inspect `final-screenshot.png` only as a supplementary static check.
+10. Report the absolute proof directory path in the handoff.
 
 ## Test Boundaries
 

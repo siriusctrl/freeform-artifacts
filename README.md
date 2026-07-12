@@ -66,6 +66,10 @@ artifacts/verification/<timestamp>/
 ```
 
 Those artifacts are ignored by git and are meant for local handoff evidence.
+The recorder drives a complete asserted UX journey, exposes its current action
+with a verification-only cursor and label, and writes `ux-checks.json` plus a
+30-cell contact sheet for internal review. The GIF remains the only proof users
+need to inspect.
 
 ## Project Skill
 
