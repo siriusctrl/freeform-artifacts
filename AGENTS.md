@@ -70,6 +70,10 @@ on navigation, invariants, verification, and handoff rules.
 - Keep custom lifecycle-heavy artifacts trusted and compiled until a sandbox is
   implemented.
 - Prefer typed interfaces before adding new runtime behavior.
+- Keep product prose on Instrument Sans and reserve Geist Mono for numbers,
+  dates, quarters, axes, and identifiers that benefit from fixed widths.
+- Keep the top bar compact: secondary actions belong in More, not as additional
+  top-level pills.
 - Artifact review must inspect both light and dark mode. ECharts artifacts must
   theme titles, axes, legends, annotations, tooltips, marks, nodes, links, and
   emphasis states rather than inheriting library defaults.

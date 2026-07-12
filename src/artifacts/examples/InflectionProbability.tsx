@@ -50,9 +50,9 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
         top: titleTop,
         textStyle: {
           color: text,
-          fontFamily: "Geist Variable",
+          fontFamily: "Instrument Sans Variable",
           fontSize: titleFontSize,
-          fontWeight: 780,
+          fontWeight: 650,
           width: noteWidth,
           overflow: "truncate",
         },
@@ -76,10 +76,10 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
           style: {
             text: `{b|${label}:} ${value}`,
             rich: {
-              b: { fill: text, fontWeight: 760 },
+              b: { fill: text, fontWeight: 620 },
             },
             fill: muted,
-            font: "12px Geist Variable",
+            font: '12px "Instrument Sans Variable"',
           },
         })),
         {
@@ -101,7 +101,7 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
         borderColor: grid,
         textStyle: {
           color: text,
-          fontFamily: "Geist Variable",
+          fontFamily: "Instrument Sans Variable",
         },
       },
       legend: {
@@ -111,7 +111,7 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
         itemHeight: 10,
         textStyle: {
           color: text,
-          fontFamily: "Geist Variable",
+          fontFamily: "Instrument Sans Variable",
           fontSize: 13,
         },
       },

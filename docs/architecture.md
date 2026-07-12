@@ -268,6 +268,12 @@ Styles are also split by domain under `src/styles/` and imported through
 `src/styles.css`. Keep new visual rules near the surface they style instead of
 growing the entry file.
 
+The typography system separates interface prose from data comparison:
+Instrument Sans is self-hosted for chrome, headings, and explanatory text;
+Geist Mono is self-hosted for numeric values, dates, quarters, and axes. The
+top bar is intentionally compact application chrome, so secondary commands
+must remain in More instead of accumulating equal-weight pills.
+
 ## Future Boundaries
 
 Before loading untrusted AI-generated code, add a sandbox strategy. Candidate

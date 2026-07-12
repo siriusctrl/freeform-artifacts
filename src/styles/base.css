@@ -1,12 +1,18 @@
 :root {
   color: #171717;
   background: #f6f7f7;
-  --font-sans: "Geist Variable";
+  --font-sans: "Instrument Sans Variable";
   --font-mono: "Geist Mono Variable";
   font-family:
     var(--font-sans),
+    "PingFang SC",
+    "Noto Sans SC",
     ui-sans-serif,
+    system-ui,
     sans-serif;
+  font-weight: 450;
+  letter-spacing: 0;
+  font-optical-sizing: auto;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -34,6 +40,7 @@ body.dragging-canvas * {
 
 button {
   font: inherit;
+  letter-spacing: 0;
 }
 
 .visually-hidden {

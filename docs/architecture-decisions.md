@@ -1018,3 +1018,42 @@ tooltips, axes, nodes, or links.
 Revisit shared theme-token helpers when three or more artifacts repeat the same
 complete chart palette; do not centralize prematurely at the cost of chart-
 specific legibility.
+
+## ADR-0021: Use compact application chrome and separate prose from data type
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+The original 66px top bar gave Theme, More, save status, and Build equal 44px
+pill treatment with repeated borders and shadows. Combined with widespread
+720-780 font weights, the chrome read heavier than the canvas content. Geist
+also served both prose and data, reducing typographic distinction.
+
+### Decision
+
+- Use a 54px top bar with reduced horizontal padding.
+- Group Theme and More in one 36px display-control surface; keep save status
+  flat and let the 38px Build button remain the only high-contrast command.
+- Use Instrument Sans Variable for product chrome, prose, artifact headings,
+  and ECharts explanatory text.
+- Retain Geist Mono for numeric values, dates, quarters, and axes where fixed
+  widths improve comparison.
+- Use a restrained weight hierarchy: approximately 450 for body copy, 520-580
+  for controls and chrome, 600-650 for headings, and 700 only for primary data.
+- Keep CJK system fallbacks after Instrument Sans rather than shipping a large
+  bundled CJK font in this demo.
+
+### Tradeoffs
+
+- Mixed sans/mono typography requires chart definitions to choose families
+  deliberately.
+- Instrument Sans changes text metrics, so every managed chart label and note
+  boundary must be reverified.
+- The compact bar creates less room for future top-level actions; secondary
+  actions should remain in More rather than expanding the bar again.
+
+Revisit the type pairing only when multilingual product chrome becomes a core
+requirement or a future design system provides its own licensed family.

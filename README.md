@@ -379,6 +379,8 @@ Implemented:
 - Browser proof GIF recorder.
 - Lightweight proof frame checks and production preview verification.
 - Light/dark theme support.
+- Compact application chrome with self-hosted Instrument Sans for interface
+  prose and Geist Mono for comparable data values.
 - No-deploy artifact bundle installation through **Build with AI** and the
   browser Agent API.
 - Hardened pointer dragging that suppresses browser text selection and native

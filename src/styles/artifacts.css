@@ -7,7 +7,7 @@
 .artifact-kicker {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 620;
   text-transform: uppercase;
 }
 
@@ -23,7 +23,7 @@
   font-family: var(--font-mono), monospace;
   font-size: 36px;
   line-height: 1;
-  font-weight: 780;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -60,7 +60,7 @@
   background: var(--metric-delta-bg);
   border-radius: 999px;
   padding: 3px 8px;
-  font-weight: 780;
+  font-weight: 650;
 }
 
 .table-card {
@@ -116,7 +116,7 @@ th {
   color: var(--text);
   font-size: 22px;
   line-height: 1.12;
-  font-weight: 780;
+  font-weight: 650;
   text-wrap: balance;
 }
 
@@ -176,7 +176,7 @@ th {
   color: var(--text);
   font-size: 15px;
   line-height: 1.2;
-  font-weight: 720;
+  font-weight: 620;
 }
 
 .flow-step-body span {
@@ -189,7 +189,7 @@ th {
 .flow-step-metric {
   color: var(--faint);
   font-size: 11px;
-  font-weight: 680;
+  font-weight: 540;
 }
 
 .echarts-host {

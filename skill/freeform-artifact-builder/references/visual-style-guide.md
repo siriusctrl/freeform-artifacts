@@ -20,7 +20,7 @@ canvas, not a miniature dashboard squeezed into a card.
 
 ## Typography And Spacing
 
-- Use Geist for prose and Geist Mono only for numeric values, dates, ids, or
+- Use Instrument Sans for prose and Geist Mono only for numeric values, dates, ids, or
   axis labels that benefit from fixed-width alignment.
 - Body titles should normally be 20-24px at a 560-720px artifact width. Step or
   row labels should normally be 12-15px. Do not use hero-scale type in a card.
