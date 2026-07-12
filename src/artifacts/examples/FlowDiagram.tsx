@@ -18,6 +18,7 @@ export const flowDiagramArtifact: ArtifactDefinition<FlowDiagramData> = {
         <div className="flow-summary">{data.summary}</div>
       </div>
       <div className="flow-grid" role="list">
+        <div className="flow-connector" aria-hidden="true" />
         {data.steps.map((step) => (
           <div className="flow-step" role="listitem" key={step.label}>
             <span className="flow-step-node" aria-hidden="true" />

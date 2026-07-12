@@ -59,6 +59,8 @@ All notable user-facing changes to this project should be documented here.
 
 ### Fixed
 
+- Aligned the Pipeline connector and stage markers to one shared grid geometry
+  so the line remains continuous through all three stages.
 - Centered the More icon without relying on inline-button baseline layout.
 - Replaced textual snap state with a compact, accessible switch labeled
   `Snap to grid`.

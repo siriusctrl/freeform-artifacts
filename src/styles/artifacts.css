@@ -134,11 +134,10 @@ th {
   align-items: start;
 }
 
-.flow-grid::before {
-  content: "";
+.flow-connector {
   position: absolute;
-  left: calc(16.666% - 1px);
-  right: calc(16.666% - 1px);
+  left: calc((100% - 56px) / 6);
+  right: calc((100% - 56px) / 6);
   top: 7px;
   height: 1px;
   background: color-mix(in srgb, var(--accent), transparent 54%);
@@ -148,8 +147,10 @@ th {
   position: relative;
   display: grid;
   grid-template-rows: 16px minmax(50px, auto) auto;
+  justify-items: center;
   gap: 10px;
   min-width: 0;
+  text-align: center;
 }
 
 .flow-step-node {
@@ -168,6 +169,7 @@ th {
   align-content: start;
   gap: 5px;
   min-width: 0;
+  justify-items: center;
 }
 
 .flow-step-body strong {
