@@ -19,6 +19,9 @@ and should not change or redeploy the application repository.
 Rules:
 
 - `artifactId` uses lowercase kebab-case and matches the exported artifact id.
+- Treat `artifactId` as immutable. Reinstalling the same source can add another
+  node, but different source under an installed id is rejected; use a new id for
+  a new implementation.
 - `moduleSource` is self-contained browser ESM. Do not import packages or fetch
   code/data. ECharts artifacts return options; React artifacts may use
   `window.React` without JSX.
@@ -28,6 +31,9 @@ Rules:
   light/dark implementation and browser review in both modes.
 - Treat the module as trusted code. It executes in the page and is not sandboxed.
 - Validate the bundle in a real browser before installation.
+- A bundle package is browser-origin scoped while its node is view scoped. Board
+  backup JSON does not include executable package source, so install the bundle
+  separately when moving a board to another browser.
 
 Direct installation when the agent controls the user's page:
 

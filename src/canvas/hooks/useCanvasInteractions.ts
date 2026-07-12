@@ -12,7 +12,7 @@ import type { CanvasNode, CanvasViewport } from "../../artifacts/types";
 import type { RegisteredArtifact } from "../../artifacts/registryTypes";
 import { INITIAL_VIEWPORT } from "../constants";
 import { resizeNodeToArtifactAspect } from "../nodeSize";
-import { screenToWorld, snapToGrid, zoomAt } from "../../lib/geometry";
+import { clientToStage, screenToWorld, snapToGrid, zoomAt } from "../../lib/geometry";
 
 type DragState =
   | { type: "pan"; startX: number; startY: number; viewport: CanvasViewport }
@@ -62,6 +62,17 @@ export function useCanvasInteractions({
 }: UseCanvasInteractionsOptions) {
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+
+  const pointerWorldPosition = useCallback(
+    (clientX: number, clientY: number, targetViewport = viewport) => {
+      const rect = stageRef.current?.getBoundingClientRect();
+      const stagePoint = rect
+        ? clientToStage({ x: clientX, y: clientY }, rect)
+        : { x: clientX, y: clientY };
+      return screenToWorld(stagePoint, targetViewport);
+    },
+    [stageRef, viewport],
+  );
 
   const updateNodePosition = useCallback(
     (nodeId: string, x: number, y: number) => {
@@ -147,7 +158,7 @@ export function useCanvasInteractions({
         return;
       }
 
-      const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
+      const world = pointerWorldPosition(event.clientX, event.clientY);
       if (currentDrag.type === "resize") {
         updateNodeSize(
           currentDrag.nodeId,
@@ -173,14 +184,15 @@ export function useCanvasInteractions({
       window.removeEventListener("pointerup", endDrag);
       window.removeEventListener("pointercancel", endDrag);
     };
-  }, [endDrag, setViewport, updateNodePosition, updateNodeSize, viewport]);
+  }, [endDrag, pointerWorldPosition, setViewport, updateNodePosition, updateNodeSize]);
 
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) {
       return;
     }
-    const pageHeight = stage.clientHeight;
+    const stageElement = stage;
+    const pageHeight = stageElement.clientHeight;
 
     function handleWheel(event: WheelEvent) {
       event.preventDefault();
@@ -190,9 +202,11 @@ export function useCanvasInteractions({
 
       if (event.ctrlKey) {
         const zoomFactor = Math.exp(-deltaY * PINCH_ZOOM_SENSITIVITY);
-        setViewport((current) =>
-          zoomAt(current, { x: event.clientX, y: event.clientY }, current.scale * zoomFactor),
+        const stagePoint = clientToStage(
+          { x: event.clientX, y: event.clientY },
+          stageElement.getBoundingClientRect(),
         );
+        setViewport((current) => zoomAt(current, stagePoint, current.scale * zoomFactor));
         return;
       }
 
@@ -203,10 +217,10 @@ export function useCanvasInteractions({
       }));
     }
 
-    stage.addEventListener("wheel", handleWheel, { passive: false });
+    stageElement.addEventListener("wheel", handleWheel, { passive: false });
 
     return () => {
-      stage.removeEventListener("wheel", handleWheel);
+      stageElement.removeEventListener("wheel", handleWheel);
     };
   }, [setViewport, stageRef]);
 
@@ -237,7 +251,7 @@ export function useCanvasInteractions({
 
       event.preventDefault();
       event.stopPropagation();
-      const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
+      const world = pointerWorldPosition(event.clientX, event.clientY);
       setSelectedNodeId(node.id);
       bringToFront(node.id);
       startDrag({
@@ -249,7 +263,7 @@ export function useCanvasInteractions({
         nodeY: node.y,
       });
     },
-    [bringToFront, setSelectedNodeId, startDrag, viewport],
+    [bringToFront, pointerWorldPosition, setSelectedNodeId, startDrag],
   );
 
   const handleResizePointerDown = useCallback(
@@ -260,7 +274,7 @@ export function useCanvasInteractions({
 
       event.preventDefault();
       event.stopPropagation();
-      const world = screenToWorld({ x: event.clientX, y: event.clientY }, viewport);
+      const world = pointerWorldPosition(event.clientX, event.clientY);
       setSelectedNodeId(node.id);
       bringToFront(node.id);
       startDrag({
@@ -272,14 +286,14 @@ export function useCanvasInteractions({
         startHeight: node.height,
       });
     },
-    [bringToFront, setSelectedNodeId, startDrag, viewport],
+    [bringToFront, pointerWorldPosition, setSelectedNodeId, startDrag],
   );
 
   const changeZoom = useCallback(
     (factor: number) => {
       const rect = stageRef.current?.getBoundingClientRect();
       const center = rect
-        ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+        ? { x: rect.width / 2, y: rect.height / 2 }
         : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
       setViewport((current) => zoomAt(current, center, current.scale * factor));
     },

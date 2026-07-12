@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { RegisteredArtifact } from "../registryTypes";
+import { assertArtifactDefinition } from "../definitionValidation";
+import type { ArtifactRegistryLoadResult, RegisteredArtifact } from "../registryTypes";
 import { ARTIFACT_PACKAGE_STORE, openDatabase } from "../../workspaces/storage";
 
 export const artifactBundleSchema = z.object({
@@ -27,40 +28,48 @@ async function importBundleArtifact(bundle: ArtifactBundle): Promise<RegisteredA
   try {
     const module = await import(/* @vite-ignore */ objectUrl) as ArtifactModule;
     const artifact = module.artifact ?? module.default;
-    if (!artifact || artifact.id !== bundle.artifactId) {
-      throw new Error(`Bundle must export artifact ${bundle.artifactId}`);
-    }
-    if (!artifact.defaultSize || typeof artifact.defaultSize.width !== "number" || typeof artifact.defaultSize.height !== "number") {
-      throw new Error("Bundle artifact must declare defaultSize");
-    }
+    assertArtifactDefinition(artifact, bundle.artifactId);
     return artifact;
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
 }
 
-async function writeBundle(bundle: ArtifactBundle) {
+async function readBundle(artifactId: string): Promise<ArtifactBundle | null> {
   const database = await openDatabase();
   try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction(ARTIFACT_PACKAGE_STORE, "readwrite");
-      transaction.objectStore(ARTIFACT_PACKAGE_STORE).put({ ...bundle, installedAt: new Date().toISOString() });
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error ?? new Error("Unable to store artifact bundle"));
+    return await new Promise((resolve, reject) => {
+      const request = database.transaction(ARTIFACT_PACKAGE_STORE, "readonly").objectStore(ARTIFACT_PACKAGE_STORE).get(artifactId);
+      request.onsuccess = () => {
+        const parsed = artifactBundleSchema.safeParse(request.result);
+        resolve(parsed.success ? parsed.data : null);
+      };
+      request.onerror = () => reject(request.error ?? new Error("Unable to inspect installed artifact"));
     });
   } finally {
     database.close();
   }
 }
 
-export async function installArtifactBundle(value: unknown) {
+export async function prepareArtifactBundle(
+  value: unknown,
+  existingRegistry: Record<string, RegisteredArtifact>,
+) {
   const bundle = artifactBundleSchema.parse(value);
   const artifact = await importBundleArtifact(bundle);
-  await writeBundle(bundle);
+  const installed = await readBundle(bundle.artifactId);
+  if (installed && installed.moduleSource !== bundle.moduleSource) {
+    throw new Error(
+      `Artifact id ${bundle.artifactId} is already installed with different code; use a new artifactId`,
+    );
+  }
+  if (!installed && existingRegistry[bundle.artifactId]) {
+    throw new Error(`Artifact id ${bundle.artifactId} is reserved by the host; use a new artifactId`);
+  }
   return { artifact, bundle };
 }
 
-export async function loadInstalledArtifactRegistry(): Promise<Record<string, RegisteredArtifact>> {
+export async function loadInstalledArtifactRegistry(): Promise<ArtifactRegistryLoadResult> {
   const database = await openDatabase();
   let values: unknown[];
   try {
@@ -73,12 +82,21 @@ export async function loadInstalledArtifactRegistry(): Promise<Record<string, Re
     database.close();
   }
 
-  const entries = await Promise.all(values.map(async (value) => {
+  const entries = await Promise.allSettled(values.map(async (value) => {
     const bundle = artifactBundleSchema.parse(value);
     const artifact = await importBundleArtifact(bundle);
     return [artifact.id, artifact] as const;
   }));
-  return Object.fromEntries(entries);
+  const registry: Record<string, RegisteredArtifact> = {};
+  const diagnostics: string[] = [];
+  for (const entry of entries) {
+    if (entry.status === "fulfilled") {
+      registry[entry.value[0]] = entry.value[1];
+    } else {
+      diagnostics.push(entry.reason instanceof Error ? entry.reason.message : "Installed artifact failed to load");
+    }
+  }
+  return { registry, diagnostics };
 }
 
 export function parseArtifactBundle(source: string) {

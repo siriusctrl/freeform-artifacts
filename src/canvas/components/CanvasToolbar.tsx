@@ -117,7 +117,18 @@ export function CanvasToolbar({
             }}
           />
         ) : (
-          <button type="button" data-testid="canvas-title" onDoubleClick={() => setEditingTitle(true)}>
+          <button
+            type="button"
+            data-testid="canvas-title"
+            title="Rename canvas"
+            onDoubleClick={() => setEditingTitle(true)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === "F2") {
+                event.preventDefault();
+                setEditingTitle(true);
+              }
+            }}
+          >
             {viewTitle}
           </button>
         )}

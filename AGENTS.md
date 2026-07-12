@@ -7,6 +7,8 @@ on navigation, invariants, verification, and handoff rules.
 ## Source Map
 
 - `src/App.tsx`: app orchestration only.
+- `src/canvas/CanvasWorkspace.tsx`: active-view state and composition; delegates
+  interaction, runtime loading, persistence, and node creation to focused modules.
 - `src/canvas/components/`: canvas UI pieces.
 - `src/canvas/components/AgentHandoffDialog.tsx`: the copyable agent-neutral
   artifact handoff; it must not mutate the board.
@@ -20,6 +22,8 @@ on navigation, invariants, verification, and handoff rules.
   normalization.
 - `src/workspaces/`: published templates, IndexedDB/localStorage persistence,
   and workspace bundle import/export.
+- `src/workspaces/useWorkspaceAutosave.ts`: debounced saves, close-time recovery,
+  and save status transitions.
 - `src/workspaces/preview.ts`: strips boards down to navigation-safe preview
   geometry.
 - `src/canvas/debugState.ts`: Playwright/browser debug state only.
@@ -30,6 +34,9 @@ on navigation, invariants, verification, and handoff rules.
 - `src/artifacts/examples/`: demo and verification artifacts.
 - `src/artifacts/generated/`: AI/user-generated repo-compiled artifact entry
   point.
+- `src/artifacts/useArtifactRuntime.ts`: partial-failure loading for external and
+  browser-installed artifact registries.
+- `src/artifacts/ArtifactErrorBoundary.tsx`: per-node renderer isolation.
 - `public/artifacts/generated/manifest.json`: trusted runtime ESM artifact
   manifest.
 - `src/data/transforms.ts`: data shaping before render.
@@ -54,6 +61,8 @@ on navigation, invariants, verification, and handoff rules.
 - Generated artifacts must not mutate canvas state directly.
 - Build with AI is bundle-first: trusted packages install into IndexedDB and a
   target local view without a repository change.
+- Runtime package ids are immutable across the browser origin; package and view
+  writes must remain atomic, while node placement stays view-scoped.
 - Keep Build with AI agent-neutral. Its copied prompt installs the skill first,
   then asks the agent to question the user about the requested artifact.
 - View thumbnails are geometry summaries, not cached screenshots or a second

@@ -38,6 +38,8 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - ordinary wheel input pans on both axes without changing zoom scale;
 - a sequence of high-resolution browser pinch deltas changes zoom scale around
   the pointer with a responsive magnitude;
+- pointer-anchored pinch zoom preserves the same world point with the Views
+  sidebar both closed and open;
 - zoom controls change zoom scale;
 - resize handles change card dimensions;
 - managed chart labels stay inside their SVG host at default and artifact
@@ -65,6 +67,11 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   previews, create/switch, and active-view reload recovery;
 - Agent API and file-fallback bundle installation plus registry/node recovery
   after reload;
+- one broken runtime renderer stays isolated to its card, package id collisions
+  are rejected, invalid target views leave no package behind, and one corrupt
+  installed package does not suppress healthy runtime artifacts;
+- board-data import rejects references to unavailable executable packages before
+  changing the current view;
 - default examples hide internal implementation labels and keep simplified
   hierarchy at their authored sizes;
 - the Pipeline connector endpoints align with the first and last marker centers
@@ -75,13 +82,15 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   deleted node or changing its saved position;
 - title-bar, `Delete`, and `Backspace` deletion paths remove only the selected
   artifact and persist the removal;
-- IndexedDB restores the workspace after reload and after closing/reopening the
-  page;
+- IndexedDB restores the workspace after reload, while the page-close recovery
+  mirror preserves a change even when the debounced save has not fired yet;
 - two independent browser contexts receive separate local forks and cannot see
   each other's deletions;
 - the debug state reports the active template ID and storage mode.
 
-The main test lives in `tests/canvas.spec.ts`.
+The browser suites live under `tests/`; `canvas.spec.ts` intentionally follows
+end-to-end user journeys, while helpers should move out when they are reused by
+another suite rather than solely to satisfy a line-count target.
 `tests/mobile.spec.ts` keeps the touch-sized layout honest without pretending
 desktop mouse gestures are touch interaction coverage.
 

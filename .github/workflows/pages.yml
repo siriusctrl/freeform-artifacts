@@ -24,9 +24,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - run: npm run check
         env:
           VITE_BASE_PATH: /freeform-artifacts/
+      - run: npm run verify:ui
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

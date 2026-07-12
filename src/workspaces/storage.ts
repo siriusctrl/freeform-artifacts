@@ -11,9 +11,22 @@ import {
 
 export const WORKSPACE_DATABASE_NAME = "freeform-artifacts";
 const DATABASE_VERSION = 2;
-const WORKSPACE_STORE = "workspaces";
+export const WORKSPACE_STORE = "workspaces";
 export const ARTIFACT_PACKAGE_STORE = "artifact-packages";
 const ACTIVE_WORKSPACE_KEY = "freeform-artifacts.active-view.v1";
+const workspaceWriteQueues = new Map<string, Promise<unknown>>();
+
+function enqueueWorkspaceWrite<T>(workspaceId: string, operation: () => Promise<T>): Promise<T> {
+  const previous = workspaceWriteQueues.get(workspaceId) ?? Promise.resolve();
+  const result = previous.catch(() => undefined).then(operation);
+  const settled = result.finally(() => {
+    if (workspaceWriteQueues.get(workspaceId) === settled) {
+      workspaceWriteQueues.delete(workspaceId);
+    }
+  });
+  workspaceWriteQueues.set(workspaceId, settled);
+  return result;
+}
 
 function fallbackKey(templateId: string) {
   return `freeform-artifacts.workspace.${templateId}.v1`;
@@ -99,6 +112,16 @@ function writeFallbackWorkspace(workspace: WorkspaceRecord) {
   window.localStorage.setItem(fallbackKey(workspace.templateId), JSON.stringify(workspace));
 }
 
+export function writeWorkspaceRecovery(workspace: WorkspaceRecord) {
+  const checked = workspaceRecordSchema.parse(workspace);
+  try {
+    writeFallbackWorkspace(checked);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function listFallbackWorkspaces(): WorkspaceRecord[] {
   const prefix = "freeform-artifacts.workspace.";
   const records: WorkspaceRecord[] = [];
@@ -163,23 +186,63 @@ export async function createWorkspace(template: WorkspaceTemplate): Promise<Work
 
 export async function saveWorkspace(workspace: WorkspaceRecord): Promise<"indexeddb" | "localstorage"> {
   const checked = workspaceRecordSchema.parse(workspace);
-  let fallbackSaved = false;
-  try {
-    writeFallbackWorkspace(checked);
-    fallbackSaved = true;
-  } catch {
-    // IndexedDB remains the primary path when a large workspace exceeds the fallback quota.
-  }
-
-  try {
-    await writeIndexedWorkspace(checked);
-    return "indexeddb";
-  } catch {
-    if (fallbackSaved) {
-      return "localstorage";
+  return enqueueWorkspaceWrite(checked.templateId, async () => {
+    const fallbackSaved = writeWorkspaceRecovery(checked);
+    try {
+      await writeIndexedWorkspace(checked);
+      return "indexeddb";
+    } catch {
+      if (fallbackSaved) {
+        return "localstorage";
+      }
+      throw new Error("Unable to save this workspace in browser storage");
     }
-    throw new Error("Unable to save this workspace in browser storage");
-  }
+  });
+}
+
+export interface StoredArtifactPackage {
+  artifactId: string;
+  moduleSource: string;
+  [key: string]: unknown;
+}
+
+export async function commitWorkspaceWithArtifactPackage(
+  workspace: WorkspaceRecord,
+  artifactPackage: StoredArtifactPackage,
+) {
+  const checked = workspaceRecordSchema.parse(workspace);
+  return enqueueWorkspaceWrite(checked.templateId, async () => {
+    const database = await openDatabase();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction([WORKSPACE_STORE, ARTIFACT_PACKAGE_STORE], "readwrite");
+        const packageStore = transaction.objectStore(ARTIFACT_PACKAGE_STORE);
+        const existingRequest = packageStore.get(artifactPackage.artifactId);
+        let conflict: Error | null = null;
+
+        existingRequest.onsuccess = () => {
+          const existing = existingRequest.result as StoredArtifactPackage | undefined;
+          if (existing && existing.moduleSource !== artifactPackage.moduleSource) {
+            conflict = new Error(
+              `Artifact id ${artifactPackage.artifactId} is already installed with different code; use a new artifactId`,
+            );
+            transaction.abort();
+            return;
+          }
+          packageStore.put({ ...artifactPackage, installedAt: new Date().toISOString() });
+          transaction.objectStore(WORKSPACE_STORE).put(checked);
+        };
+        existingRequest.onerror = () => reject(existingRequest.error ?? new Error("Unable to inspect artifact package"));
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(conflict ?? transaction.error ?? new Error("Unable to install artifact"));
+        transaction.onabort = () => reject(conflict ?? transaction.error ?? new Error("Artifact installation was aborted"));
+      });
+    } finally {
+      database.close();
+    }
+    writeWorkspaceRecovery(checked);
+    return "indexeddb" as const;
+  });
 }
 
 export async function loadOrCreateWorkspace(template: WorkspaceTemplate): Promise<WorkspaceLoadResult> {

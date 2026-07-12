@@ -174,8 +174,9 @@ not an optional polish pass.
 
 - Use serializable `data` and `config`.
 - Keep `dataSchema` and `configSchema` as useful hints.
-- Add Zod `dataValidator` and `configValidator` when introducing new artifact
-  payload shapes.
+- Add Zod `dataValidator` and `configValidator` when introducing repo-compiled
+  artifact payload shapes. Runtime bundles cannot import Zod; guard uncertain
+  fields inside their self-contained renderer/build function instead.
 - Use stable IDs with lowercase words and hyphens.
 - Use `CanvasTheme` values for theme-sensitive colors.
 - Treat `defaultSize` as the fixed internal coordinate system used by canvas

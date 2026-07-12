@@ -11,7 +11,7 @@ ECharts artifacts.
 ## Product Boundary
 
 This project is canvas-first, not dashboard-first. The first screen should stay
-focused on placing, moving, resizing, panning, zooming, and inspecting artifacts
+focused on placing, moving, resizing, panning, zooming, and viewing artifacts
 in a Freeform-style workspace.
 
 It is not a landing page, admin dashboard, or server management console. It is
@@ -157,8 +157,10 @@ After installation, the generated instruction tells the agent to ask what the
 user wants to build and clarify its data, visual form, and layout. It then asks
 for one self-contained trusted bundle with `artifactId`, ESM `moduleSource`,
 and initial node data, while explicitly forbidding application repo changes.
-Bundles are stored in IndexedDB, dynamically registered, and installed only
-into the target local view.
+Bundle code is stored once per browser origin in IndexedDB; the installed node
+belongs only to the target local view. Artifact ids are immutable package
+identities: installing different code under an existing id is rejected instead
+of silently changing cards in other views.
 
 ### Runtime Artifact Bundle
 
@@ -305,15 +307,16 @@ AI-generated artifacts should follow these rules:
 - Use React artifacts when the visual is not well represented by ECharts or
   needs custom UI composition.
 - Do not mutate canvas state directly.
-- Receive all display input through `data`, `config`, `theme`, and `emit`.
+- Receive all display input through `data`, `config`, `theme`, and `size`.
 - Keep database-specific logic outside the render component.
 - Put data shaping in a named transform before artifact rendering.
-- Add a Zod `dataValidator` for runtime payload validation.
+- Add a Zod `dataValidator` to repo-compiled artifacts. Self-contained runtime
+  bundles cannot import Zod, so keep their payload guards inside renderer code;
+  the host isolates renderer failures to the affected card.
 - Use deterministic layout; do not depend on global timers, random values, or
   network fetches during render.
 - Declare default width and height so the canvas can place the artifact before
   rendering it.
-- Treat `emit` as the only outward event channel.
 
 The intended pipeline is:
 
@@ -364,8 +367,8 @@ Implemented:
 - Published demo template with a per-browser local workspace fork.
 - Multiple named local canvas views with a smoothly animated,
   default-collapsed **Views** sidebar and data-derived page previews.
-- IndexedDB workspace persistence with a synchronous local-storage recovery
-  mirror and versioned JSON import/export.
+- Debounced, ordered IndexedDB workspace persistence with a synchronous
+  page-close recovery mirror and versioned board-data JSON import/export.
 - Transform registry with fixtures for raw query rows.
 - Zod-backed artifact payload validation with invalid-card fallback rendering.
 - Registry-backed metric, table, flow-diagram, probability chart, and Sankey
@@ -413,8 +416,10 @@ published template -> first-visit browser fork -> IndexedDB workspace
 Visitors do not share state because the static deployment has no shared board
 backend. Isolation is scoped to the browser profile and site origin. It does not
 provide account identity, cross-device sync, or persistence after the user
-clears site data. Use the toolbar import/export actions for explicit backup and
-transfer.
+clears site data. Toolbar import/export transfers serializable board data only;
+personal executable artifact packages remain browser-local and must be installed
+separately in the destination browser. Import rejects a board that references
+unavailable packages and names the missing artifact ids.
 
 Template URLs use a query parameter so they remain compatible with static
 GitHub Pages routing:

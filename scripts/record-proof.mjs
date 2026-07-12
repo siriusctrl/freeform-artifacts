@@ -292,6 +292,19 @@ function proofArtifactBundle() {
   };
 }
 
+function brokenProofArtifactBundle() {
+  return {
+    version: 1,
+    artifactId: "broken-proof-card",
+    moduleSource: `export const artifact = {
+      id: "broken-proof-card", renderer: "echarts", title: "Broken proof card",
+      version: "1.0.0", defaultSize: { width: 420, height: 260 },
+      buildOption: () => { throw new Error("Proof renderer failure"); },
+    };`,
+    node: { title: "Broken proof card", data: {}, config: {} },
+  };
+}
+
 const server = spawn("npm", ["run", "dev", "--", "--host", host, "--port", String(port), "--strictPort"], {
   cwd: root,
   detached: true,
@@ -418,7 +431,8 @@ try {
   await page.waitForTimeout(700);
 
   await showProofStep(page, "Rename canvas • edit the centered title", 900);
-  await page.getByTestId("canvas-title").dblclick();
+  await page.getByTestId("canvas-title").focus();
+  await page.getByTestId("canvas-title").press("F2");
   const titleInput = page.getByTestId("canvas-title-input");
   await titleInput.press("Control+A");
   await titleInput.pressSequentially("Market canvas", { delay: 65 });
@@ -426,19 +440,41 @@ try {
   await titleInput.press("Enter");
   await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saved locally");
   await page.waitForTimeout(900);
-  verifyUx("double-click rename persists the centered canvas title", await page.getByTestId("canvas-title").getByText("Market canvas").isVisible());
+  verifyUx("keyboard rename persists the centered canvas title", await page.getByTestId("canvas-title").getByText("Market canvas").isVisible());
 
   await showProofStep(page, "Open Views • preview this canvas as the sidebar glides in", 900);
   const sidebarSlot = page.locator(".canvas-sidebar-slot");
   const closedSidebarWidth = await sidebarSlot.evaluate((element) => element.getBoundingClientRect().width);
-  await page.getByTestId("sidebar-toggle").click();
-  await page.waitForTimeout(100);
-  const movingSidebarWidth = await sidebarSlot.evaluate((element) => element.getBoundingClientRect().width);
-  await page.waitForTimeout(700);
-  const openSidebarWidth = await sidebarSlot.evaluate((element) => element.getBoundingClientRect().width);
-  verifyUx("Views sidebar animates through an intermediate width", closedSidebarWidth === 0 && movingSidebarWidth > 0 && movingSidebarWidth < openSidebarWidth, { closedSidebarWidth, movingSidebarWidth, openSidebarWidth });
+  const sidebarWidths = await sidebarSlot.evaluate(async (element) => {
+    document.querySelector('[data-testid="sidebar-toggle"]')?.click();
+    const widths = [];
+    for (let frame = 0; frame < 24; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      widths.push(element.getBoundingClientRect().width);
+    }
+    return widths;
+  });
+  const openSidebarWidth = sidebarWidths.at(-1);
+  const hasIntermediateWidth = sidebarWidths.some((width) => width > 0 && width < openSidebarWidth);
+  verifyUx("Views sidebar animates through intermediate widths", closedSidebarWidth === 0 && openSidebarWidth === 264 && hasIntermediateWidth, { closedSidebarWidth, sidebarWidths, openSidebarWidth });
   verifyUx("sidebar opens only on request", await page.getByTestId("canvas-sidebar").isVisible());
   verifyUx("saved canvas preview reflects real board nodes", (await page.getByTestId("view-preview-market-overview").locator(".view-preview-node").count()) === 5);
+  await showProofStep(page, "Sidebar zoom • keep the pointer anchor stable", 700);
+  const sidebarZoom = await stage.evaluate(async (element) => {
+    const rect = element.getBoundingClientRect();
+    const point = { x: Math.round(rect.left + rect.width * 0.66), y: Math.round(rect.top + rect.height * 0.42) };
+    const local = { x: point.x - rect.left, y: point.y - rect.top };
+    const before = window.__FREEFORM_STATE__.viewport;
+    const world = { x: (local.x - before.x) / before.scale, y: (local.y - before.y) / before.scale };
+    element.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, clientX: point.x, clientY: point.y, ctrlKey: true, deltaY: -12 }));
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const after = window.__FREEFORM_STATE__.viewport;
+    const afterWorld = { x: (local.x - after.x) / after.scale, y: (local.y - after.y) / after.scale };
+    return { before, after, drift: Math.hypot(afterWorld.x - world.x, afterWorld.y - world.y) };
+  });
+  verifyUx("sidebar-open pinch zoom preserves its world anchor", sidebarZoom.after.scale > sidebarZoom.before.scale && sidebarZoom.drift < 0.000001, sidebarZoom);
+  await page.getByTitle("Reset view").click();
+  await page.waitForTimeout(500);
   await page.getByTestId("create-view").click();
   await page.waitForTimeout(900);
   const secondViewId = await page.evaluate(() => window.__FREEFORM_AGENT__.activeViewId);
@@ -631,12 +667,13 @@ try {
   });
 
   const pinchPoint = { x: stageBox.x + 690, y: stageBox.y + 390 };
+  const pinchStagePoint = { x: pinchPoint.x - stageBox.x, y: pinchPoint.y - stageBox.y };
   await showProofStep(page, "Pinch out • responsive pointer-anchored zoom", 600);
   const beforePinchOut = await page.evaluate(() => window.__FREEFORM_STATE__.viewport);
-  const anchorBeforePinchOut = worldPoint(beforePinchOut, pinchPoint);
+  const anchorBeforePinchOut = worldPoint(beforePinchOut, pinchStagePoint);
   await dispatchPinch(page, stage, pinchPoint, -3, 12);
   const afterPinchOut = await page.evaluate(() => window.__FREEFORM_STATE__.viewport);
-  const anchorAfterPinchOut = worldPoint(afterPinchOut, pinchPoint);
+  const anchorAfterPinchOut = worldPoint(afterPinchOut, pinchStagePoint);
   verifyUx("small pinch deltas produce a responsive zoom", afterPinchOut.scale / beforePinchOut.scale > 1.55, {
     beforeScale: beforePinchOut.scale,
     afterScale: afterPinchOut.scale,
@@ -648,10 +685,10 @@ try {
 
   await showProofStep(page, "Pinch in • preserve the same anchor", 550);
   const beforePinchIn = await page.evaluate(() => window.__FREEFORM_STATE__.viewport);
-  const anchorBeforePinchIn = worldPoint(beforePinchIn, pinchPoint);
+  const anchorBeforePinchIn = worldPoint(beforePinchIn, pinchStagePoint);
   await dispatchPinch(page, stage, pinchPoint, 3, 8);
   const afterPinchIn = await page.evaluate(() => window.__FREEFORM_STATE__.viewport);
-  const anchorAfterPinchIn = worldPoint(afterPinchIn, pinchPoint);
+  const anchorAfterPinchIn = worldPoint(afterPinchIn, pinchStagePoint);
   verifyUx("pinch-in reduces scale", afterPinchIn.scale < beforePinchIn.scale, {
     beforeScale: beforePinchIn.scale,
     afterScale: afterPinchIn.scale,
@@ -775,6 +812,17 @@ try {
   verifyUx("Agent API installs and selects a persisted artifact without a deploy", afterInstall.nodes.length === beforeInstall.nodes.length + 1 && afterInstall.artifactIds.includes("agent-capacity-card"), { installedArtifact });
   verifyUx("installed artifact renders its generated content", await page.getByText("Installed directly into this view").isVisible());
 
+  await showProofStep(page, "Broken artifact • isolate failure to one card", 900);
+  const brokenArtifact = await page.evaluate((bundle) => window.__FREEFORM_AGENT__.installArtifact(bundle), brokenProofArtifactBundle());
+  const brokenNode = page.getByTestId(`node-${brokenArtifact.nodeId}`);
+  await brokenNode.waitFor({ state: "visible" });
+  verifyUx("broken runtime renderer shows a local fallback", await brokenNode.getByText("Unable to render this artifact").isVisible());
+  verifyUx("healthy runtime artifact remains rendered beside a broken card", await page.getByText("Installed directly into this view").isVisible());
+  await page.waitForTimeout(1200);
+  await brokenNode.click({ position: { x: 100, y: 18 } });
+  await page.getByTestId(`delete-${brokenArtifact.nodeId}`).click();
+  await page.waitForTimeout(500);
+
   await showProofStep(page, "Delete artifact • remove it from this workspace", 550);
   await page.getByTestId("node-node-revenue").click({ position: { x: 100, y: 18 } });
   const beforeDelete = await page.evaluate(() => window.__FREEFORM_STATE__);
@@ -895,6 +943,7 @@ try {
       "toggle dark mode",
       "generate and copy a no-code artifact bundle handoff",
       "install a runtime artifact through the browser Agent API",
+      "isolate a broken runtime artifact to its own fallback card",
       "delete an artifact with the selected-card control",
       "close, reopen, and restore the browser-local workspace",
       "capture screenshot",
