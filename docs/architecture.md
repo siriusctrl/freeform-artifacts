@@ -69,11 +69,21 @@ store stable artifact positions independent of the user's current zoom.
 The current runtime exposes `window.__FREEFORM_STATE__` only for browser
 verification. Do not build product features on that debug handle.
 
-Canvas board state is serialized as a versioned JSON object in local storage.
-The persisted shape includes nodes, viewport, selected node, theme mode, and
-the snap-to-grid preference. Node positions and dimensions can be snapped to the
-38px world-coordinate grid by the canvas shell; artifacts do not own placement
+Canvas board state is serialized inside a versioned `WorkspaceRecord`. Published
+templates are immutable seeds. On first visit, the selected template is copied
+to a browser-local workspace keyed by template ID. IndexedDB is the primary
+store, and a synchronous localStorage mirror provides recovery if a page closes
+before an asynchronous IndexedDB transaction finishes. The persisted board
+includes nodes, viewport, selected node, theme mode, and the snap-to-grid
+preference. Node positions and dimensions can be snapped to the 38px
+world-coordinate grid by the canvas shell; artifacts do not own placement
 behavior.
+
+This is browser-profile isolation, not account identity. The static app has no
+shared board backend, so separate browser contexts cannot see each other's
+workspaces. Clearing site data removes the workspace, and cross-device sync is
+outside the current product boundary. Versioned `.freeform.json` import/export
+is the explicit portability path.
 Artifact render data remains serializable and is validated when rendered.
 
 ## Artifact Registry
@@ -131,7 +141,8 @@ Generated artifacts have two trusted loading paths:
 - repo-compiled `src/artifacts/generated/**/*.artifact.tsx`, discovered by
   Vite `import.meta.glob`;
 - runtime external ESM modules listed in
-  `/artifacts/generated/manifest.json`, fetched and imported as Blob-backed
+  `artifacts/generated/manifest.json`, fetched relative to the Vite base path
+  and imported as Blob-backed
   modules.
 
 External ESM modules are not sandboxed. They are intended for self-hosted

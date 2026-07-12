@@ -9,6 +9,8 @@ interface CanvasDebugStateOptions {
   selectedNodeId: string;
   snapToGrid: boolean;
   status: string;
+  storageMode: "indexeddb" | "localstorage";
+  templateId: string;
   themeMode: ThemeMode;
   viewport: CanvasViewport;
 }
@@ -19,6 +21,8 @@ export function publishCanvasDebugState({
   selectedNodeId,
   snapToGrid,
   status,
+  storageMode,
+  templateId,
   themeMode,
   viewport,
 }: CanvasDebugStateOptions) {
@@ -29,6 +33,8 @@ export function publishCanvasDebugState({
     snapGridSize: CANVAS_GRID_SIZE,
     snapToGrid,
     status,
+    storageMode,
+    templateId,
     themeMode,
     viewport,
   };
@@ -44,6 +50,8 @@ declare global {
       readonly snapToGrid: boolean;
       readonly snapGridSize: number;
       readonly status: string;
+      readonly storageMode: "indexeddb" | "localstorage";
+      readonly templateId: string;
       readonly artifactIds: string[];
     };
   }

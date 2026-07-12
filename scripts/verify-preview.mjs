@@ -4,12 +4,14 @@ import process from "node:process";
 import { stopProcessGroup, waitForServer } from "./lib/browser-server.mjs";
 
 const root = process.cwd();
-const port = Number(process.env.FREEFORM_PREVIEW_PORT ?? 4178);
+const port = Number(process.env.FREEFORM_PREVIEW_PORT ?? 4181);
 const host = "127.0.0.1";
-const url = `http://${host}:${port}`;
+const basePath = process.env.FREEFORM_BASE_PATH ?? "/freeform-artifacts/";
+const url = `http://${host}:${port}${basePath}`;
 
 const build = spawnSync("npm", ["run", "build"], {
   cwd: root,
+  env: { ...process.env, VITE_BASE_PATH: basePath },
   stdio: "inherit",
 });
 
@@ -17,11 +19,16 @@ if (build.status !== 0) {
   process.exit(build.status ?? 1);
 }
 
-const server = spawn("npm", ["exec", "vite", "--", "preview", "--host", host, "--port", String(port)], {
+const server = spawn(
+  "npm",
+  ["exec", "vite", "--", "preview", "--host", host, "--port", String(port), "--strictPort"],
+  {
   cwd: root,
   detached: true,
   stdio: "ignore",
-});
+  env: { ...process.env, VITE_BASE_PATH: basePath },
+  },
+);
 
 let browser;
 

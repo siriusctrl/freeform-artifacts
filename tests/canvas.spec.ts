@@ -2,8 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("freeform canvas supports pan, zoom, node drag, select, and add artifact", async ({ page }) => {
   await page.goto("/");
-  await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
 
   const stage = page.getByTestId("canvas-stage");
   const grid = page.getByTestId("grid-plane");
@@ -128,7 +127,7 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
 
   await page.getByTestId("import-data").click();
   await expect(page.getByText("$232,400")).toBeVisible();
-  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Imported query result");
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
 
   await page.getByTestId("add-artifact").click();
   await expect(page.getByText("AI generated card")).toBeVisible();
@@ -143,4 +142,66 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   await expect(page.getByText("$232,400")).toBeVisible();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.snapToGrid)).toBe(true);
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.storageMode)).toBe("indexeddb");
+});
+
+test("each browser gets an isolated local fork that survives closing and reopening the page", async ({ browser }) => {
+  const visitorA = await browser.newContext();
+  const visitorB = await browser.newContext();
+
+  try {
+    const firstPage = await visitorA.newPage();
+    await firstPage.goto("/");
+    await firstPage.getByTestId("canvas-stage").waitFor({ state: "visible" });
+    await expect.poll(async () => firstPage.evaluate(() => window.__FREEFORM_STATE__!.templateId)).toBe("market-overview");
+    await firstPage.getByTestId("add-artifact").click();
+    await expect(firstPage.getByText("AI generated card")).toBeVisible();
+    await expect.poll(async () => firstPage.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+    await firstPage.close();
+
+    const reopenedPage = await visitorA.newPage();
+    await reopenedPage.goto("/");
+    await expect(reopenedPage.getByText("AI generated card")).toBeVisible();
+    await expect
+      .poll(async () => reopenedPage.evaluate(() => window.__FREEFORM_STATE__!.storageMode))
+      .toBe("indexeddb");
+
+    const otherVisitorPage = await visitorB.newPage();
+    await otherVisitorPage.goto("/");
+    await expect(otherVisitorPage.getByTestId("canvas-stage")).toBeVisible();
+    await expect(otherVisitorPage.getByText("AI generated card")).toHaveCount(0);
+    await expect.poll(async () => otherVisitorPage.evaluate(() => window.__FREEFORM_STATE__!.storageMode)).toBe(
+      "indexeddb",
+    );
+
+    const visitorACount = await reopenedPage.evaluate(() => window.__FREEFORM_STATE__!.nodes.length);
+    const visitorBCount = await otherVisitorPage.evaluate(() => window.__FREEFORM_STATE__!.nodes.length);
+    expect(visitorACount).toBe(visitorBCount + 1);
+  } finally {
+    await visitorA.close();
+    await visitorB.close();
+  }
+});
+
+test("workspace backups round-trip through export, reset, and import", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("add-artifact").click();
+  await expect(page.getByText("AI generated card")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByTestId("export-workspace").click();
+  const download = await downloadPromise;
+  const backupPath = testInfo.outputPath("market-overview.freeform.json");
+  await download.saveAs(backupPath);
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByTestId("reset-workspace").click();
+  await expect(page.getByText("AI generated card")).toHaveCount(0);
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+
+  await page.getByTestId("workspace-file").setInputFiles(backupPath);
+  await expect(page.getByText("AI generated card")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
 });

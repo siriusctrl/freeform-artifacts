@@ -101,7 +101,8 @@ Current controls:
 - Toggle light/dark mode from the top toolbar.
 - Import a sample query result from the data toolbar button; this runs raw rows
   through the transform registry before updating cards.
-- Export the current board as JSON from the toolbar.
+- Export or import a versioned workspace backup from the toolbar.
+- Reset to the authored demo only through the explicit reset action.
 - Click **Add artifact** to insert a registry-backed example card.
 
 The canvas stores nodes in world coordinates. The viewport stores screen offset
@@ -109,8 +110,8 @@ and scale. Rendering converts world coordinates into a single transformed DOM
 layer, which keeps artifact components as normal React/DOM content instead of
 forcing them into a low-level drawing API.
 
-Board state is automatically saved in local storage and restored on reload,
-including the current theme and snap-to-grid preference.
+Board state is automatically saved in the browser-local workspace and restored
+on reload, including the current theme and snap-to-grid preference.
 
 ## Artifact Runtime
 
@@ -164,7 +165,7 @@ public/artifacts/generated/manifest.json
 ```json
 {
   "artifacts": [
-    { "module": "/artifacts/generated/my-artifact.js" }
+    { "module": "./my-artifact.js" }
   ]
 }
 ```
@@ -311,15 +312,18 @@ Implemented:
 - Resizable selected artifact nodes.
 - Default-on 38px snap-to-grid placement with a toolbar toggle.
 - Selection inspector.
-- Persistent board serialization in local storage and JSON export.
+- Published demo template with a per-browser local workspace fork.
+- IndexedDB workspace persistence with a synchronous local-storage recovery
+  mirror and versioned JSON import/export.
 - Transform registry with fixtures for raw query rows.
 - Zod-backed artifact payload validation with invalid-card fallback rendering.
 - Registry-backed metric, table, flow-diagram, probability chart, and Sankey
   artifacts.
 - Layered artifact registries for core, example, and future generated
   artifacts.
-- Auto-discovered repo-generated TSX artifacts and trusted runtime ESM artifact
-  loading through `/artifacts/generated/manifest.json`.
+- Auto-discovered repo-generated TSX artifacts and base-aware trusted runtime
+  ESM loading through `artifacts/generated/manifest.json`.
+- GitHub Pages deployment under `/freeform-artifacts/`.
 - Playwright UI smoke test.
 - Browser proof GIF recorder.
 - Lightweight proof frame checks and production preview verification.
@@ -335,7 +339,32 @@ TODO:
 - Add sandbox strategy before loading untrusted generated code.
 - Add file/API import for arbitrary database query result JSON.
 - Add richer visual diff thresholds beyond the current blank-frame checks.
-- Add board JSON import.
+- Add a local multi-workspace picker when more published templates exist.
+
+## Public demo and local workspaces
+
+The public URL opens the `market-overview` template. The template is immutable:
+on first visit, the app copies it into a workspace owned by that browser origin.
+Every later drag, resize, zoom, theme change, data import, or artifact insertion
+is saved locally and restored when the page is reopened.
+
+```text
+published template -> first-visit browser fork -> IndexedDB workspace
+                                           \-> localStorage recovery mirror
+```
+
+Visitors do not share state because the static deployment has no shared board
+backend. Isolation is scoped to the browser profile and site origin. It does not
+provide account identity, cross-device sync, or persistence after the user
+clears site data. Use the toolbar import/export actions for explicit backup and
+transfer.
+
+Template URLs use a query parameter so they remain compatible with static
+GitHub Pages routing:
+
+```text
+https://siriusctrl.github.io/freeform-artifacts/?board=market-overview
+```
 
 ## Documentation
 

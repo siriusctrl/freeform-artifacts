@@ -58,6 +58,8 @@ final screenshot and `frame-check.json` as supplementary checks. Look for:
 - snap-to-grid toggle not returning to the intended on/off state;
 - light/dark mode leaving illegible cards or panels;
 - added artifacts appearing outside the visible canvas;
+- local save state failing to settle after an interaction;
+- a restored workspace reverting to the published template;
 - text overflow in buttons, cards, or inspector panels.
 - one-frame label jumps, tooltip flashes, hover highlights, or chart redraws
   that only appear during motion.

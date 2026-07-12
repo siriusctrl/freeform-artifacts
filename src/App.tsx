@@ -3,27 +3,115 @@ import { loadExternalArtifactRegistry } from "./artifacts/generated/externalLoad
 import { artifactRegistry } from "./artifacts/registry";
 import type { RegisteredArtifact } from "./artifacts/registryTypes";
 import type { CanvasNode, CanvasViewport } from "./artifacts/types";
-import { createBoardState, downloadBoardState, loadBoardState, saveBoardState } from "./canvas/board";
+import { createBoardState } from "./canvas/board";
 import { CanvasBoard } from "./canvas/components/CanvasBoard";
 import { CanvasToolbar } from "./canvas/components/CanvasToolbar";
-import { INITIAL_VIEWPORT, themeFor, type ThemeMode } from "./canvas/constants";
+import { themeFor, type ThemeMode } from "./canvas/constants";
 import { publishCanvasDebugState } from "./canvas/debugState";
 import { useCanvasInteractions } from "./canvas/hooks/useCanvasInteractions";
 import { createMetricNode } from "./canvas/nodeFactory";
-import { initialNodes } from "./canvas/seeds/demoBoard";
 import { importedRevenueRows } from "./data/transformFixtures";
 import { revenueSummaryTransform, revenueTableTransform, runTransform } from "./data/transforms";
 import { CANVAS_GRID_SIZE, screenToWorld } from "./lib/geometry";
+import { downloadWorkspace, parseWorkspace } from "./workspaces/bundle";
+import { loadOrCreateWorkspace, saveWorkspace } from "./workspaces/storage";
+import { createWorkspaceFromTemplate, getRequestedTemplate } from "./workspaces/templates";
+import type { WorkspaceLoadResult, WorkspaceRecord, WorkspaceTemplate } from "./workspaces/types";
+
+interface BootstrappedWorkspace {
+  template: WorkspaceTemplate;
+  result: WorkspaceLoadResult;
+}
+
+function statusForLoad(result: WorkspaceLoadResult) {
+  if (result.source === "existing") {
+    return "Local workspace restored";
+  }
+  if (result.source === "legacy") {
+    return "Previous board migrated";
+  }
+  return "Demo copied to this browser";
+}
 
 export default function App() {
-  const [savedBoard] = useState(() => loadBoardState());
+  const [bootstrapped, setBootstrapped] = useState<BootstrappedWorkspace | null>(null);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const template = getRequestedTemplate();
+
+    loadOrCreateWorkspace(template)
+      .then((result) => {
+        if (!cancelled) {
+          setBootstrapped({ template, result });
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setBootstrapError(error instanceof Error ? error.message : "Unable to open the local workspace");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (bootstrapError) {
+    return (
+      <main className="app-shell" data-theme="light">
+        <section className="workspace-gate" role="alert">
+          <strong>Workspace unavailable</strong>
+          <p>{bootstrapError}</p>
+          <button type="button" onClick={() => window.location.reload()}>
+            Try again
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  if (!bootstrapped) {
+    return (
+      <main className="app-shell" data-theme="light">
+        <section className="workspace-gate" aria-live="polite">
+          <strong>Opening your local workspace</strong>
+          <p>The public demo stays untouched while this browser loads its own copy.</p>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <CanvasWorkspace
+      initialWorkspace={bootstrapped.result.workspace}
+      initialStorage={bootstrapped.result.storage}
+      initialStatus={statusForLoad(bootstrapped.result)}
+      template={bootstrapped.template}
+    />
+  );
+}
+
+interface CanvasWorkspaceProps {
+  initialWorkspace: WorkspaceRecord;
+  initialStorage: WorkspaceLoadResult["storage"];
+  initialStatus: string;
+  template: WorkspaceTemplate;
+}
+
+function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, template }: CanvasWorkspaceProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const [nodes, setNodes] = useState<CanvasNode[]>(() => savedBoard?.nodes ?? initialNodes);
-  const [viewport, setViewport] = useState<CanvasViewport>(() => savedBoard?.viewport ?? INITIAL_VIEWPORT);
-  const [selectedNodeId, setSelectedNodeId] = useState<string>(() => savedBoard?.selectedNodeId ?? "node-revenue");
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => savedBoard?.themeMode ?? "light");
-  const [snapToGrid, setSnapToGrid] = useState(() => savedBoard?.snapToGrid ?? true);
-  const [status, setStatus] = useState(savedBoard ? "Restored saved board" : "Autosave ready");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const skipInitialSave = useRef(true);
+  const saveSequence = useRef(0);
+  const [nodes, setNodes] = useState<CanvasNode[]>(initialWorkspace.board.nodes);
+  const [viewport, setViewport] = useState<CanvasViewport>(initialWorkspace.board.viewport);
+  const [selectedNodeId, setSelectedNodeId] = useState(initialWorkspace.board.selectedNodeId);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(initialWorkspace.board.themeMode);
+  const [snapToGrid, setSnapToGrid] = useState(initialWorkspace.board.snapToGrid);
+  const [status, setStatus] = useState(initialStatus);
+  const [storageMode, setStorageMode] = useState<WorkspaceLoadResult["storage"]>(initialStorage);
   const [runtimeArtifactRegistry, setRuntimeArtifactRegistry] =
     useState<Record<string, RegisteredArtifact>>(artifactRegistry);
 
@@ -38,6 +126,24 @@ export default function App() {
     viewport,
   });
 
+  function currentWorkspace(): WorkspaceRecord {
+    return {
+      version: 1,
+      templateId: template.id,
+      templateVersion: template.version,
+      updatedAt: new Date().toISOString(),
+      board: createBoardState({ nodes, viewport, selectedNodeId, themeMode, snapToGrid }),
+    };
+  }
+
+  function applyWorkspace(workspace: WorkspaceRecord) {
+    setNodes(workspace.board.nodes);
+    setViewport(workspace.board.viewport);
+    setSelectedNodeId(workspace.board.selectedNodeId);
+    setThemeMode(workspace.board.themeMode);
+    setSnapToGrid(workspace.board.snapToGrid);
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -47,7 +153,6 @@ export default function App() {
           return;
         }
         setRuntimeArtifactRegistry((current) => ({ ...current, ...externalRegistry }));
-        setStatus(`Loaded ${Object.keys(externalRegistry).length} external artifact`);
       })
       .catch((error) => {
         if (!cancelled) {
@@ -61,18 +166,40 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const board = createBoardState({ nodes, viewport, selectedNodeId, themeMode, snapToGrid });
-    saveBoardState(board);
+    if (skipInitialSave.current) {
+      skipInitialSave.current = false;
+      return;
+    }
+
+    const sequence = ++saveSequence.current;
+    setStatus("Saving locally");
+    saveWorkspace(currentWorkspace())
+      .then((mode) => {
+        if (sequence === saveSequence.current) {
+          setStorageMode(mode);
+          setStatus(mode === "indexeddb" ? "Saved locally" : "Saved in browser fallback");
+        }
+      })
+      .catch((error) => {
+        if (sequence === saveSequence.current) {
+          setStatus(error instanceof Error ? error.message : "Local save failed");
+        }
+      });
+  }, [nodes, viewport, selectedNodeId, themeMode, snapToGrid]);
+
+  useEffect(() => {
     publishCanvasDebugState({
       artifactRegistry: runtimeArtifactRegistry,
       nodes,
       selectedNodeId,
       snapToGrid,
       status,
+      storageMode,
+      templateId: template.id,
       themeMode,
       viewport,
     });
-  }, [nodes, viewport, selectedNodeId, themeMode, snapToGrid, status, runtimeArtifactRegistry]);
+  }, [nodes, viewport, selectedNodeId, themeMode, snapToGrid, status, storageMode, runtimeArtifactRegistry, template.id]);
 
   function addArtifact() {
     const rect = stageRef.current?.getBoundingClientRect();
@@ -83,7 +210,6 @@ export default function App() {
     const next = createMetricNode(nodes.length, world);
     setNodes((current) => [...current, next]);
     setSelectedNodeId(next.id);
-    setStatus("Added registry artifact");
   }
 
   function importData() {
@@ -114,35 +240,66 @@ export default function App() {
       }),
     );
     setSelectedNodeId("node-revenue");
-    setStatus("Imported query result");
   }
 
-  function exportBoard() {
-    downloadBoardState(createBoardState({ nodes, viewport, selectedNodeId, themeMode, snapToGrid }));
-    setStatus("Exported board JSON");
+  function exportWorkspace() {
+    downloadWorkspace(currentWorkspace());
+    setStatus("Workspace backup downloaded");
+  }
+
+  async function importWorkspace(file: File) {
+    try {
+      const imported = parseWorkspace(await file.text());
+      const workspace = {
+        ...imported,
+        templateId: template.id,
+        templateVersion: template.version,
+        updatedAt: new Date().toISOString(),
+      };
+      applyWorkspace(workspace);
+      const mode = await saveWorkspace(workspace);
+      setStorageMode(mode);
+      setStatus("Workspace backup restored");
+    } catch (error) {
+      setStatus(error instanceof Error ? `Import failed: ${error.message}` : "Workspace import failed");
+    } finally {
+      if (importInputRef.current) {
+        importInputRef.current.value = "";
+      }
+    }
+  }
+
+  function resetWorkspace() {
+    if (!window.confirm("Replace this browser's workspace with the original demo?")) {
+      return;
+    }
+    applyWorkspace(createWorkspaceFromTemplate(template));
+    setStatus("Demo restored in this browser");
   }
 
   function resetView() {
     canvasInteractions.resetView();
-    setStatus("Reset view");
   }
 
   function toggleSnapToGrid() {
-    const nextSnapToGrid = !snapToGrid;
-    setSnapToGrid(nextSnapToGrid);
-    setStatus(nextSnapToGrid ? `Snap to ${CANVAS_GRID_SIZE}px grid` : "Free placement mode");
+    setSnapToGrid((current) => !current);
   }
 
   return (
     <main className="app-shell" data-theme={themeMode}>
       <section className="workspace">
         <CanvasToolbar
+          importInputRef={importInputRef}
           status={status}
+          storageMode={storageMode}
+          templateTitle={template.title}
           themeMode={themeMode}
           snapToGrid={snapToGrid}
           onAddArtifact={addArtifact}
-          onExportBoard={exportBoard}
+          onExportWorkspace={exportWorkspace}
           onImportData={importData}
+          onImportWorkspace={importWorkspace}
+          onResetWorkspace={resetWorkspace}
           onThemeToggle={() => setThemeMode((current) => (current === "light" ? "dark" : "light"))}
           onToggleSnapToGrid={toggleSnapToGrid}
         />

@@ -30,11 +30,22 @@
   font-weight: 760;
 }
 
+.title-block > div {
+  min-width: 0;
+  display: grid;
+}
+
 .title-block span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.title-block small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .tool-strip {
@@ -120,6 +131,9 @@
 }
 
 .status-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   max-width: 210px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -132,4 +146,18 @@
   font-size: 12px;
   font-weight: 690;
   box-shadow: 0 10px 24px var(--shadow);
+}
+
+.status-pill > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-mark {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--accent);
 }

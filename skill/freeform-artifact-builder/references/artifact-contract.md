@@ -52,7 +52,7 @@ Manifest:
 ```json
 {
   "artifacts": [
-    { "module": "/artifacts/generated/runtime-margin-chart.js" }
+    { "module": "./runtime-margin-chart.js" }
   ]
 }
 ```

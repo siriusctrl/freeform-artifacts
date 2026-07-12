@@ -16,7 +16,7 @@ const contactSheetPath = path.join(outputDir, "contact-sheet.png");
 const manifestPath = path.join(outputDir, "manifest.json");
 const inspectionPath = path.join(outputDir, "inspection.txt");
 const frameCheckPath = path.join(outputDir, "frame-check.json");
-const port = Number(process.env.FREEFORM_PORT ?? 4177);
+const port = Number(process.env.FREEFORM_PORT ?? 4180);
 const host = "127.0.0.1";
 const url = `http://${host}:${port}`;
 const proofTrimStartSeconds = process.env.FREEFORM_PROOF_TRIM_START ?? "2.4";
@@ -79,7 +79,7 @@ function checkSampledFrames(gifFile) {
   return report;
 }
 
-const server = spawn("npm", ["run", "dev", "--", "--host", host, "--port", String(port)], {
+const server = spawn("npm", ["run", "dev", "--", "--host", host, "--port", String(port), "--strictPort"], {
   cwd: root,
   detached: true,
   stdio: "ignore",
@@ -153,6 +153,7 @@ try {
   await page.waitForTimeout(350);
 
   await page.getByTestId("add-artifact").click();
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saved locally");
   await page.waitForTimeout(500);
   await page.screenshot({ path: screenshotPath, fullPage: false });
 
