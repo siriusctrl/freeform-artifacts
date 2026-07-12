@@ -91,14 +91,33 @@
   background: var(--panel-soft);
 }
 
-.menu-state {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
+.menu-switch {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  padding: 2px;
+  background: var(--line-strong);
+  border-radius: 999px;
+  transition: background-color 140ms ease;
 }
 
-.menu-state.active {
-  color: var(--accent-strong);
+.menu-switch-thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  background: var(--panel);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px var(--shadow);
+  transform: translateX(0);
+  transition: transform 140ms ease;
+}
+
+.menu-switch.active {
+  background: var(--accent);
+}
+
+.menu-switch.active .menu-switch-thumb {
+  transform: translateX(14px);
 }
 
 .icon-button,
@@ -111,6 +130,8 @@
 }
 
 .icon-button {
+  display: grid;
+  place-items: center;
   width: 34px;
   height: 34px;
   flex: 0 0 34px;

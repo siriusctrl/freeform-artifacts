@@ -43,6 +43,12 @@ All notable user-facing changes to this project should be documented here.
 
 ### Fixed
 
+- Centered the More icon without relying on inline-button baseline layout.
+- Replaced textual snap state with a compact, accessible switch labeled
+  `Snap to grid`.
+- Scaled Sankey typography, nodes, and spacing together during card resize;
+  selected-card chrome now follows the same resize-relative visual scale before
+  the outer canvas zoom is applied.
 - Moved snap-to-grid into a labeled More-menu setting with immediate On/Off
   feedback, and aligned all top-level toolbar controls to one height.
 - Split probability chart guidance into three independently positioned SVG

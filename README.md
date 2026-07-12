@@ -100,8 +100,8 @@ Current controls:
 - Delete the selected artifact from its title bar, or press `Delete` or
   `Backspace` while canvas focus is outside an input.
 - Keep snap-to-grid on by default for 38px world-coordinate placement; toggle
-  it from **More > Snap to 38px grid**, where the current On/Off state remains
-  visible while changing the setting.
+  it from **More > Snap to grid**, where a compact switch shows the current
+  state while changing the setting.
 - Drag empty canvas space to pan.
 - Scroll with a trackpad or mouse wheel to pan naturally in either direction.
 - Pinch on a trackpad to zoom around the pointer.
@@ -226,7 +226,8 @@ export interface ReactArtifactDefinition<TData = unknown, TConfig = JsonObject> 
 ECharts artifacts only build chart options. The host owns `echarts.init`,
 `setOption`, `resize`, and `dispose`. Every render receives `size`, the live
 artifact content-box dimensions; complex artifacts should declare `minSize` and
-use `size` to reflow rather than uniformly scaling text:
+use `size` to reflow while scaling their visual system relative to the default
+artifact size within readable limits:
 
 ```ts
 export interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject> {

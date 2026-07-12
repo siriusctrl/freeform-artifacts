@@ -16,9 +16,10 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
   dataValidator: sankeyFlowDataSchema,
   buildOption: ({ data, size, theme }) => {
     const isDark = theme.mode === "dark";
-    const compact = size.width < 560 || size.height < 320;
-    const horizontalPadding = compact ? 18 : 22;
-    const rightLabelSpace = compact ? 78 : 94;
+    const visualScale = Math.max(0.82, Math.min(1.5, Math.min(size.width / 600, size.height / 328)));
+    const scaled = (value: number) => Math.round(value * visualScale);
+    const horizontalPadding = scaled(22);
+    const rightLabelSpace = scaled(94);
     const text = isDark ? "#eef3f3" : "#171717";
     const muted = isDark ? "#a4afb1" : "#667174";
     const nodeFill = isDark ? "#202628" : "#f5f7f7";
@@ -31,12 +32,12 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
         text: data.title,
         subtext: data.subtitle,
         left: horizontalPadding,
-        top: compact ? 16 : 20,
-        itemGap: 8,
+        top: scaled(20),
+        itemGap: scaled(8),
         textStyle: {
           color: text,
           fontFamily: "Geist Variable",
-          fontSize: compact ? 19 : 22,
+          fontSize: scaled(22),
           fontWeight: 800,
           width: size.width - horizontalPadding * 2,
           overflow: "truncate",
@@ -44,8 +45,8 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
         subtextStyle: {
           color: muted,
           fontFamily: "Geist Variable",
-          fontSize: 12,
-          lineHeight: 17,
+          fontSize: scaled(12),
+          lineHeight: scaled(17),
           width: Math.max(220, size.width - horizontalPadding * 2),
           overflow: "break",
         },
@@ -57,12 +58,12 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
       series: [
         {
           type: "sankey",
-          top: compact ? 98 : 92,
+          top: scaled(92),
           left: horizontalPadding,
           right: rightLabelSpace,
-          bottom: compact ? 16 : 20,
-          nodeGap: 14,
-          nodeWidth: 18,
+          bottom: scaled(20),
+          nodeGap: scaled(14),
+          nodeWidth: scaled(18),
           draggable: false,
           emphasis: {
             focus: "adjacency",
@@ -80,7 +81,7 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
           label: {
             color: text,
             fontFamily: "Geist Variable",
-            fontSize: 12,
+            fontSize: scaled(12),
             fontWeight: 680,
           },
           data: data.nodes,

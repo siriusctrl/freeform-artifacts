@@ -176,9 +176,11 @@ visuals or interaction patterns ECharts does not express well.
 `ArtifactRenderProps.size` is the live artifact content-box size. The managed
 host updates it through `ResizeObserver`, calls `chart.resize()`, and rebuilds
 the option when dimensions change. Standard charts should reflow plots, labels,
-and annotations at that size; canvas zoom remains the separate uniform-scale
-operation. Complex artifacts should declare `minSize`, which the canvas host
-enforces during card resize.
+and annotations at that size. Dense visual systems may also scale typography,
+nodes, and spacing relative to `defaultSize`, with readability clamps. Canvas
+chrome uses the same resize-relative visual scale, while canvas zoom remains a
+separate outer transform applied uniformly to the full node. Complex artifacts
+should declare `minSize`, which the canvas host enforces during card resize.
 
 ## Data Pipeline
 
