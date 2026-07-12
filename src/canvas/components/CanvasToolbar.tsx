@@ -12,7 +12,6 @@ import {
   Upload,
 } from "lucide-react";
 import type { ThemeMode } from "../constants";
-import { CANVAS_GRID_SIZE } from "../../lib/geometry";
 
 interface CanvasToolbarProps {
   importInputRef: RefObject<HTMLInputElement | null>;
@@ -119,9 +118,9 @@ export function CanvasToolbar({
                 onClick={onToggleSnapToGrid}
               >
                 <Grid3X3 size={17} />
-                <span>Snap to {CANVAS_GRID_SIZE}px grid</span>
-                <span className={`menu-state ${snapToGrid ? "active" : ""}`}>
-                  {snapToGrid ? "On" : "Off"}
+                <span>Snap to grid</span>
+                <span className={`menu-switch ${snapToGrid ? "active" : ""}`} aria-hidden="true">
+                  <span className="menu-switch-thumb" />
                 </span>
               </button>
               <button

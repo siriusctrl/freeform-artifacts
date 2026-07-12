@@ -65,6 +65,13 @@ async function probabilityNoteLayout(page: Page) {
   });
 }
 
+async function elementSize(page: Page, selector: string) {
+  return page.locator(selector).evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+}
+
 test("freeform canvas supports spatial editing, AI handoff, and deletion", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
@@ -156,13 +163,14 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   }).toEqual([0, 0]);
 
   await page.getByTestId("workspace-menu").click();
-  await expect(page.getByTestId("snap-toggle")).toContainText("On");
+  await expect(page.getByTestId("snap-toggle")).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByTestId("snap-toggle")).toContainText("Snap to grid");
   await page.getByTestId("snap-toggle").click();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.snapToGrid)).toBe(false);
-  await expect(page.getByTestId("snap-toggle")).toContainText("Off");
+  await expect(page.getByTestId("snap-toggle")).toHaveAttribute("aria-checked", "false");
   await page.getByTestId("snap-toggle").click();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.snapToGrid)).toBe(true);
-  await expect(page.getByTestId("snap-toggle")).toContainText("On");
+  await expect(page.getByTestId("snap-toggle")).toHaveAttribute("aria-checked", "true");
   await page.getByTestId("workspace-menu").click();
 
   const topControlHeights = await page.evaluate(() =>
@@ -171,6 +179,14 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
     ),
   );
   expect(new Set(topControlHeights)).toEqual(new Set([44]));
+  const moreAlignment = await page.getByTestId("workspace-menu").evaluate((button) => {
+    const buttonRect = button.getBoundingClientRect();
+    const iconRect = button.querySelector("svg")!.getBoundingClientRect();
+    return Math.abs(
+      (buttonRect.top + buttonRect.height / 2) - (iconRect.top + iconRect.height / 2),
+    );
+  });
+  expect(moreAlignment).toBeLessThanOrEqual(0.5);
 
   const panStart = { x: stageBox!.x + 100, y: stageBox!.y + stageBox!.height - 120 };
   await page.mouse.move(panStart.x, panStart.y);
@@ -391,6 +407,90 @@ test("managed charts keep essential labels inside default and minimum card sizes
     missing: [],
     overflow: [],
   });
+});
+
+test("card resize and canvas zoom scale Sankey visuals and selected controls together", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+
+  const baseWorkspace = await page.evaluate(() => {
+    const state = window.__FREEFORM_STATE__!;
+    return {
+      version: 1 as const,
+      templateId: state.templateId,
+      templateVersion: 2,
+      updatedAt: new Date().toISOString(),
+      board: {
+        version: 1 as const,
+        nodes: state.nodes,
+        viewport: { x: -720, y: -450, scale: 1 },
+        selectedNodeId: "node-sankey",
+        themeMode: state.themeMode,
+        snapToGrid: state.snapToGrid,
+      },
+    };
+  });
+
+  await page.getByTestId("workspace-file").setInputFiles({
+    name: "selected-sankey.freeform.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(baseWorkspace)),
+  });
+  await expect(page.getByTestId("delete-node-sankey")).toBeVisible();
+  const sankeyLabelSelector = '[data-testid="echarts-sankey-flow"] svg text';
+  const northLabel = page.locator(sankeyLabelSelector).filter({ hasText: "North" }).first();
+  await expect(northLabel).toBeVisible();
+  const defaultDelete = await elementSize(page, '[data-testid="delete-node-sankey"]');
+  const defaultLabel = await northLabel.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+
+  const expandedWorkspace = {
+    ...baseWorkspace,
+    board: {
+      ...baseWorkspace.board,
+      nodes: baseWorkspace.board.nodes.map((node) =>
+        node.id === "node-sankey" ? { ...node, width: 800, height: 480 } : node,
+      ),
+    },
+  };
+  await page.getByTestId("workspace-file").setInputFiles({
+    name: "expanded-sankey.freeform.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(expandedWorkspace)),
+  });
+  await expect.poll(async () => {
+    const node = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.find(
+      (candidate) => candidate.id === "node-sankey",
+    );
+    return node ? [node.width, node.height] : null;
+  }).toEqual([800, 480]);
+  await expect.poll(async () => (await elementSize(page, '[data-testid="delete-node-sankey"]')).width).toBeGreaterThan(
+    defaultDelete.width * 1.25,
+  );
+  await expect.poll(async () => {
+    const rect = await northLabel.evaluate((element) => element.getBoundingClientRect().height);
+    return rect;
+  }).toBeGreaterThan(defaultLabel.height * 1.2);
+
+  const expandedDelete = await elementSize(page, '[data-testid="delete-node-sankey"]');
+  const expandedLabel = await northLabel.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+  const beforeZoomScale = await page.evaluate(() => window.__FREEFORM_STATE__!.viewport.scale);
+  await page.getByTestId("zoom-out").click();
+  const afterZoomScale = await page.evaluate(() => window.__FREEFORM_STATE__!.viewport.scale);
+  const zoomRatio = afterZoomScale / beforeZoomScale;
+  const zoomedDelete = await elementSize(page, '[data-testid="delete-node-sankey"]');
+  const zoomedLabel = await northLabel.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+
+  expect(zoomedDelete.width / expandedDelete.width).toBeCloseTo(zoomRatio, 2);
+  expect(zoomedLabel.height / expandedLabel.height).toBeCloseTo(zoomRatio, 1);
 });
 
 test("each browser gets an isolated local fork that survives closing and reopening the page", async ({ browser }) => {

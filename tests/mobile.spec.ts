@@ -29,6 +29,6 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   await page.getByTitle("Close").click();
 
   await page.getByTestId("workspace-menu").click();
-  await expect(page.getByTestId("snap-toggle")).toContainText("On");
+  await expect(page.getByTestId("snap-toggle")).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("menuitem", { name: "Load sample data" })).toBeVisible();
 });

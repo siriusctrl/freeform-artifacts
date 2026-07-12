@@ -300,14 +300,27 @@ try {
   verifyUx("top-level toolbar controls share one height", new Set(topControlHeights).size === 1 && topControlHeights[0] === 44, {
     heights: topControlHeights,
   });
+  const moreIconCenterDelta = await page.getByTestId("workspace-menu").evaluate((button) => {
+    const buttonRect = button.getBoundingClientRect();
+    const iconRect = button.querySelector("svg")?.getBoundingClientRect();
+    if (!iconRect) return Number.POSITIVE_INFINITY;
+    return Math.abs((buttonRect.top + buttonRect.height / 2) - (iconRect.top + iconRect.height / 2));
+  });
+  verifyUx("More icon is optically centered", moreIconCenterDelta <= 0.5, { centerDelta: moreIconCenterDelta });
   await page.getByTestId("workspace-menu").click();
-  verifyUx("snap setting is labeled and initially on", await page.getByTestId("snap-toggle").getByText("On").isVisible());
+  const snapSetting = page.getByTestId("snap-toggle");
+  verifyUx(
+    "snap setting uses a compact switch and is initially on",
+    (await snapSetting.getAttribute("aria-checked")) === "true" &&
+      (await snapSetting.getByText("Snap to grid").isVisible()) &&
+      (await snapSetting.locator(".menu-switch").evaluate((element) => element.getBoundingClientRect().width)) === 32,
+  );
   await page.getByTestId("snap-toggle").click();
   await page.waitForFunction(() => window.__FREEFORM_STATE__?.snapToGrid === false);
-  verifyUx("snap setting shows immediate off feedback", await page.getByTestId("snap-toggle").getByText("Off").isVisible());
+  verifyUx("snap switch shows immediate off feedback", (await snapSetting.getAttribute("aria-checked")) === "false");
   await page.getByTestId("snap-toggle").click();
   await page.waitForFunction(() => window.__FREEFORM_STATE__?.snapToGrid === true);
-  verifyUx("snap setting returns to on", await page.getByTestId("snap-toggle").getByText("On").isVisible());
+  verifyUx("snap switch returns to on", (await snapSetting.getAttribute("aria-checked")) === "true");
   await page.getByTestId("workspace-menu").click();
   verifyUx("redundant select control is absent", (await page.getByTitle("Select").count()) === 0);
   verifyUx("selection inspector is absent from the product UI", (await page.locator(".inspector").count()) === 0);
@@ -493,7 +506,7 @@ try {
   const afterReset = await page.evaluate(() => window.__FREEFORM_STATE__.viewport);
   verifyUx("reset restores the initial viewport", afterReset.x === 80 && afterReset.y === 80 && afterReset.scale === 1, afterReset);
 
-  await showProofStep(page, "Resize Sankey • keep every label visible", 550);
+  await showProofStep(page, "Resize Sankey • scale content and controls together", 550);
   await page.mouse.move(stageBox.x + 700, stageBox.y + 400);
   for (let index = 0; index < 4; index += 1) {
     await page.mouse.wheel(112.5, 120);
@@ -501,6 +514,9 @@ try {
   }
   await page.waitForTimeout(350);
   await page.getByTestId("node-node-sankey").click({ position: { x: 120, y: 18 } });
+  const sankeyLabel = page.getByTestId("echarts-sankey-flow").locator("svg text").filter({ hasText: "North" }).first();
+  const sankeyDeleteBefore = await page.getByTestId("delete-node-sankey").boundingBox();
+  const sankeyLabelBefore = await sankeyLabel.boundingBox();
   const sankeyResize = page.getByTestId("resize-node-sankey");
   const sankeyResizeBox = await sankeyResize.boundingBox();
   if (!sankeyResizeBox) throw new Error("Sankey resize handle was not visible enough to record proof");
@@ -515,6 +531,18 @@ try {
   verifyUx("Sankey resize respects its artifact minimum", resizedSankey?.width === 532 && resizedSankey?.height === 342, {
     node: resizedSankey,
   });
+  const sankeyDeleteAfter = await page.getByTestId("delete-node-sankey").boundingBox();
+  const sankeyLabelAfter = await sankeyLabel.boundingBox();
+  verifyUx(
+    "selected-card controls follow card resize scale",
+    Boolean(sankeyDeleteBefore && sankeyDeleteAfter && sankeyDeleteAfter.width < sankeyDeleteBefore.width * 0.94),
+    { before: sankeyDeleteBefore, after: sankeyDeleteAfter },
+  );
+  verifyUx(
+    "Sankey visual system follows card resize scale",
+    Boolean(sankeyLabelBefore && sankeyLabelAfter && sankeyLabelAfter.height < sankeyLabelBefore.height),
+    { before: sankeyLabelBefore, after: sankeyLabelAfter },
+  );
   const sankeyLabelLayout = await chartLabelLayout(page, "echarts-sankey-flow", ["North", "South"]);
   verifyUx(
     "Sankey labels remain contained at minimum size",

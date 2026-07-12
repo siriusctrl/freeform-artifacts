@@ -52,6 +52,9 @@ canvas.
   owns 38px snap-to-grid placement.
 - Declare `minSize` for dense or complex artifacts and use the live `size`
   render prop to reflow content at default and minimum dimensions.
+- Scale a dense artifact's typography, marks, and spacing relative to its
+  `defaultSize` when card resize should feel proportional; clamp that visual
+  scale so responsive reflow and readability remain intact.
 - Keep every essential chart label and annotation inside the artifact host;
   verify SVG text bounds instead of assuming `chart.resize()` prevents clipping.
 - Treat line wrapping and annotation layout as artifact responsibilities. A

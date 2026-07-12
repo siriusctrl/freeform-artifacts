@@ -49,6 +49,9 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   back again;
 - Theme, More, saved status, and Build with AI share one top-level control
   height;
+- the More icon is centered on both axes;
+- Sankey labels and selected-card controls follow card resize scale, then both
+  follow the same outer canvas zoom ratio;
 - theme toggle switches light/dark mode;
 - importing sample query rows runs transforms and updates artifacts;
 - Build with AI creates a skill-backed Claude Code instruction without changing

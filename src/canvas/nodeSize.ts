@@ -2,6 +2,17 @@ import type { RegisteredArtifact } from "../artifacts/registryTypes";
 import type { ArtifactSize, CanvasNode } from "../artifacts/types";
 
 export const DEFAULT_MIN_NODE_SIZE: ArtifactSize = { width: 180, height: 130 };
+const MIN_ARTIFACT_VISUAL_SCALE = 0.82;
+const MAX_ARTIFACT_VISUAL_SCALE = 1.5;
+
+export function artifactVisualScale(node: CanvasNode, artifact?: RegisteredArtifact): number {
+  if (!artifact) return 1;
+  const scale = Math.min(
+    node.width / artifact.defaultSize.width,
+    node.height / artifact.defaultSize.height,
+  );
+  return Math.max(MIN_ARTIFACT_VISUAL_SCALE, Math.min(MAX_ARTIFACT_VISUAL_SCALE, scale));
+}
 
 export function artifactMinSize(
   node: CanvasNode,

@@ -755,8 +755,8 @@ selection is direct manipulation and sample data is an occasional demo action.
   `src/artifacts/generated/`, add a demo node only when intended, bump the
   template version, verify, commit, push, and deploy.
 - Do not mutate the current board when generating the handoff.
-- Keep theme as a primary toolbar control. Put labeled grid snap with visible
-  On/Off feedback, sample data, workspace import/export, and reset in a More
+- Keep theme as a primary toolbar control. Put labeled grid snap with an
+  accessible switch, sample data, workspace import/export, and reset in a More
   menu; remove the redundant select tool.
 - Expose deletion on the selected card and through `Delete`/`Backspace`, while
   ignoring keyboard shortcuts inside editable controls.
@@ -782,3 +782,46 @@ does not pretend to be a code-generation backend.
 
 Revisit when the product has an authenticated build service, reviewed artifact
 packages, or a sandboxed runtime that can safely support in-browser generation.
+
+## ADR-0016: Combine responsive card reflow with bounded visual scaling
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+Canvas zoom already scales the complete world layer, including chart content
+and selected-card controls. Card resize is different: it changes world-space
+dimensions and asks artifacts to rebuild at a new content-box size. The first
+responsive implementation reflowed ECharts geometry but left typography,
+marks, card chrome, and delete/resize controls at fixed CSS-pixel sizes. A
+Sankey resized from 600x360 to 800x480 therefore had more empty space without a
+correspondingly larger visual system.
+
+### Decision
+
+- Derive a card visual scale from its current size relative to the registered
+  artifact `defaultSize`.
+- Clamp the scale from 0.82 to 1.5 so controls remain usable and large cards do
+  not produce oversized typography.
+- Apply that scale to node chrome, title icons, Delete, and the resize handle.
+- Let dense artifacts such as Sankey consume live content size to scale their
+  title, subtitle, labels, nodes, gaps, and padding while still rebuilding a
+  responsive ECharts option.
+- Continue applying canvas zoom once at `.canvas-world`; do not counter-scale
+  selected controls.
+- Verify both layers separately: card resize changes internal/control sizes,
+  then canvas zoom changes their final screen-space bounds by the same ratio.
+
+### Tradeoffs
+
+- Card resize is not a pure bitmap-like transform; charts still reflow, so some
+  positions may change as well as their sizes.
+- The visual-scale clamp means extreme card dimensions intentionally stop
+  producing proportional typography changes.
+- Artifact authors must decide which internal values belong to their visual
+  system instead of assuming `chart.resize()` scales them automatically.
+
+Revisit if artifacts need an explicit choice between responsive reflow,
+aspect-ratio-locked scaling, and hybrid behavior.
