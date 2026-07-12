@@ -25,10 +25,10 @@
 }
 
 .canvas-node {
-  --node-visual-scale: 1;
   position: absolute;
   display: grid;
-  grid-template-rows: calc(32px * var(--node-visual-scale)) minmax(0, 1fr);
+  grid-template-rows: 32px minmax(0, 1fr);
+  transform-origin: 0 0;
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line-strong);
@@ -54,37 +54,32 @@
 
 .resize-handle {
   position: absolute;
-  right: calc(6px * var(--node-visual-scale));
-  bottom: calc(6px * var(--node-visual-scale));
-  width: calc(22px * var(--node-visual-scale));
-  height: calc(22px * var(--node-visual-scale));
+  right: 6px;
+  bottom: 6px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   display: grid;
   place-items: center;
   color: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent), transparent 38%);
-  border-radius: calc(5px * var(--node-visual-scale));
+  border-radius: 5px;
   cursor: nwse-resize;
   background: color-mix(in srgb, var(--panel), var(--accent) 14%);
   box-shadow: 0 8px 18px var(--shadow);
-}
-
-.resize-handle svg {
-  width: calc(14px * var(--node-visual-scale));
-  height: calc(14px * var(--node-visual-scale));
 }
 
 .node-chrome {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: calc(10px * var(--node-visual-scale));
-  height: calc(32px * var(--node-visual-scale));
-  padding: 0 calc(10px * var(--node-visual-scale));
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
   color: var(--muted);
   background: var(--panel-soft);
   border-bottom: 1px solid var(--line);
-  font-size: calc(12px * var(--node-visual-scale));
+  font-size: 12px;
   font-weight: 720;
 }
 
@@ -92,12 +87,7 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--node-visual-scale));
-}
-
-.node-title svg {
-  width: calc(14px * var(--node-visual-scale));
-  height: calc(14px * var(--node-visual-scale));
+  gap: 8px;
 }
 
 .node-title span {
@@ -108,22 +98,17 @@
 }
 
 .node-delete {
-  width: calc(26px * var(--node-visual-scale));
-  height: calc(26px * var(--node-visual-scale));
-  flex: 0 0 calc(26px * var(--node-visual-scale));
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
   display: grid;
   place-items: center;
   padding: 0;
   color: var(--muted);
   background: transparent;
   border: 0;
-  border-radius: calc(5px * var(--node-visual-scale));
+  border-radius: 5px;
   cursor: pointer;
-}
-
-.node-delete svg {
-  width: calc(15px * var(--node-visual-scale));
-  height: calc(15px * var(--node-visual-scale));
 }
 
 .node-delete:hover {

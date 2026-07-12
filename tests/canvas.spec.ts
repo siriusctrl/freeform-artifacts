@@ -31,15 +31,16 @@ async function chartLabelLayout(page: Page, hostTestId: string, labels: string[]
 async function probabilityNoteLayout(page: Page) {
   return page.getByTestId("echarts-inflection-probability").evaluate((host) => {
     const hostRect = host.getBoundingClientRect();
-    const compact = hostRect.width < 640 || hostRect.height < 400;
+    const objectScale = hostRect.width / host.clientWidth;
+    const compact = host.clientWidth < 640 || host.clientHeight < 400;
     const horizontalPadding = compact ? 18 : 24;
     const noteTop = compact ? 52 : 62;
     const noteHeight = compact ? 90 : 76;
     const panel = {
-      left: hostRect.left + horizontalPadding,
-      right: hostRect.right - horizontalPadding,
-      top: hostRect.top + noteTop,
-      bottom: hostRect.top + noteTop + noteHeight,
+      left: hostRect.left + horizontalPadding * objectScale,
+      right: hostRect.right - horizontalPadding * objectScale,
+      top: hostRect.top + noteTop * objectScale,
+      bottom: hostRect.top + (noteTop + noteHeight) * objectScale,
     };
     const labels = ["What:", "Read:", "Logic:"];
     const textElements = Array.from(host.querySelectorAll("svg text"));
@@ -147,6 +148,16 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
     }, { x: resizeBox!.x + resizeBox!.width / 2, y: resizeBox!.y + resizeBox!.height / 2 }),
   ).toBe(true);
 
+  const probabilityDeleteBefore = await elementSize(page, '[data-testid="delete-node-probability"]');
+  const probabilityMarker = probabilityChart.locator("svg text").filter({ hasText: "P75:" }).first();
+  const probabilityMarkerBefore = await probabilityMarker.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+  const probabilitySizeBefore = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.find(
+    (node) => node.id === "node-probability",
+  )!;
+
   await page.mouse.move(resizeBox!.x + 8, resizeBox!.y + 8);
   await page.mouse.down();
   await page.mouse.move(resizeBox!.x + 78, resizeBox!.y + 48, { steps: 8 });
@@ -159,8 +170,19 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   await expect.poll(async () => {
     const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
     const probability = state.nodes.find((node) => node.id === "node-probability");
-    return probability ? [probability.width % state.snapGridSize, probability.height % state.snapGridSize] : null;
-  }).toEqual([0, 0]);
+    return probability ? probability.width / probability.height : null;
+  }).toBeCloseTo(720 / 460, 4);
+  const probabilitySizeAfter = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.find(
+    (node) => node.id === "node-probability",
+  )!;
+  const resizeScale = probabilitySizeAfter.width / probabilitySizeBefore.width;
+  const probabilityDeleteAfter = await elementSize(page, '[data-testid="delete-node-probability"]');
+  const probabilityMarkerAfter = await probabilityMarker.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+  expect(probabilityDeleteAfter.width / probabilityDeleteBefore.width).toBeCloseTo(resizeScale, 2);
+  expect(probabilityMarkerAfter.height / probabilityMarkerBefore.height).toBeCloseTo(resizeScale, 1);
 
   await page.getByTestId("workspace-menu").click();
   await expect(page.getByTestId("snap-toggle")).toHaveAttribute("aria-checked", "true");
@@ -350,8 +372,8 @@ test("managed charts keep essential labels inside default and minimum card sizes
       .filter((node) => node.id === "node-probability" || node.id === "node-sankey")
       .map((node) => ({ id: node.id, width: node.width, height: node.height }));
   }).toEqual([
-    { id: "node-probability", width: 570, height: 418 },
-    { id: "node-sankey", width: 532, height: 342 },
+    { id: "node-probability", width: 654.26, height: 418 },
+    { id: "node-sankey", width: 570, height: 342 },
   ]);
 
   const probabilityNode = page.getByTestId("node-node-probability");
@@ -372,7 +394,7 @@ test("managed charts keep essential labels inside default and minimum card sizes
       (candidate) => candidate.id === "node-probability",
     );
     return node ? { width: node.width, height: node.height } : null;
-  }).toEqual({ width: 570, height: 418 });
+  }).toEqual({ width: 654.26, height: 418 });
   await expect.poll(() => chartLabelLayout(page, "echarts-inflection-probability", ["P75"])).toEqual({
     missing: [],
     overflow: [],
@@ -402,7 +424,7 @@ test("managed charts keep essential labels inside default and minimum card sizes
       (candidate) => candidate.id === "node-sankey",
     );
     return node ? { width: node.width, height: node.height } : null;
-  }).toEqual({ width: 532, height: 342 });
+  }).toEqual({ width: 570, height: 342 });
   await expect.poll(() => chartLabelLayout(page, "echarts-sankey-flow", ["North", "South"])).toEqual({
     missing: [],
     overflow: [],
@@ -445,40 +467,43 @@ test("card resize and canvas zoom scale Sankey visuals and selected controls tog
     const rect = element.getBoundingClientRect();
     return { width: rect.width, height: rect.height };
   });
-
-  const expandedWorkspace = {
-    ...baseWorkspace,
-    board: {
-      ...baseWorkspace.board,
-      nodes: baseWorkspace.board.nodes.map((node) =>
-        node.id === "node-sankey" ? { ...node, width: 800, height: 480 } : node,
-      ),
-    },
+  const sankeyHost = page.getByTestId("echarts-sankey-flow");
+  const defaultHost = await sankeyHost.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    screenWidth: element.getBoundingClientRect().width,
+  }));
+  const sankeyResize = page.getByTestId("resize-node-sankey");
+  const sankeyResizeBox = await sankeyResize.boundingBox();
+  expect(sankeyResizeBox).not.toBeNull();
+  const resizeStart = {
+    x: sankeyResizeBox!.x + sankeyResizeBox!.width / 2,
+    y: sankeyResizeBox!.y + sankeyResizeBox!.height / 2,
   };
-  await page.getByTestId("workspace-file").setInputFiles({
-    name: "expanded-sankey.freeform.json",
-    mimeType: "application/json",
-    buffer: Buffer.from(JSON.stringify(expandedWorkspace)),
-  });
+  await page.mouse.move(resizeStart.x, resizeStart.y);
+  await page.mouse.down();
+  await page.mouse.move(resizeStart.x + 200, resizeStart.y + 120, { steps: 18 });
+  await page.mouse.up();
   await expect.poll(async () => {
     const node = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.find(
       (candidate) => candidate.id === "node-sankey",
     );
-    return node ? [node.width, node.height] : null;
+    return node ? [Math.round(node.width), Math.round(node.height)] : null;
   }).toEqual([800, 480]);
-  await expect.poll(async () => (await elementSize(page, '[data-testid="delete-node-sankey"]')).width).toBeGreaterThan(
-    defaultDelete.width * 1.25,
-  );
-  await expect.poll(async () => {
-    const rect = await northLabel.evaluate((element) => element.getBoundingClientRect().height);
-    return rect;
-  }).toBeGreaterThan(defaultLabel.height * 1.2);
+  const expandedHost = await sankeyHost.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    screenWidth: element.getBoundingClientRect().width,
+  }));
+  expect(expandedHost.clientWidth).toBe(defaultHost.clientWidth);
+  expect(expandedHost.screenWidth / defaultHost.screenWidth).toBeCloseTo(800 / 600, 2);
 
   const expandedDelete = await elementSize(page, '[data-testid="delete-node-sankey"]');
   const expandedLabel = await northLabel.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return { width: rect.width, height: rect.height };
   });
+  const objectScale = expandedHost.screenWidth / defaultHost.screenWidth;
+  expect(expandedDelete.width / defaultDelete.width).toBeCloseTo(objectScale, 2);
+  expect(expandedLabel.height / defaultLabel.height).toBeCloseTo(objectScale, 1);
   const beforeZoomScale = await page.evaluate(() => window.__FREEFORM_STATE__!.viewport.scale);
   await page.getByTestId("zoom-out").click();
   const afterZoomScale = await page.evaluate(() => window.__FREEFORM_STATE__!.viewport.scale);

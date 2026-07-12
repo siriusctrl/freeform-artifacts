@@ -1,10 +1,10 @@
 import { AppWindow, Scaling, Trash2 } from "lucide-react";
-import type { CSSProperties, PointerEvent } from "react";
+import type { PointerEvent } from "react";
 import { EChartsArtifactHost } from "../../artifacts/EChartsArtifactHost";
 import type { RegisteredArtifact } from "../../artifacts/registryTypes";
 import type { CanvasNode, CanvasTheme } from "../../artifacts/types";
 import { validateArtifactPayload } from "../../artifacts/validation";
-import { artifactVisualScale } from "../nodeSize";
+import { artifactObjectScale } from "../nodeSize";
 
 interface CanvasNodeViewProps {
   artifact?: RegisteredArtifact;
@@ -36,12 +36,12 @@ export function CanvasNodeView({
   onResizePointerDown,
 }: CanvasNodeViewProps) {
   const validation = validateArtifactPayload(node, artifact);
-  const visualScale = artifactVisualScale(node, artifact);
-  const chromeHeight = 32 * visualScale;
+  const baseSize = artifact?.defaultSize ?? { width: node.width, height: node.height };
+  const objectScale = artifactObjectScale(node, artifact);
   const renderProps = {
     data: node.data,
     config: node.config,
-    size: { width: node.width, height: Math.max(0, node.height - chromeHeight) },
+    size: { width: baseSize.width, height: Math.max(0, baseSize.height - 32) },
     theme: canvasTheme,
     emit: () => undefined,
   };
@@ -53,12 +53,11 @@ export function CanvasNodeView({
       data-node-id={node.id}
       draggable={false}
       style={{
-        width: node.width,
-        height: node.height,
-        transform: `translate(${node.x}px, ${node.y}px)`,
+        width: baseSize.width,
+        height: baseSize.height,
+        transform: `translate(${node.x}px, ${node.y}px) scale(${objectScale})`,
         zIndex: node.zIndex,
-        "--node-visual-scale": visualScale,
-      } as CSSProperties}
+      }}
       onPointerDown={(event) => onNodePointerDown(event, node)}
       onDragStart={(event) => event.preventDefault()}
     >

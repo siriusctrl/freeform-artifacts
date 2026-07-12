@@ -160,15 +160,16 @@ async function chartLabelLayout(page, hostTestId, labels) {
 async function probabilityNoteLayout(page) {
   return page.getByTestId("echarts-inflection-probability").evaluate((host) => {
     const hostRect = host.getBoundingClientRect();
-    const compact = hostRect.width < 640 || hostRect.height < 400;
+    const objectScale = hostRect.width / host.clientWidth;
+    const compact = host.clientWidth < 640 || host.clientHeight < 400;
     const horizontalPadding = compact ? 18 : 24;
     const noteTop = compact ? 52 : 62;
     const noteHeight = compact ? 90 : 76;
     const panel = {
-      left: hostRect.left + horizontalPadding,
-      right: hostRect.right - horizontalPadding,
-      top: hostRect.top + noteTop,
-      bottom: hostRect.top + noteTop + noteHeight,
+      left: hostRect.left + horizontalPadding * objectScale,
+      right: hostRect.right - horizontalPadding * objectScale,
+      top: hostRect.top + noteTop * objectScale,
+      bottom: hostRect.top + (noteTop + noteHeight) * objectScale,
     };
     const labels = ["What:", "Read:", "Logic:"];
     const textElements = Array.from(host.querySelectorAll("svg text"));
@@ -371,7 +372,7 @@ try {
   });
   verifyUx("drag does not select browser text", (await page.evaluate(() => window.getSelection()?.toString() ?? "")) === "");
 
-  await showProofStep(page, "Resize chart • verify grid snap", 550);
+  await showProofStep(page, "Resize chart • scale the complete object", 550);
   const beforeResize = await page.evaluate(() => window.__FREEFORM_STATE__);
   await page.getByTestId("node-node-probability").click({ position: { x: 120, y: 18 } });
   await page.waitForTimeout(150);
@@ -389,6 +390,14 @@ try {
     return target instanceof Element && Boolean(target.closest(".resize-handle"));
   }, resizeCenter);
   verifyUx("resize handle has a reliable hit target", resizeHitTarget, { box: resizeBox });
+  const probabilityHost = page.getByTestId("echarts-inflection-probability");
+  const probabilityMarker = probabilityHost.locator("svg text").filter({ hasText: "P75:" }).first();
+  const probabilityDeleteBefore = await page.getByTestId("delete-node-probability").boundingBox();
+  const probabilityMarkerBefore = await probabilityMarker.boundingBox();
+  const probabilityHostBefore = await probabilityHost.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    screenWidth: element.getBoundingClientRect().width,
+  }));
   await resizeHandle.hover();
   await page.mouse.down();
   await page.mouse.move(resizeCenter.x + 76, resizeCenter.y + 48, { steps: 16 });
@@ -401,10 +410,33 @@ try {
     before: resizedBefore,
     after: resizedAfter,
   });
-  verifyUx("resize snaps dimensions to the world grid", resizedAfter?.width % afterResize.snapGridSize === 0 && resizedAfter?.height % afterResize.snapGridSize === 0, {
-    node: resizedAfter,
-    gridSize: afterResize.snapGridSize,
-  });
+  const resizeScale = resizedAfter.width / resizedBefore.width;
+  const probabilityDeleteAfter = await page.getByTestId("delete-node-probability").boundingBox();
+  const probabilityMarkerAfter = await probabilityMarker.boundingBox();
+  const probabilityHostAfter = await probabilityHost.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    screenWidth: element.getBoundingClientRect().width,
+  }));
+  verifyUx(
+    "resize preserves the artifact aspect ratio",
+    Math.abs(resizedAfter.width / resizedAfter.height - 720 / 460) < 0.0001,
+    { node: resizedAfter },
+  );
+  verifyUx(
+    "resize scales the fixed artifact coordinate system",
+    probabilityHostAfter.clientWidth === probabilityHostBefore.clientWidth &&
+      Math.abs(probabilityHostAfter.screenWidth / probabilityHostBefore.screenWidth - resizeScale) < 0.01,
+    { before: probabilityHostBefore, after: probabilityHostAfter, resizeScale },
+  );
+  verifyUx(
+    "chart content and Delete follow the same object scale",
+    Boolean(
+      probabilityDeleteBefore && probabilityDeleteAfter && probabilityMarkerBefore && probabilityMarkerAfter &&
+      Math.abs(probabilityDeleteAfter.width / probabilityDeleteBefore.width - resizeScale) < 0.01 &&
+      Math.abs(probabilityMarkerAfter.height / probabilityMarkerBefore.height - resizeScale) < 0.08
+    ),
+    { probabilityDeleteBefore, probabilityDeleteAfter, probabilityMarkerBefore, probabilityMarkerAfter, resizeScale },
+  );
   const probabilityLabelLayout = await chartLabelLayout(page, "echarts-inflection-probability", ["P75"]);
   verifyUx(
     "probability markers remain contained after resize",
@@ -515,6 +547,11 @@ try {
   await page.waitForTimeout(350);
   await page.getByTestId("node-node-sankey").click({ position: { x: 120, y: 18 } });
   const sankeyLabel = page.getByTestId("echarts-sankey-flow").locator("svg text").filter({ hasText: "North" }).first();
+  const sankeyHost = page.getByTestId("echarts-sankey-flow");
+  const sankeyHostBefore = await sankeyHost.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    screenWidth: element.getBoundingClientRect().width,
+  }));
   const sankeyDeleteBefore = await page.getByTestId("delete-node-sankey").boundingBox();
   const sankeyLabelBefore = await sankeyLabel.boundingBox();
   const sankeyResize = page.getByTestId("resize-node-sankey");
@@ -528,20 +565,29 @@ try {
   const resizedSankey = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.find(
     (node) => node.id === "node-sankey",
   );
-  verifyUx("Sankey resize respects its artifact minimum", resizedSankey?.width === 532 && resizedSankey?.height === 342, {
+  verifyUx("Sankey resize respects its proportional artifact minimum", resizedSankey?.width === 570 && resizedSankey?.height === 342, {
     node: resizedSankey,
   });
   const sankeyDeleteAfter = await page.getByTestId("delete-node-sankey").boundingBox();
   const sankeyLabelAfter = await sankeyLabel.boundingBox();
+  const sankeyHostAfter = await sankeyHost.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    screenWidth: element.getBoundingClientRect().width,
+  }));
   verifyUx(
     "selected-card controls follow card resize scale",
-    Boolean(sankeyDeleteBefore && sankeyDeleteAfter && sankeyDeleteAfter.width < sankeyDeleteBefore.width * 0.94),
+    Boolean(sankeyDeleteBefore && sankeyDeleteAfter && sankeyDeleteAfter.width < sankeyDeleteBefore.width * 0.97),
     { before: sankeyDeleteBefore, after: sankeyDeleteAfter },
   );
   verifyUx(
-    "Sankey visual system follows card resize scale",
-    Boolean(sankeyLabelBefore && sankeyLabelAfter && sankeyLabelAfter.height < sankeyLabelBefore.height),
-    { before: sankeyLabelBefore, after: sankeyLabelAfter },
+    "Sankey uses fixed internal coordinates and uniform object scaling",
+    Boolean(
+      sankeyLabelBefore && sankeyLabelAfter &&
+      sankeyHostBefore.clientWidth === sankeyHostAfter.clientWidth &&
+      sankeyHostAfter.screenWidth < sankeyHostBefore.screenWidth &&
+      sankeyLabelAfter.height < sankeyLabelBefore.height
+    ),
+    { hostBefore: sankeyHostBefore, hostAfter: sankeyHostAfter, labelBefore: sankeyLabelBefore, labelAfter: sankeyLabelAfter },
   );
   const sankeyLabelLayout = await chartLabelLayout(page, "echarts-sankey-flow", ["North", "South"]);
   verifyUx(

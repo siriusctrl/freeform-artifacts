@@ -18,7 +18,7 @@ All notable user-facing changes to this project should be documented here.
 - Published template forking into per-browser IndexedDB workspaces.
 - Synchronous localStorage recovery mirrors for close/reopen resilience.
 - Versioned workspace JSON import/export and explicit reset-to-demo control.
-- Default-on 38px snap-to-grid placement and resizing with a toolbar setting.
+- Default-on 38px snap-to-grid placement with a toolbar setting.
 - Selected-card resize handles.
 - Selected-artifact deletion from the title bar and with `Delete`/`Backspace`.
 - Repository-aware **Build with AI** handoff generation for Claude Code.
@@ -46,9 +46,9 @@ All notable user-facing changes to this project should be documented here.
 - Centered the More icon without relying on inline-button baseline layout.
 - Replaced textual snap state with a compact, accessible switch labeled
   `Snap to grid`.
-- Scaled Sankey typography, nodes, and spacing together during card resize;
-  selected-card chrome now follows the same resize-relative visual scale before
-  the outer canvas zoom is applied.
+- Replaced responsive frame resizing with aspect-locked whole-object scaling:
+  artifact content, chrome, Delete, and resize controls now share one local
+  scale before the outer canvas zoom is applied.
 - Moved snap-to-grid into a labeled More-menu setting with immediate On/Off
   feedback, and aligned all top-level toolbar controls to one height.
 - Split probability chart guidance into three independently positioned SVG

@@ -225,9 +225,10 @@ export interface ReactArtifactDefinition<TData = unknown, TConfig = JsonObject> 
 
 ECharts artifacts only build chart options. The host owns `echarts.init`,
 `setOption`, `resize`, and `dispose`. Every render receives `size`, the live
-artifact content-box dimensions; complex artifacts should declare `minSize` and
-use `size` to reflow while scaling their visual system relative to the default
-artifact size within readable limits:
+internal content-box dimensions. On this canvas, a card renders in its
+registered `defaultSize` coordinate system and the resize handle scales the
+complete artifact at a locked aspect ratio. Complex artifacts should declare
+`minSize` to set the smallest permitted object scale:
 
 ```ts
 export interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject> {
@@ -338,7 +339,7 @@ Implemented:
 - Resizable selected artifact nodes.
 - Selected-artifact deletion through a title-bar control and keyboard shortcuts.
 - Default-on 38px snap-to-grid placement with a labeled More-menu toggle.
-- Artifact-specific minimum sizes and responsive ECharts reflow.
+- Aspect-locked whole-object resizing with artifact-specific minimum scales.
 - Published demo template with a per-browser local workspace fork.
 - IndexedDB workspace persistence with a synchronous local-storage recovery
   mirror and versioned JSON import/export.
