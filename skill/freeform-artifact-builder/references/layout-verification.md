@@ -25,8 +25,7 @@ Canvas nodes use world coordinates:
 Guidelines:
 
 - Keep the first viewport useful at `INITIAL_VIEWPORT = { x: 80, y: 80, scale: 1 }`.
-- Avoid hiding the primary example behind the toolbar, zoom controls, or
-  inspector.
+- Avoid hiding the primary example behind the toolbar or zoom controls.
 - The canvas defaults to a 38px snap grid. Prefer grid-aligned positions and
   sizes for default demo nodes unless an intentional stagger improves scanning.
 - Use 24-40 px gaps between cards when possible.
@@ -63,7 +62,8 @@ Inspect the GIF and `contact-sheet.png` before reporting completion. Look for:
 - blank startup frames;
 - card drag moving the wrong layer;
 - browser text selection during drag;
-- zoom controls or inspector covering essential content;
+- zoom controls covering essential content;
+- chart annotations or external labels crossing the artifact host boundary;
 - unreadable text in light or dark mode.
 
 Also inspect `frame-check.json`; `blankFrameCount` should be 0. In final user

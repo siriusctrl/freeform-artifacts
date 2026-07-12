@@ -10,6 +10,7 @@ import { themeFor, type ThemeMode } from "./canvas/constants";
 import { publishCanvasDebugState } from "./canvas/debugState";
 import { useCanvasInteractions } from "./canvas/hooks/useCanvasInteractions";
 import { createMetricNode } from "./canvas/nodeFactory";
+import { clampNodesToArtifactMinimums } from "./canvas/nodeSize";
 import { importedRevenueRows } from "./data/transformFixtures";
 import { revenueSummaryTransform, revenueTableTransform, runTransform } from "./data/transforms";
 import { CANVAS_GRID_SIZE, screenToWorld } from "./lib/geometry";
@@ -101,11 +102,15 @@ interface CanvasWorkspaceProps {
 }
 
 function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, template }: CanvasWorkspaceProps) {
+  const normalizedInitialNodes = useMemo(
+    () => clampNodesToArtifactMinimums(initialWorkspace.board.nodes, artifactRegistry),
+    [initialWorkspace.board.nodes],
+  );
   const stageRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
-  const skipInitialSave = useRef(true);
+  const skipInitialSave = useRef(normalizedInitialNodes === initialWorkspace.board.nodes);
   const saveSequence = useRef(0);
-  const [nodes, setNodes] = useState<CanvasNode[]>(initialWorkspace.board.nodes);
+  const [nodes, setNodes] = useState<CanvasNode[]>(normalizedInitialNodes);
   const [viewport, setViewport] = useState<CanvasViewport>(initialWorkspace.board.viewport);
   const [selectedNodeId, setSelectedNodeId] = useState(initialWorkspace.board.selectedNodeId);
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialWorkspace.board.themeMode);
@@ -116,8 +121,8 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
     useState<Record<string, RegisteredArtifact>>(artifactRegistry);
 
   const canvasTheme = useMemo(() => themeFor(themeMode), [themeMode]);
-  const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const canvasInteractions = useCanvasInteractions({
+    artifactRegistry: runtimeArtifactRegistry,
     setNodes,
     setSelectedNodeId,
     setViewport,
@@ -137,7 +142,7 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
   }
 
   function applyWorkspace(workspace: WorkspaceRecord) {
-    setNodes(workspace.board.nodes);
+    setNodes(clampNodesToArtifactMinimums(workspace.board.nodes, runtimeArtifactRegistry));
     setViewport(workspace.board.viewport);
     setSelectedNodeId(workspace.board.selectedNodeId);
     setThemeMode(workspace.board.themeMode);
@@ -164,6 +169,10 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    setNodes((current) => clampNodesToArtifactMinimums(current, runtimeArtifactRegistry));
+  }, [runtimeArtifactRegistry]);
 
   useEffect(() => {
     if (skipInitialSave.current) {
@@ -250,11 +259,18 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
   async function importWorkspace(file: File) {
     try {
       const imported = parseWorkspace(await file.text());
-      const workspace = {
+      const importedWorkspace = {
         ...imported,
         templateId: template.id,
         templateVersion: template.version,
         updatedAt: new Date().toISOString(),
+      };
+      const workspace = {
+        ...importedWorkspace,
+        board: {
+          ...importedWorkspace.board,
+          nodes: clampNodesToArtifactMinimums(importedWorkspace.board.nodes, runtimeArtifactRegistry),
+        },
       };
       applyWorkspace(workspace);
       const mode = await saveWorkspace(workspace);
@@ -307,9 +323,7 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
           canvasTheme={canvasTheme}
           nodes={nodes}
           runtimeArtifactRegistry={runtimeArtifactRegistry}
-          selectedNode={selectedNode}
           selectedNodeId={selectedNodeId}
-          snapToGrid={snapToGrid}
           stageRef={stageRef}
           viewport={viewport}
           onChangeZoom={canvasInteractions.changeZoom}

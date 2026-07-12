@@ -3,16 +3,13 @@ import type { RegisteredArtifact } from "../../artifacts/registryTypes";
 import type { CanvasNode, CanvasTheme, CanvasViewport } from "../../artifacts/types";
 import { CANVAS_GRID_SIZE } from "../../lib/geometry";
 import { CanvasNodeView } from "./CanvasNodeView";
-import { SelectionInspector } from "./SelectionInspector";
 import { ZoomControls } from "./ZoomControls";
 
 interface CanvasBoardProps {
   canvasTheme: CanvasTheme;
   nodes: CanvasNode[];
   runtimeArtifactRegistry: Record<string, RegisteredArtifact>;
-  selectedNode?: CanvasNode;
   selectedNodeId: string;
-  snapToGrid: boolean;
   stageRef: RefObject<HTMLDivElement | null>;
   viewport: CanvasViewport;
   onChangeZoom: (factor: number) => void;
@@ -26,9 +23,7 @@ export function CanvasBoard({
   canvasTheme,
   nodes,
   runtimeArtifactRegistry,
-  selectedNode,
   selectedNodeId,
-  snapToGrid,
   stageRef,
   viewport,
   onChangeZoom,
@@ -76,7 +71,6 @@ export function CanvasBoard({
       </div>
 
       <ZoomControls scale={viewport.scale} onChangeZoom={onChangeZoom} onResetView={onResetView} />
-      <SelectionInspector selectedNode={selectedNode} snapToGrid={snapToGrid} />
     </div>
   );
 }

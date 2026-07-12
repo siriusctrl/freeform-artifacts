@@ -184,8 +184,8 @@ so keep runtime modules self-contained instead of using relative imports.
 Runtime React artifacts can use `window.React.createElement`; runtime `.js`
 files cannot contain raw JSX unless they are compiled first.
 
-An artifact is a typed object with an id, version, default size, optional data
-schema hints, optional config schema hints, and a renderer-specific body.
+An artifact is a typed object with an id, version, default size, optional
+minimum size, schema hints, and a renderer-specific body.
 
 React artifacts own their component render function:
 
@@ -198,6 +198,7 @@ export interface ReactArtifactDefinition<TData = unknown, TConfig = JsonObject> 
     width: number;
     height: number;
   };
+  minSize?: { width: number; height: number };
   dataSchema?: JsonObject;
   configSchema?: JsonObject;
   dataValidator?: ZodType<TData>;
@@ -207,7 +208,9 @@ export interface ReactArtifactDefinition<TData = unknown, TConfig = JsonObject> 
 ```
 
 ECharts artifacts only build chart options. The host owns `echarts.init`,
-`setOption`, `resize`, and `dispose`:
+`setOption`, `resize`, and `dispose`. Every render receives `size`, the live
+artifact content-box dimensions; complex artifacts should declare `minSize` and
+use `size` to reflow rather than uniformly scaling text:
 
 ```ts
 export interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject> {
@@ -221,6 +224,7 @@ export interface EChartsArtifactDefinition<TData = unknown, TConfig = JsonObject
     width: number;
     height: number;
   };
+  minSize?: { width: number; height: number };
   dataSchema?: JsonObject;
   configSchema?: JsonObject;
   dataValidator?: ZodType<TData>;
@@ -316,7 +320,7 @@ Implemented:
 - Draggable artifact nodes.
 - Resizable selected artifact nodes.
 - Default-on 38px snap-to-grid placement with a toolbar toggle.
-- Selection inspector.
+- Artifact-specific minimum sizes and responsive ECharts reflow.
 - Published demo template with a per-browser local workspace fork.
 - IndexedDB workspace persistence with a synchronous local-storage recovery
   mirror and versioned JSON import/export.

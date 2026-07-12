@@ -99,6 +99,10 @@ interface ArtifactBase<TData = unknown, TConfig = JsonObject> {
     width: number;
     height: number;
   };
+  minSize?: {
+    width: number;
+    height: number;
+  };
   dataSchema?: JsonObject;
   configSchema?: JsonObject;
   dataValidator?: ZodType<TData>;
@@ -169,6 +173,13 @@ default so the card body still drags like any other canvas node. Set
 click, or brush behavior. Use React artifacts as the custom escape hatch for
 visuals or interaction patterns ECharts does not express well.
 
+`ArtifactRenderProps.size` is the live artifact content-box size. The managed
+host updates it through `ResizeObserver`, calls `chart.resize()`, and rebuilds
+the option when dimensions change. Standard charts should reflow plots, labels,
+and annotations at that size; canvas zoom remains the separate uniform-scale
+operation. Complex artifacts should declare `minSize`, which the canvas host
+enforces during card resize.
+
 ## Data Pipeline
 
 Database data should flow through transforms before rendering:
@@ -224,8 +235,7 @@ preference, and adding an artifact.
 
 Canvas runtime behavior lives under `src/canvas/`:
 
-- `components/` renders the toolbar, board, canvas nodes, zoom controls, and
-  selection inspector.
+- `components/` renders the toolbar, board, canvas nodes, and zoom controls.
 - `hooks/useCanvasInteractions.ts` owns pointer drag, resize, wheel pan, pinch
   zoom, toolbar zoom, z-order bumping, and snap-to-grid math.
 - `debugState.ts` is the only place that writes `window.__FREEFORM_STATE__`.

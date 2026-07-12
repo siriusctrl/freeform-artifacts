@@ -41,6 +41,11 @@ All notable user-facing changes to this project should be documented here.
 
 ### Fixed
 
+- Reflowed managed ECharts options from live content-box dimensions so
+  probability markers and Sankey labels stay inside their hosts.
+- Added artifact-specific minimum resize dimensions for dense charts.
+- Normalized older browser workspaces and imported backups that contain chart
+  sizes below the registered artifact minimum.
 - Made ordinary trackpad and mouse-wheel scrolling pan the canvas naturally;
   trackpad pinch now performs smooth pointer-anchored zoom.
 - Increased pinch responsiveness for the small, high-frequency deltas emitted
@@ -50,8 +55,6 @@ All notable user-facing changes to this project should be documented here.
   and a denser internal keyframe review sheet.
 - Enlarged the selected-card resize handle hit target for more reliable pointer
   and trackpad interaction.
-- Let pointer input pass through the read-only selection inspector so it cannot
-  block cards or resize handles placed beneath it.
 - Hardened card drag and canvas pan so browser text selection and native drag
   behavior do not take over the gesture.
 - Made zoom verification cover both pinch zoom and toolbar zoom controls.
@@ -73,4 +76,6 @@ All notable user-facing changes to this project should be documented here.
 
 ### Removed
 
+- Removed the read-only selection inspector from the canvas UI; browser debug
+  state remains available to verification tooling.
 - Removed the low-value sidebar so the first screen prioritizes the canvas.

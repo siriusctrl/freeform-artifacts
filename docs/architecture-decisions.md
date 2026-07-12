@@ -48,7 +48,7 @@ canvas-stage
 
 DOM/React is the most direct fit for data artifacts:
 
-- Tables, text, SVG charts, forms, badges, and inspector UI remain normal
+- Tables, text, SVG charts, forms, badges, and selection affordances remain normal
   browser content.
 - AI-generated cards can target a clear TypeScript interface instead of a
   graphics command API.
@@ -686,3 +686,48 @@ large synthetic wheel event, matching how physical trackpads report the gesture.
 
 Revisit when native touch gestures, a configurable input map, or an embedded
 canvas layout is introduced.
+
+## ADR-0014: Reflow managed artifacts from live container size
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+Calling `chart.resize()` keeps the ECharts renderer the same size as its host,
+but it cannot repair artifact options that use fixed annotation widths,
+incorrect text anchors, or margins too small for external labels. The original
+probability marker row extended 75px beyond its SVG host, while right-side
+Sankey labels extended up to 44.5px beyond theirs. Enlarging the card preserved
+those overflows because the fixed offsets moved with the container edge.
+
+The read-only selection inspector also covered canvas content without enabling
+any user action.
+
+### Decision
+
+- Add live `size` to `ArtifactRenderProps`.
+- Let the managed ECharts host observe its content box, call `chart.resize()`,
+  and rebuild options when dimensions change.
+- Add optional artifact-level `minSize` and enforce it in the canvas resize
+  interaction.
+- Clamp existing browser workspaces and imported backups to registered artifact
+  minimums so older saved dimensions migrate automatically.
+- Require complex chart artifacts to reflow at both default and minimum sizes;
+  canvas zoom remains the uniform-scale operation.
+- Test essential SVG text bounding boxes against the ECharts host bounds.
+- Remove the selection inspector from the product UI; debug state remains
+  available through `window.__FREEFORM_STATE__` for verification tooling.
+
+### Tradeoffs
+
+- Rebuilding options while resizing costs more than `chart.resize()` alone, but
+  keeps annotations and chart-specific layout correct.
+- Artifact authors must define responsive option math and a realistic minimum
+  size for dense visuals.
+- Uniformly scaling a card would be simpler, but would make text unreadably
+  small and does not match responsive data-card behavior.
+
+Revisit if resize performance requires frame throttling, or if the product adds
+an explicit aspect-ratio-locked scale mode for illustration-style artifacts.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts/core";
 import { BarChart, LineChart, SankeyChart } from "echarts/charts";
 import { GraphicComponent, GridComponent, LegendComponent, MarkLineComponent, TitleComponent, TooltipComponent } from "echarts/components";
@@ -30,9 +30,10 @@ interface EChartsArtifactHostProps {
 export function EChartsArtifactHost({ artifact, renderProps }: EChartsArtifactHostProps) {
   const chartEl = useRef<HTMLDivElement | null>(null);
   const chart = useRef<EChartsType | null>(null);
+  const [size, setSize] = useState(renderProps.size);
   const option = useMemo<EChartsOption>(
-    () => artifact.buildOption(renderProps),
-    [artifact, renderProps.data, renderProps.config, renderProps.theme],
+    () => artifact.buildOption({ ...renderProps, size }),
+    [artifact, renderProps.data, renderProps.config, renderProps.theme, size],
   );
 
   useEffect(() => {
@@ -40,13 +41,24 @@ export function EChartsArtifactHost({ artifact, renderProps }: EChartsArtifactHo
     if (!element) {
       return;
     }
+    const chartElement = element;
 
-    chart.current = echarts.init(element, null, {
+    chart.current = echarts.init(chartElement, null, {
       renderer: artifact.chartRenderer ?? "svg",
     });
 
-    const observer = new ResizeObserver(() => chart.current?.resize());
-    observer.observe(element);
+    function syncSize() {
+      const width = Math.round(chartElement.clientWidth);
+      const height = Math.round(chartElement.clientHeight);
+      chart.current?.resize({ width, height });
+      setSize((current) =>
+        current.width === width && current.height === height ? current : { width, height },
+      );
+    }
+
+    const observer = new ResizeObserver(syncSize);
+    observer.observe(chartElement);
+    syncSize();
 
     return () => {
       observer.disconnect();

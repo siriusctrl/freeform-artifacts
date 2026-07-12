@@ -16,9 +16,15 @@ export interface ArtifactEvent {
   payload?: JsonObject;
 }
 
+export interface ArtifactSize {
+  width: number;
+  height: number;
+}
+
 export interface ArtifactRenderProps<TData = unknown, TConfig = JsonObject> {
   data: TData;
   config: TConfig;
+  size: ArtifactSize;
   theme: CanvasTheme;
   emit: (event: ArtifactEvent) => void;
 }
@@ -27,10 +33,8 @@ interface ArtifactBase<TData = unknown, TConfig = JsonObject> {
   id: string;
   title: string;
   version: string;
-  defaultSize: {
-    width: number;
-    height: number;
-  };
+  defaultSize: ArtifactSize;
+  minSize?: ArtifactSize;
   dataSchema?: JsonObject;
   configSchema?: JsonObject;
   dataValidator?: ZodType<TData>;

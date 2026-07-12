@@ -12,13 +12,23 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
   title: "Inflection Probability",
   version: "0.1.0",
   defaultSize: { width: 720, height: 460 },
+  minSize: { width: 570, height: 418 },
   dataSchema: {
     type: "object",
     required: ["title", "note", "points", "markers"],
   },
   dataValidator: inflectionProbabilityDataSchema,
-  buildOption: ({ data, theme }) => {
+  buildOption: ({ data, size, theme }) => {
     const isDark = theme.mode === "dark";
+    const compact = size.width < 640 || size.height < 400;
+    const horizontalPadding = compact ? 18 : 24;
+    const titleTop = compact ? 14 : 18;
+    const titleFontSize = compact ? 20 : 24;
+    const noteTop = compact ? 52 : 62;
+    const noteHeight = compact ? 90 : 76;
+    const noteWidth = Math.max(240, size.width - horizontalPadding * 2);
+    const legendTop = noteTop + noteHeight + 12;
+    const plotTop = legendTop + 38;
     const text = isDark ? "#eef3f3" : "#171717";
     const muted = isDark ? "#a4afb1" : "#667174";
     const grid = isDark ? "rgba(238,243,243,0.26)" : "rgba(23,23,23,0.22)";
@@ -27,24 +37,26 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
 
     return {
       backgroundColor: "transparent",
-      animationDuration: 500,
+      animation: false,
       title: {
         text: data.title,
-        left: 24,
-        top: 18,
+        left: horizontalPadding,
+        top: titleTop,
         textStyle: {
           color: text,
           fontFamily: "Geist Variable",
-          fontSize: 24,
+          fontSize: titleFontSize,
           fontWeight: 780,
+          width: noteWidth,
+          overflow: "truncate",
         },
       },
       graphic: [
         {
           type: "rect",
-          left: 24,
-          top: 62,
-          shape: { width: 666, height: 76, r: 8 },
+          left: horizontalPadding,
+          top: noteTop,
+          shape: { width: noteWidth, height: noteHeight, r: 8 },
           style: {
             fill: panel,
             stroke: isDark ? "rgba(53,200,220,0.25)" : "rgba(0,152,184,0.24)",
@@ -53,8 +65,8 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
         },
         {
           type: "text",
-          left: 42,
-          top: 78,
+          left: horizontalPadding + 18,
+          top: noteTop + 16,
           style: {
             text: `{b|What:} ${data.note.what}\n{b|Read:} ${data.note.read}\n{b|Logic:} ${data.note.logic}`,
             rich: {
@@ -63,16 +75,19 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
             fill: muted,
             font: "12px Geist Variable",
             lineHeight: 19,
+            width: noteWidth - 36,
+            overflow: "break",
           },
         },
         {
           type: "text",
-          right: 28,
-          bottom: 16,
+          left: "center",
+          bottom: compact ? 12 : 16,
           style: {
             text: `P25: ${data.markers.p25}     P50: ${data.markers.p50}     P75: ${data.markers.p75}`,
+            align: "center",
             fill: text,
-            font: "700 15px Geist Mono Variable",
+            font: `700 ${compact ? 13 : 15}px Geist Mono Variable`,
           },
         },
       ],
@@ -81,7 +96,7 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
         valueFormatter: (value) => pct(Number(value)),
       },
       legend: {
-        top: 150,
+        top: legendTop,
         left: "center",
         itemWidth: 10,
         itemHeight: 10,
@@ -92,10 +107,11 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
         },
       },
       grid: {
-        left: 58,
-        right: 38,
-        top: 192,
-        bottom: 58,
+        left: compact ? 52 : 58,
+        right: compact ? 30 : 38,
+        top: plotTop,
+        bottom: compact ? 56 : 62,
+        containLabel: true,
       },
       xAxis: {
         type: "category",
@@ -105,6 +121,8 @@ export const inflectionProbabilityArtifact: EChartsArtifactDefinition<Inflection
         axisLabel: {
           color: muted,
           interval: 1,
+          alignMinLabel: "left",
+          alignMaxLabel: "right",
           fontFamily: "Geist Mono Variable",
           fontSize: 10,
         },
