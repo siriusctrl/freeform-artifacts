@@ -28,7 +28,44 @@ async function chartLabelLayout(page: Page, hostTestId: string, labels: string[]
   }, labels);
 }
 
-test("freeform canvas supports pan, zoom, node drag, select, and add artifact", async ({ page }) => {
+async function probabilityNoteLayout(page: Page) {
+  return page.getByTestId("echarts-inflection-probability").evaluate((host) => {
+    const hostRect = host.getBoundingClientRect();
+    const compact = hostRect.width < 640 || hostRect.height < 400;
+    const horizontalPadding = compact ? 18 : 24;
+    const noteTop = compact ? 52 : 62;
+    const noteHeight = compact ? 90 : 76;
+    const panel = {
+      left: hostRect.left + horizontalPadding,
+      right: hostRect.right - horizontalPadding,
+      top: hostRect.top + noteTop,
+      bottom: hostRect.top + noteTop + noteHeight,
+    };
+    const labels = ["What:", "Read:", "Logic:"];
+    const textElements = Array.from(host.querySelectorAll("svg text"));
+    const matches = labels.map((label) => ({
+      label,
+      element: textElements.find((element) => element.textContent?.includes(label)),
+    }));
+
+    return {
+      missing: matches.filter(({ element }) => !element).map(({ label }) => label),
+      tops: matches.flatMap(({ element }) => element ? [Math.round(element.getBoundingClientRect().top)] : []),
+      overflow: matches.flatMap(({ label, element }) => {
+        if (!element) return [];
+        const rect = element.getBoundingClientRect();
+        const outside =
+          rect.left < panel.left - 1 ||
+          rect.right > panel.right + 1 ||
+          rect.top < panel.top - 1 ||
+          rect.bottom > panel.bottom + 1;
+        return outside ? [{ label, panel, rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom } }] : [];
+      }),
+    };
+  });
+}
+
+test("freeform canvas supports spatial editing, AI handoff, and deletion", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
 
@@ -44,6 +81,7 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   await expect(probabilityNode).toBeVisible();
   await expect(probabilityChart).toBeVisible();
   await expect(page.getByText("Monthly revenue")).toBeVisible();
+  await expect(page.getByTitle("Select")).toHaveCount(0);
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.artifactIds)).toContain(
     "runtime-margin-chart",
   );
@@ -203,21 +241,35 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   await page.getByTestId("theme-toggle").click();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
 
+  await page.getByTestId("workspace-menu").click();
   await page.getByTestId("import-data").click();
   await expect(page.getByText("$232,400")).toBeVisible();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
 
-  await page.getByTestId("add-artifact").click();
-  await expect(page.getByText("AI generated card")).toBeVisible();
+  const beforeHandoffCount = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length;
+  await page.getByTestId("build-artifact").click();
+  await expect(page.getByRole("heading", { name: "Build with AI" })).toBeVisible();
+  await page.getByTestId("agent-request").fill("A regional renewable capacity mix chart with quarterly forecasts");
+  await expect(page.getByTestId("agent-instruction")).toContainText(
+    "npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder --agent claude-code -y",
+  );
+  await expect(page.getByTestId("agent-instruction")).toContainText("regional renewable capacity mix chart");
+  await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
+  expect((await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length).toBe(beforeHandoffCount);
+  await page.getByTitle("Close").click();
+
+  await expect(page.getByTestId("delete-node-revenue")).toBeVisible();
+  await page.keyboard.press("Delete");
+  await expect(page.getByTestId("node-node-revenue")).toHaveCount(0);
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
 
   const finalState = await page.evaluate(() => window.__FREEFORM_STATE__!);
-  expect(finalState.nodes.length).toBe(initial.nodes.length + 1);
-  expect(finalState.selectedNodeId).toMatch(/^node-ai-/);
+  expect(finalState.nodes.length).toBe(initial.nodes.length - 1);
+  expect(finalState.selectedNodeId).toBe("");
   expect(finalState.themeMode).toBe("dark");
 
   await page.reload();
-  await expect(page.getByText("AI generated card")).toBeVisible();
-  await expect(page.getByText("$232,400")).toBeVisible();
+  await expect(page.getByTestId("node-node-revenue")).toHaveCount(0);
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.snapToGrid)).toBe(true);
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.storageMode)).toBe("indexeddb");
@@ -231,7 +283,10 @@ test("managed charts keep essential labels inside default and minimum card sizes
     missing: [],
     overflow: [],
   });
-  await expect.poll(() => chartLabelLayout(page, "echarts-sankey-flow", ["AI servers", "Client"])).toEqual({
+  await expect.poll(() => probabilityNoteLayout(page)).toMatchObject({ missing: [], overflow: [] });
+  expect(new Set((await probabilityNoteLayout(page)).tops).size).toBe(3);
+  await expect(page.getByText(/DRAM/i)).toHaveCount(0);
+  await expect.poll(() => chartLabelLayout(page, "echarts-sankey-flow", ["North", "South"])).toEqual({
     missing: [],
     overflow: [],
   });
@@ -294,6 +349,8 @@ test("managed charts keep essential labels inside default and minimum card sizes
     missing: [],
     overflow: [],
   });
+  await expect.poll(() => probabilityNoteLayout(page)).toMatchObject({ missing: [], overflow: [] });
+  expect(new Set((await probabilityNoteLayout(page)).tops).size).toBe(3);
 
   const stageBox = await page.getByTestId("canvas-stage").boundingBox();
   expect(stageBox).not.toBeNull();
@@ -318,7 +375,7 @@ test("managed charts keep essential labels inside default and minimum card sizes
     );
     return node ? { width: node.width, height: node.height } : null;
   }).toEqual({ width: 532, height: 342 });
-  await expect.poll(() => chartLabelLayout(page, "echarts-sankey-flow", ["AI servers", "Client"])).toEqual({
+  await expect.poll(() => chartLabelLayout(page, "echarts-sankey-flow", ["North", "South"])).toEqual({
     missing: [],
     overflow: [],
   });
@@ -333,14 +390,15 @@ test("each browser gets an isolated local fork that survives closing and reopeni
     await firstPage.goto("/");
     await firstPage.getByTestId("canvas-stage").waitFor({ state: "visible" });
     await expect.poll(async () => firstPage.evaluate(() => window.__FREEFORM_STATE__!.templateId)).toBe("market-overview");
-    await firstPage.getByTestId("add-artifact").click();
-    await expect(firstPage.getByText("AI generated card")).toBeVisible();
+    await firstPage.getByTestId("node-node-revenue").click({ position: { x: 100, y: 18 } });
+    await firstPage.getByTestId("delete-node-revenue").click();
+    await expect(firstPage.getByTestId("node-node-revenue")).toHaveCount(0);
     await expect.poll(async () => firstPage.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
     await firstPage.close();
 
     const reopenedPage = await visitorA.newPage();
     await reopenedPage.goto("/");
-    await expect(reopenedPage.getByText("AI generated card")).toBeVisible();
+    await expect(reopenedPage.getByTestId("node-node-revenue")).toHaveCount(0);
     await expect
       .poll(async () => reopenedPage.evaluate(() => window.__FREEFORM_STATE__!.storageMode))
       .toBe("indexeddb");
@@ -348,14 +406,14 @@ test("each browser gets an isolated local fork that survives closing and reopeni
     const otherVisitorPage = await visitorB.newPage();
     await otherVisitorPage.goto("/");
     await expect(otherVisitorPage.getByTestId("canvas-stage")).toBeVisible();
-    await expect(otherVisitorPage.getByText("AI generated card")).toHaveCount(0);
+    await expect(otherVisitorPage.getByTestId("node-node-revenue")).toBeVisible();
     await expect.poll(async () => otherVisitorPage.evaluate(() => window.__FREEFORM_STATE__!.storageMode)).toBe(
       "indexeddb",
     );
 
     const visitorACount = await reopenedPage.evaluate(() => window.__FREEFORM_STATE__!.nodes.length);
     const visitorBCount = await otherVisitorPage.evaluate(() => window.__FREEFORM_STATE__!.nodes.length);
-    expect(visitorACount).toBe(visitorBCount + 1);
+    expect(visitorACount).toBe(visitorBCount - 1);
   } finally {
     await visitorA.close();
     await visitorB.close();
@@ -365,22 +423,25 @@ test("each browser gets an isolated local fork that survives closing and reopeni
 test("workspace backups round-trip through export, reset, and import", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
-  await page.getByTestId("add-artifact").click();
-  await expect(page.getByText("AI generated card")).toBeVisible();
+  await page.getByTestId("node-node-revenue").click({ position: { x: 100, y: 18 } });
+  await page.keyboard.press("Backspace");
+  await expect(page.getByTestId("node-node-revenue")).toHaveCount(0);
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
 
   const downloadPromise = page.waitForEvent("download");
+  await page.getByTestId("workspace-menu").click();
   await page.getByTestId("export-workspace").click();
   const download = await downloadPromise;
   const backupPath = testInfo.outputPath("market-overview.freeform.json");
   await download.saveAs(backupPath);
 
   page.once("dialog", (dialog) => dialog.accept());
+  await page.getByTestId("workspace-menu").click();
   await page.getByTestId("reset-workspace").click();
-  await expect(page.getByText("AI generated card")).toHaveCount(0);
+  await expect(page.getByTestId("node-node-revenue")).toBeVisible();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
 
   await page.getByTestId("workspace-file").setInputFiles(backupPath);
-  await expect(page.getByText("AI generated card")).toBeVisible();
+  await expect(page.getByTestId("node-node-revenue")).toHaveCount(0);
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
 });

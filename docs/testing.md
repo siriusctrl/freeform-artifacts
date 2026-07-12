@@ -48,11 +48,14 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - the snap-to-grid toolbar toggle can switch free placement off and back on;
 - theme toggle switches light/dark mode;
 - importing sample query rows runs transforms and updates artifacts;
-- adding an artifact inserts and selects a registry-backed node.
+- Build with AI creates a skill-backed Claude Code instruction without changing
+  board state;
+- title-bar, `Delete`, and `Backspace` deletion paths remove only the selected
+  artifact and persist the removal;
 - IndexedDB restores the workspace after reload and after closing/reopening the
   page;
 - two independent browser contexts receive separate local forks and cannot see
-  each other's added artifacts;
+  each other's deletions;
 - the debug state reports the active template ID and storage mode.
 
 The main test lives in `tests/canvas.spec.ts`.
@@ -75,7 +78,8 @@ npm run verify:proof
 
 This is the visual evidence path. It opens Chromium and runs a complete asserted
 journey through layout, drag, resize, pan, pinch in/out, toolbar zoom/reset, data
-import, theme switching, artifact insertion, and persistence after reopening. It
+import, theme switching, AI handoff generation, artifact deletion, and
+persistence after reopening. It
 records WebM video with a verification-only cursor and step label, writes a
 final screenshot, converts the recording to GIF with `ffmpeg`, writes a 30-cell
 contact sheet sampled across the full timeline, runs a blank-frame check, and

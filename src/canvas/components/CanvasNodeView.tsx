@@ -1,4 +1,4 @@
-import { AppWindow } from "lucide-react";
+import { AppWindow, Scaling, Trash2 } from "lucide-react";
 import type { PointerEvent } from "react";
 import { EChartsArtifactHost } from "../../artifacts/EChartsArtifactHost";
 import type { RegisteredArtifact } from "../../artifacts/registryTypes";
@@ -10,6 +10,7 @@ interface CanvasNodeViewProps {
   canvasTheme: CanvasTheme;
   isSelected: boolean;
   node: CanvasNode;
+  onDeleteNode: (nodeId: string) => void;
   onNodePointerDown: (event: PointerEvent<HTMLDivElement>, node: CanvasNode) => void;
   onResizePointerDown: (event: PointerEvent<HTMLButtonElement>, node: CanvasNode) => void;
 }
@@ -29,6 +30,7 @@ export function CanvasNodeView({
   canvasTheme,
   isSelected,
   node,
+  onDeleteNode,
   onNodePointerDown,
   onResizePointerDown,
 }: CanvasNodeViewProps) {
@@ -57,8 +59,25 @@ export function CanvasNodeView({
       onDragStart={(event) => event.preventDefault()}
     >
       <div className="node-chrome">
-        <AppWindow size={14} />
-        <span>{node.title}</span>
+        <div className="node-title">
+          <AppWindow size={14} />
+          <span>{node.title}</span>
+        </div>
+        {isSelected ? (
+          <button
+            type="button"
+            className="node-delete"
+            title="Delete artifact"
+            data-testid={`delete-${node.id}`}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={() => onDeleteNode(node.id)}
+          >
+            <Trash2 size={15} />
+          </button>
+        ) : null}
       </div>
       <div className="node-body">
         {!validation.ok || !artifact ? (
@@ -78,8 +97,11 @@ export function CanvasNodeView({
           className="resize-handle"
           data-testid={`resize-${node.id}`}
           title="Resize artifact"
+          aria-label="Resize artifact"
           onPointerDown={(event) => onResizePointerDown(event, node)}
-        />
+        >
+          <Scaling size={14} />
+        </button>
       ) : null}
     </div>
   );

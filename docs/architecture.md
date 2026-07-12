@@ -231,7 +231,9 @@ ink, geometric shapes, or extremely large visual primitive counts.
 `src/App.tsx` is intentionally a thin orchestration layer. It loads external
 artifacts, persists board state, publishes the debug state used by Playwright,
 and wires product actions such as import/export, theme switching, snap
-preference, and adding an artifact.
+preference, deletion, and opening the AI handoff dialog. The dialog emits a
+repository-aware instruction; it never creates a placeholder node. Artifact
+creation remains a code-generation, review, verification, and deployment step.
 
 Canvas runtime behavior lives under `src/canvas/`:
 

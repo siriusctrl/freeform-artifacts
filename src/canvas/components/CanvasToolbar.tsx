@@ -1,13 +1,13 @@
-import type { RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   ArrowDownToLine,
   Database,
+  Ellipsis,
   Frame,
   Grid3X3,
   Moon,
-  MousePointer2,
-  Plus,
   RotateCcw,
+  Sparkles,
   Sun,
   Upload,
 } from "lucide-react";
@@ -21,7 +21,7 @@ interface CanvasToolbarProps {
   templateTitle: string;
   themeMode: ThemeMode;
   snapToGrid: boolean;
-  onAddArtifact: () => void;
+  onBuildArtifact: () => void;
   onExportWorkspace: () => void;
   onImportData: () => void;
   onImportWorkspace: (file: File) => void;
@@ -37,7 +37,7 @@ export function CanvasToolbar({
   templateTitle,
   themeMode,
   snapToGrid,
-  onAddArtifact,
+  onBuildArtifact,
   onExportWorkspace,
   onImportData,
   onImportWorkspace,
@@ -45,6 +45,25 @@ export function CanvasToolbar({
   onThemeToggle,
   onToggleSnapToGrid,
 }: CanvasToolbarProps) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function closeMenu(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    window.addEventListener("pointerdown", closeMenu);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeMenu);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuOpen]);
+
   return (
     <header className="topbar">
       <div className="title-block">
@@ -55,9 +74,6 @@ export function CanvasToolbar({
         </div>
       </div>
       <div className="tool-strip" aria-label="Canvas tools">
-        <button type="button" className="icon-button active" title="Select">
-          <MousePointer2 size={20} />
-        </button>
         <button
           type="button"
           className={`icon-button ${snapToGrid ? "active" : ""}`}
@@ -67,18 +83,6 @@ export function CanvasToolbar({
           data-testid="snap-toggle"
         >
           <Grid3X3 size={20} />
-        </button>
-        <button type="button" className="icon-button" title="Import data" onClick={onImportData} data-testid="import-data">
-          <Database size={20} />
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          title="Import workspace backup"
-          onClick={() => importInputRef.current?.click()}
-          data-testid="import-workspace"
-        >
-          <Upload size={20} />
         </button>
         <input
           ref={importInputRef}
@@ -95,24 +99,6 @@ export function CanvasToolbar({
         />
         <button
           type="button"
-          className="icon-button"
-          title="Export workspace backup"
-          onClick={onExportWorkspace}
-          data-testid="export-workspace"
-        >
-          <ArrowDownToLine size={20} />
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          title="Reset to the original demo"
-          onClick={onResetWorkspace}
-          data-testid="reset-workspace"
-        >
-          <RotateCcw size={20} />
-        </button>
-        <button
-          type="button"
           className="theme-toggle"
           onClick={onThemeToggle}
           title={themeMode === "light" ? "Switch to dark mode" : "Switch to light mode"}
@@ -121,6 +107,71 @@ export function CanvasToolbar({
           {themeMode === "light" ? <Moon size={20} /> : <Sun size={20} />}
           <span>{themeMode === "light" ? "Dark" : "Light"}</span>
         </button>
+        <div ref={menuRef} className="toolbar-menu-wrap">
+          <button
+            type="button"
+            className="icon-button"
+            title="More workspace actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            data-testid="workspace-menu"
+            onClick={() => setMenuOpen((current) => !current)}
+          >
+            <Ellipsis size={20} />
+          </button>
+          {menuOpen ? (
+            <div className="toolbar-menu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="import-data"
+                onClick={() => {
+                  onImportData();
+                  setMenuOpen(false);
+                }}
+              >
+                <Database size={17} />
+                <span>Load sample data</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="import-workspace"
+                onClick={() => {
+                  importInputRef.current?.click();
+                  setMenuOpen(false);
+                }}
+              >
+                <Upload size={17} />
+                <span>Import backup</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="export-workspace"
+                onClick={() => {
+                  onExportWorkspace();
+                  setMenuOpen(false);
+                }}
+              >
+                <ArrowDownToLine size={17} />
+                <span>Export backup</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="reset-workspace"
+                onClick={() => {
+                  onResetWorkspace();
+                  setMenuOpen(false);
+                }}
+              >
+                <RotateCcw size={17} />
+                <span>Reset demo</span>
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
       <div className="topbar-actions">
         <div
@@ -131,9 +182,9 @@ export function CanvasToolbar({
           <span className="status-mark" aria-hidden="true" />
           <span>{status}</span>
         </div>
-        <button type="button" className="primary-action" onClick={onAddArtifact} data-testid="add-artifact">
-          <Plus size={18} />
-          <span>Add artifact</span>
+        <button type="button" className="primary-action" onClick={onBuildArtifact} data-testid="build-artifact">
+          <Sparkles size={18} />
+          <span>Build with AI</span>
         </button>
       </div>
     </header>

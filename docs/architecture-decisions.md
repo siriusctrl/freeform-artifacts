@@ -731,3 +731,54 @@ any user action.
 
 Revisit if resize performance requires frame throttling, or if the product adds
 an explicit aspect-ratio-locked scale mode for illustration-style artifacts.
+
+## ADR-0015: Make artifact creation an agent handoff, not a placeholder insert
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+The original Add artifact button inserted one pre-authored metric card. That
+behavior implied the browser could create arbitrary artifacts while only
+duplicating a fixture, and it mixed the artifact-authoring workflow with board
+editing. The toolbar also exposed separate select and data buttons even though
+selection is direct manipulation and sample data is an occasional demo action.
+
+### Decision
+
+- Replace Add artifact with **Build with AI**.
+- Ask for an artifact description and generate a copyable Claude Code
+  instruction that installs the public `freeform-artifact-builder` skill.
+- Keep generation as a trusted repository workflow: implement under
+  `src/artifacts/generated/`, add a demo node only when intended, bump the
+  template version, verify, commit, push, and deploy.
+- Do not mutate the current board when generating the handoff.
+- Keep grid snap and theme as primary toolbar controls. Put sample data,
+  workspace import/export, and reset in a More menu; remove the redundant
+  select tool.
+- Expose deletion on the selected card and through `Delete`/`Backspace`, while
+  ignoring keyboard shortcuts inside editable controls.
+- Use a recognizable scaling icon and tooltip for the selected-card resize
+  affordance.
+
+### Why this route
+
+Artifact creation changes executable code and often data transforms, schemas,
+layout, and verification. A repository-aware agent can make and review those
+changes coherently; a static client-side button cannot. Keeping the handoff
+honest also preserves the host boundary: the canvas renders registered code but
+does not pretend to be a code-generation backend.
+
+### Tradeoffs
+
+- Creating an artifact is not instant and requires a local clone plus Claude
+  Code or another compatible agent.
+- Existing browser workspaces remain immutable forks after deployment and need
+  **More > Reset demo** to adopt a newly published board.
+- The generated instruction currently targets Claude Code explicitly; other
+  agents can still use the repo skill manually.
+
+Revisit when the product has an authenticated build service, reviewed artifact
+packages, or a sandboxed runtime that can safely support in-browser generation.

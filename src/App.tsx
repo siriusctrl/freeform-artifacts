@@ -4,16 +4,16 @@ import { artifactRegistry } from "./artifacts/registry";
 import type { RegisteredArtifact } from "./artifacts/registryTypes";
 import type { CanvasNode, CanvasViewport } from "./artifacts/types";
 import { createBoardState } from "./canvas/board";
+import { AgentHandoffDialog } from "./canvas/components/AgentHandoffDialog";
 import { CanvasBoard } from "./canvas/components/CanvasBoard";
 import { CanvasToolbar } from "./canvas/components/CanvasToolbar";
 import { themeFor, type ThemeMode } from "./canvas/constants";
 import { publishCanvasDebugState } from "./canvas/debugState";
 import { useCanvasInteractions } from "./canvas/hooks/useCanvasInteractions";
-import { createMetricNode } from "./canvas/nodeFactory";
 import { clampNodesToArtifactMinimums } from "./canvas/nodeSize";
 import { importedRevenueRows } from "./data/transformFixtures";
 import { revenueSummaryTransform, revenueTableTransform, runTransform } from "./data/transforms";
-import { CANVAS_GRID_SIZE, screenToWorld } from "./lib/geometry";
+import { CANVAS_GRID_SIZE } from "./lib/geometry";
 import { downloadWorkspace, parseWorkspace } from "./workspaces/bundle";
 import { loadOrCreateWorkspace, saveWorkspace } from "./workspaces/storage";
 import { createWorkspaceFromTemplate, getRequestedTemplate } from "./workspaces/templates";
@@ -117,6 +117,7 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
   const [snapToGrid, setSnapToGrid] = useState(initialWorkspace.board.snapToGrid);
   const [status, setStatus] = useState(initialStatus);
   const [storageMode, setStorageMode] = useState<WorkspaceLoadResult["storage"]>(initialStorage);
+  const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [runtimeArtifactRegistry, setRuntimeArtifactRegistry] =
     useState<Record<string, RegisteredArtifact>>(artifactRegistry);
 
@@ -210,16 +211,29 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
     });
   }, [nodes, viewport, selectedNodeId, themeMode, snapToGrid, status, storageMode, runtimeArtifactRegistry, template.id]);
 
-  function addArtifact() {
-    const rect = stageRef.current?.getBoundingClientRect();
-    const center = rect
-      ? { x: rect.left + rect.width * 0.58 - 140, y: rect.top + rect.height * 0.62 - 85 }
-      : { x: window.innerWidth / 2 - 140, y: window.innerHeight / 2 - 85 };
-    const world = screenToWorld(center, viewport);
-    const next = createMetricNode(nodes.length, world);
-    setNodes((current) => [...current, next]);
-    setSelectedNodeId(next.id);
+  function deleteNode(nodeId: string) {
+    setNodes((current) => current.filter((node) => node.id !== nodeId));
+    setSelectedNodeId((current) => (current === nodeId ? "" : current));
   }
+
+  useEffect(() => {
+    function handleDeleteKey(event: KeyboardEvent) {
+      if (!selectedNodeId || (event.key !== "Delete" && event.key !== "Backspace")) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      deleteNode(selectedNodeId);
+    }
+    window.addEventListener("keydown", handleDeleteKey);
+    return () => window.removeEventListener("keydown", handleDeleteKey);
+  }, [selectedNodeId]);
 
   function importData() {
     const summary = runTransform(revenueSummaryTransform, importedRevenueRows);
@@ -311,7 +325,7 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
           templateTitle={template.title}
           themeMode={themeMode}
           snapToGrid={snapToGrid}
-          onAddArtifact={addArtifact}
+          onBuildArtifact={() => setAgentDialogOpen(true)}
           onExportWorkspace={exportWorkspace}
           onImportData={importData}
           onImportWorkspace={importWorkspace}
@@ -327,12 +341,14 @@ function CanvasWorkspace({ initialWorkspace, initialStorage, initialStatus, temp
           stageRef={stageRef}
           viewport={viewport}
           onChangeZoom={canvasInteractions.changeZoom}
+          onDeleteNode={deleteNode}
           onNodePointerDown={canvasInteractions.handleNodePointerDown}
           onResetView={resetView}
           onResizePointerDown={canvasInteractions.handleResizePointerDown}
           onStagePointerDown={canvasInteractions.handleStagePointerDown}
         />
       </section>
+      <AgentHandoffDialog open={agentDialogOpen} onClose={() => setAgentDialogOpen(false)} />
     </main>
   );
 }
