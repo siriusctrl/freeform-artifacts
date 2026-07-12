@@ -10,7 +10,10 @@ on navigation, invariants, verification, and handoff rules.
 - `src/canvas/components/`: canvas UI pieces.
 - `src/canvas/hooks/useCanvasInteractions.ts`: drag, resize, pan, zoom, snap,
   and z-order interaction mechanics.
-- `src/canvas/board.ts`: board persistence and JSON export.
+- `src/canvas/board.ts`: serializable board schema and legacy persistence
+  migration.
+- `src/workspaces/`: published templates, IndexedDB/localStorage persistence,
+  and workspace bundle import/export.
 - `src/canvas/debugState.ts`: Playwright/browser debug state only.
 - `src/canvas/seeds/demoBoard.ts`: default demo board nodes.
 - `src/lib/geometry.ts`: viewport math and screen/world coordinate conversion.
@@ -34,6 +37,10 @@ on navigation, invariants, verification, and handoff rules.
 - Keep the first screen canvas-first, not dashboard-first.
 - Keep viewport state separate from node world coordinates.
 - Keep canvas state serializable.
+- Treat published templates as immutable seeds; user edits belong to local
+  workspaces.
+- Keep workspace keys scoped by template ID and preserve versioned migration
+  boundaries.
 - Generated artifacts must not mutate canvas state directly.
 - Database shaping belongs in transforms, not render components.
 - ECharts lifecycle stays inside `EChartsArtifactHost`.
@@ -52,6 +59,8 @@ on navigation, invariants, verification, and handoff rules.
 - Run `npm run verify:ui` for interaction or rendering changes.
 - Run `npm run verify:preview` for runtime, bundling, import, persistence, or
   production-facing changes.
+- Persistence changes must prove close/reopen recovery and isolation between
+  two Playwright browser contexts.
 - Run `npm run verify:proof` for user-facing visual changes.
 - Inspect `proof.gif`, `contact-sheet.png`, and `frame-check.json` before
   claiming visual behavior works.

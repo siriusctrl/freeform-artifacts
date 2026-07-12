@@ -2,16 +2,16 @@ import { z } from "zod";
 import type { CanvasNode, CanvasViewport } from "../artifacts/types";
 import type { ThemeMode } from "./constants";
 
-const BOARD_STORAGE_KEY = "freeform-artifacts.board.v1";
-const BOARD_VERSION = 1;
+const LEGACY_BOARD_STORAGE_KEY = "freeform-artifacts.board.v1";
+export const BOARD_VERSION = 1;
 
-const canvasViewportSchema = z.object({
+export const canvasViewportSchema = z.object({
   x: z.number(),
   y: z.number(),
   scale: z.number().min(0.25).max(2.5),
 });
 
-const canvasNodeSchema = z.object({
+export const canvasNodeSchema = z.object({
   id: z.string(),
   artifactId: z.string(),
   title: z.string(),
@@ -56,8 +56,8 @@ export function createBoardState(state: Omit<BoardState, "version">): BoardState
   };
 }
 
-export function loadBoardState(): BoardState | null {
-  const raw = window.localStorage.getItem(BOARD_STORAGE_KEY);
+export function loadLegacyBoardState(): BoardState | null {
+  const raw = window.localStorage.getItem(LEGACY_BOARD_STORAGE_KEY);
   if (!raw) {
     return null;
   }
@@ -70,24 +70,10 @@ export function loadBoardState(): BoardState | null {
   }
 }
 
-export function saveBoardState(board: BoardState) {
-  window.localStorage.setItem(BOARD_STORAGE_KEY, JSON.stringify(board));
-}
-
-export function clearBoardState() {
-  window.localStorage.removeItem(BOARD_STORAGE_KEY);
+export function clearLegacyBoardState() {
+  window.localStorage.removeItem(LEGACY_BOARD_STORAGE_KEY);
 }
 
 export function serializeBoardState(board: BoardState) {
   return JSON.stringify(board, null, 2);
-}
-
-export function downloadBoardState(board: BoardState) {
-  const blob = new Blob([serializeBoardState(board)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = "freeform-board.json";
-  anchor.click();
-  URL.revokeObjectURL(url);
 }

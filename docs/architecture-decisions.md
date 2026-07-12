@@ -410,8 +410,9 @@ browser.
   arbitrary file import.
 - Frame checks catch blank-like frames, not all visual regressions.
 
-Revisit when board JSON import/export needs migration tooling, when real data
-connectors arrive, or when untrusted generated code loading begins.
+The persistence portion of this decision is superseded by ADR-0011. Revisit the
+remaining transform and validation boundaries when real data connectors arrive
+or when untrusted generated code loading begins.
 
 ## ADR-0008: Split artifact registries by ownership
 
@@ -547,3 +548,88 @@ do not duplicate alignment rules.
 Revisit if the product adds a full layout engine, constraint solver, or
 collaborative selection model that needs richer alignment state than a single
 grid preference.
+
+## ADR-0011: Fork published templates into browser-local workspaces
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+The public demo should open from one shareable URL and show an authored board.
+Every visitor must be able to modify that board, close the page, and return to
+their own changes without affecting the author or another visitor. Cross-device
+sync and accounts are not required.
+
+The earlier single-board localStorage implementation restored basic state, but
+it did not distinguish an immutable published template from a visitor's local
+copy. It also left limited room for larger artifact data and future local
+assets.
+
+### Decision
+
+- Keep published templates in the application bundle as immutable seeds.
+- Select templates with a static-hosting-safe `?board=<template-id>` query.
+- On first visit, create a versioned `WorkspaceRecord` keyed by template ID.
+- Persist the workspace in IndexedDB.
+- Write a synchronous localStorage recovery mirror before each IndexedDB save
+  so an immediate page close can still recover the latest serializable board.
+- Prefer the newest valid record during bootstrap and repair IndexedDB from the
+  recovery mirror when needed.
+- Provide versioned `.freeform.json` import/export and an explicit reset action.
+- Test persistence by closing/reopening a page and test isolation with two
+  independent Playwright browser contexts.
+
+### Why this route
+
+Browser-origin storage gives the required visitor isolation without accounts,
+APIs, or a shared database. IndexedDB gives the primary model room to grow,
+while the small recovery mirror protects the current serializable board from
+the asynchronous close timing that IndexedDB alone cannot fully control.
+
+The template/workspace boundary also prevents a future deployment from silently
+overwriting a visitor's edits. Resetting to the latest authored demo remains an
+explicit user action.
+
+### Tradeoffs
+
+- Isolation is per browser profile and origin, not per human identity.
+- Clearing site data or using short-lived private browsing removes the local
+  workspace.
+- There is no automatic cross-device sync.
+- Very large boards may exceed the recovery mirror quota; IndexedDB remains the
+  primary store and workspace export is the durable portability path.
+- Existing visitors do not automatically receive future template changes after
+  they have forked a workspace.
+
+Revisit when the product needs authenticated sync, public board sharing, binary
+artifact assets, or a multi-workspace picker.
+
+## ADR-0012: Deploy the app as a base-aware GitHub project Pages site
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+The public demo is hosted at `/freeform-artifacts/`, not at the domain root.
+Absolute root paths for the generated artifact manifest and modules would point
+at the portfolio site and fail after deployment.
+
+### Decision
+
+- Configure Vite from `VITE_BASE_PATH`, defaulting to `/` locally.
+- Build Pages with `VITE_BASE_PATH=/freeform-artifacts/`.
+- Resolve the generated artifact manifest from `import.meta.env.BASE_URL`.
+- Resolve module entries relative to the fetched manifest URL.
+- Deploy `dist/` with the official GitHub Pages artifact actions.
+
+### Tradeoffs
+
+- Any future public asset loader must remain base-aware.
+- Local verification must cover both the root development base and the
+  production project base.
+
+Revisit if the project moves to a custom domain root or another static host.

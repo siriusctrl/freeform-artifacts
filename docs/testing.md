@@ -13,6 +13,10 @@ npm run check
 This executes TypeScript checking and a Vite production build. It catches type,
 module, and bundling errors. It does not prove interaction behavior.
 
+`npm run verify:preview` additionally builds and serves the production
+`/freeform-artifacts/` base path, including the base-aware generated artifact
+manifest and runtime module.
+
 ## Browser Smoke
 
 Run:
@@ -38,9 +42,15 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - theme toggle switches light/dark mode;
 - importing sample query rows runs transforms and updates artifacts;
 - adding an artifact inserts and selects a registry-backed node.
-- local storage restores the board after reload.
+- IndexedDB restores the workspace after reload and after closing/reopening the
+  page;
+- two independent browser contexts receive separate local forks and cannot see
+  each other's added artifacts;
+- the debug state reports the active template ID and storage mode.
 
 The main test lives in `tests/canvas.spec.ts`.
+`tests/mobile.spec.ts` keeps the touch-sized layout honest without pretending
+desktop mouse gestures are touch interaction coverage.
 
 If Chromium is missing, run:
 
@@ -90,6 +100,8 @@ The current smoke test is intentionally narrow. Add focused tests when changing:
 - artifact registry loading;
 - data transform behavior;
 - serialization;
+- template forking and workspace migration;
+- IndexedDB failure fallback and workspace bundle import/export;
 - production preview behavior;
 - sandboxing;
 - visual proof artifact shape.

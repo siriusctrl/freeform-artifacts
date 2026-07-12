@@ -41,8 +41,8 @@ Read these when the task matches:
 Code orientation:
 
 - `src/main.tsx` mounts the React application.
-- `src/App.tsx` owns demo-level orchestration: board persistence, import/export,
-  theme, snap preference, and artifact insertion.
+- `src/App.tsx` owns demo-level orchestration: workspace bootstrap,
+  import/export, theme, snap preference, and artifact insertion.
 - `src/canvas/components/` contains the toolbar, board, node, zoom controls, and
   selection inspector views.
 - `src/canvas/hooks/useCanvasInteractions.ts` owns pan, zoom, drag, resize, and
@@ -50,6 +50,8 @@ Code orientation:
 - `src/canvas/debugState.ts` publishes the browser-verification debug handle.
 - `src/canvas/` also contains board serialization, shared canvas constants, and
   node factories.
+- `src/workspaces/` owns immutable templates, local persistence, recovery
+  fallback, and portable workspace bundles.
 - `src/lib/geometry.ts` owns viewport math and screen/world coordinate
   conversion.
 - `src/artifacts/types.ts` defines the artifact, canvas node, viewport, event,

@@ -15,7 +15,9 @@ All notable user-facing changes to this project should be documented here.
 - Probability chart and Sankey examples backed by ECharts options.
 - Self-hosted Geist Sans and Geist Mono typography.
 - Sample database rows and transform helpers.
-- Persistent board autosave/restore and board JSON export.
+- Published template forking into per-browser IndexedDB workspaces.
+- Synchronous localStorage recovery mirrors for close/reopen resilience.
+- Versioned workspace JSON import/export and explicit reset-to-demo control.
 - Default-on 38px snap-to-grid placement and resizing with a toolbar toggle.
 - Selected-card resize handles.
 - Transform registry with checked raw-row fixtures.
@@ -33,7 +35,9 @@ All notable user-facing changes to this project should be documented here.
   artifacts.
 - Auto-discovery for repo-generated `*.artifact.tsx` modules.
 - Trusted runtime ESM artifact loading through
-  `/artifacts/generated/manifest.json`.
+  a base-aware `artifacts/generated/manifest.json`.
+- GitHub Pages deployment under `/freeform-artifacts/`.
+- Mobile-first template framing that opens the primary chart at a useful scale.
 
 ### Fixed
 
@@ -42,6 +46,8 @@ All notable user-facing changes to this project should be documented here.
 - Made zoom verification cover both wheel zoom and toolbar zoom controls.
 - Improved theme toggle affordance with explicit Light/Dark labeling.
 - Centered the add-artifact action content optically.
+- Reflowed the mobile toolbar into the topbar so controls do not cover the
+  product title or canvas.
 - Kept static ECharts artifacts from refreshing or entering hover states during
   canvas drag, pan, and zoom.
 - Bound the dotted grid background to the same viewport pan and zoom model as

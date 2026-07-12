@@ -26,7 +26,7 @@ function normalizeManifest(value: unknown): string[] {
 }
 
 export async function loadExternalArtifactRegistry(
-  manifestUrl = "/artifacts/generated/manifest.json",
+  manifestUrl = new URL("artifacts/generated/manifest.json", new URL(import.meta.env.BASE_URL, window.location.origin)).href,
 ): Promise<Record<string, RegisteredArtifact>> {
   const response = await fetch(manifestUrl, { cache: "no-store" });
   if (response.status === 404) {
@@ -36,7 +36,7 @@ export async function loadExternalArtifactRegistry(
     throw new Error(`Unable to load external artifact manifest: ${response.status}`);
   }
 
-  const moduleUrls = normalizeManifest(await response.json());
+  const moduleUrls = normalizeManifest(await response.json()).map((moduleUrl) => new URL(moduleUrl, manifestUrl).href);
   const modules = await Promise.all(moduleUrls.map(loadExternalModule));
 
   return Object.fromEntries(

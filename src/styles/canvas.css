@@ -160,13 +160,32 @@
   }
 
   .topbar {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-    padding: 10px 12px;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .title-block {
+    gap: 0;
+  }
+
+  .title-block > div {
+    display: none;
   }
 
   .tool-strip {
-    display: none;
+    position: static;
+    justify-self: center;
+    min-width: 0;
+    max-width: 100%;
+    height: 42px;
+    padding: 0 6px;
+    overflow: hidden;
+    box-shadow: 0 8px 20px var(--shadow);
+  }
+
+  .topbar-actions {
+    justify-self: end;
   }
 
   .status-pill {
@@ -179,5 +198,44 @@
 
   .primary-action {
     padding: 0 12px;
+  }
+
+  .theme-toggle {
+    min-width: 34px;
+    width: 34px;
+    grid-template-columns: 20px;
+    padding: 0 7px;
+  }
+
+  .theme-toggle span {
+    display: none;
+  }
+
+  .zoom-controls {
+    left: auto;
+    right: 12px;
+    bottom: 14px;
+  }
+}
+
+@media (max-width: 560px) {
+  .title-block small {
+    display: none;
+  }
+
+  .primary-action {
+    min-width: 42px;
+    width: 42px;
+    grid-template-columns: 18px;
+    padding: 0 12px;
+  }
+
+  .primary-action span {
+    display: none;
+  }
+
+  .tool-strip .icon-button:first-child,
+  .tool-strip .icon-button:nth-child(3) {
+    display: none;
   }
 }
