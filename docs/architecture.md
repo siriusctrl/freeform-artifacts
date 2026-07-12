@@ -226,8 +226,8 @@ Canvas runtime behavior lives under `src/canvas/`:
 
 - `components/` renders the toolbar, board, canvas nodes, zoom controls, and
   selection inspector.
-- `hooks/useCanvasInteractions.ts` owns pointer drag, resize, pan, wheel zoom,
-  toolbar zoom, z-order bumping, and snap-to-grid math.
+- `hooks/useCanvasInteractions.ts` owns pointer drag, resize, wheel pan, pinch
+  zoom, toolbar zoom, z-order bumping, and snap-to-grid math.
 - `debugState.ts` is the only place that writes `window.__FREEFORM_STATE__`.
 
 Styles are also split by domain under `src/styles/` and imported through

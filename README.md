@@ -96,7 +96,8 @@ Current controls:
 - Keep snap-to-grid on by default for 38px world-coordinate placement; toggle
   it with the grid button in the top toolbar when free placement is needed.
 - Drag empty canvas space to pan.
-- Scroll over the canvas to zoom around the pointer.
+- Scroll with a trackpad or mouse wheel to pan naturally in either direction.
+- Pinch on a trackpad to zoom around the pointer.
 - Use the bottom-left zoom controls to zoom or reset the view.
 - Toggle light/dark mode from the top toolbar.
 - Import a sample query result from the data toolbar button; this runs raw rows

@@ -119,19 +119,6 @@ try {
   await page.mouse.up();
   await page.waitForTimeout(350);
 
-  await page.mouse.move(stageBox.x + 920, stageBox.y + 620);
-  await page.mouse.down();
-  await page.mouse.move(stageBox.x + 1_010, stageBox.y + 560, { steps: 18 });
-  await page.mouse.up();
-  await page.waitForTimeout(350);
-
-  await page.mouse.move(stageBox.x + 690, stageBox.y + 390);
-  await page.mouse.wheel(0, -520);
-  await page.waitForTimeout(450);
-
-  await page.getByTestId("import-data").click();
-  await page.waitForTimeout(450);
-
   await page.getByTestId("node-node-probability").click({ position: { x: 120, y: 18 } });
   await page.waitForTimeout(150);
   const resizeBox = await page.getByTestId("resize-node-probability").boundingBox();
@@ -143,6 +130,33 @@ try {
   await page.mouse.move(resizeBox.x + 72, resizeBox.y + 42, { steps: 16 });
   await page.mouse.up();
   await page.waitForTimeout(350);
+
+  await page.mouse.move(stageBox.x + 920, stageBox.y + 620);
+  await page.mouse.down();
+  await page.mouse.move(stageBox.x + 1_010, stageBox.y + 560, { steps: 18 });
+  await page.mouse.up();
+  await page.waitForTimeout(350);
+
+  await page.mouse.move(stageBox.x + 690, stageBox.y + 390);
+  await page.mouse.wheel(160, 180);
+  await page.waitForTimeout(400);
+
+  await page.getByTestId("canvas-stage").evaluate((element, point) => {
+    element.dispatchEvent(
+      new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        clientX: point.x,
+        clientY: point.y,
+        ctrlKey: true,
+        deltaY: -180,
+      }),
+    );
+  }, { x: stageBox.x + 690, y: stageBox.y + 390 });
+  await page.waitForTimeout(450);
+
+  await page.getByTestId("import-data").click();
+  await page.waitForTimeout(450);
 
   await page.getByTestId("snap-toggle").click();
   await page.waitForTimeout(260);
@@ -218,7 +232,8 @@ try {
     actions: [
       "drag node",
       "pan canvas",
-      "wheel zoom",
+      "wheel pan",
+      "pinch zoom",
       "import query result",
       "resize chart artifact",
       "toggle snap-to-grid off and on",
@@ -245,7 +260,8 @@ try {
       "- Chromium opened the Vite app.",
       "- Mouse drag moved a canvas node.",
       "- Blank-stage drag panned the canvas viewport.",
-      "- Wheel input changed zoom.",
+      "- Two-axis wheel input panned the canvas without changing scale.",
+      "- Ctrl-modified wheel input simulated a trackpad pinch and changed zoom.",
       "- Import data transformed raw rows into metric and table artifacts.",
       "- Resize handle changed an artifact card size.",
       "- Snap-to-grid toggle switched placement mode off and back on.",

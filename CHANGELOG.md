@@ -41,9 +41,11 @@ All notable user-facing changes to this project should be documented here.
 
 ### Fixed
 
+- Made ordinary trackpad and mouse-wheel scrolling pan the canvas naturally;
+  trackpad pinch now performs smooth pointer-anchored zoom.
 - Hardened card drag and canvas pan so browser text selection and native drag
   behavior do not take over the gesture.
-- Made zoom verification cover both wheel zoom and toolbar zoom controls.
+- Made zoom verification cover both pinch zoom and toolbar zoom controls.
 - Improved theme toggle affordance with explicit Light/Dark labeling.
 - Centered the add-artifact action content optically.
 - Reflowed the mobile toolbar into the topbar so controls do not cover the

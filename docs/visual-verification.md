@@ -53,7 +53,8 @@ final screenshot and `frame-check.json` as supplementary checks. Look for:
 - card drag not moving the selected node;
 - browser text selection appearing during card drag;
 - canvas pan moving the wrong layer;
-- wheel zoom jumping away from the pointer;
+- trackpad scrolling moving in the wrong direction or changing scale;
+- pinch zoom jumping away from the pointer;
 - top toolbar zoom controls not changing scale;
 - snap-to-grid toggle not returning to the intended on/off state;
 - light/dark mode leaving illegible cards or panels;
