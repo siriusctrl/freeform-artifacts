@@ -8,13 +8,17 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
   title: "Sankey Flow",
   version: "0.1.0",
   defaultSize: { width: 600, height: 360 },
+  minSize: { width: 532, height: 342 },
   dataSchema: {
     type: "object",
     required: ["title", "subtitle", "nodes", "links"],
   },
   dataValidator: sankeyFlowDataSchema,
-  buildOption: ({ data, theme }) => {
+  buildOption: ({ data, size, theme }) => {
     const isDark = theme.mode === "dark";
+    const compact = size.width < 560 || size.height < 320;
+    const horizontalPadding = compact ? 18 : 22;
+    const rightLabelSpace = compact ? 78 : 94;
     const text = isDark ? "#eef3f3" : "#171717";
     const muted = isDark ? "#a4afb1" : "#667174";
     const nodeFill = isDark ? "#202628" : "#f5f7f7";
@@ -22,25 +26,27 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
 
     return {
       backgroundColor: "transparent",
-      animationDuration: 600,
+      animation: false,
       title: {
         text: data.title,
         subtext: data.subtitle,
-        left: 22,
-        top: 20,
+        left: horizontalPadding,
+        top: compact ? 16 : 20,
         itemGap: 8,
         textStyle: {
           color: text,
           fontFamily: "Geist Variable",
-          fontSize: 22,
+          fontSize: compact ? 19 : 22,
           fontWeight: 800,
+          width: size.width - horizontalPadding * 2,
+          overflow: "truncate",
         },
         subtextStyle: {
           color: muted,
           fontFamily: "Geist Variable",
           fontSize: 12,
           lineHeight: 17,
-          width: 250,
+          width: Math.max(220, size.width - horizontalPadding * 2),
           overflow: "break",
         },
       },
@@ -51,10 +57,10 @@ export const sankeyFlowArtifact: EChartsArtifactDefinition<SankeyFlowData> = {
       series: [
         {
           type: "sankey",
-          top: 92,
-          left: 22,
-          right: 22,
-          bottom: 20,
+          top: compact ? 98 : 92,
+          left: horizontalPadding,
+          right: rightLabelSpace,
+          bottom: compact ? 16 : 20,
           nodeGap: 14,
           nodeWidth: 18,
           draggable: false,

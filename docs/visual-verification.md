@@ -67,7 +67,7 @@ as supplementary checks. Look for:
 - added artifacts appearing outside the visible canvas;
 - local save state failing to settle after an interaction;
 - a restored workspace reverting to the published template;
-- text overflow in buttons, cards, or inspector panels.
+- text overflow in buttons, cards, chart annotations, or Sankey labels;
 - one-frame label jumps, tooltip flashes, hover highlights, or chart redraws
   that only appear during motion.
 

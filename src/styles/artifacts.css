@@ -4,8 +4,7 @@
   padding: 18px;
 }
 
-.artifact-kicker,
-.inspector-label {
+.artifact-kicker {
   color: var(--muted);
   font-size: 12px;
   font-weight: 760;

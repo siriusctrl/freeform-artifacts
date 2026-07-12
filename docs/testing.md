@@ -40,6 +40,11 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   the pointer with a responsive magnitude;
 - zoom controls change zoom scale;
 - resize handles change card dimensions;
+- managed chart labels stay inside their SVG host at default and artifact
+  minimum sizes;
+- artifact-specific minimum dimensions are enforced during resize;
+- imported legacy workspaces with undersized charts are normalized to current
+  artifact minimums;
 - the snap-to-grid toolbar toggle can switch free placement off and back on;
 - theme toggle switches light/dark mode;
 - importing sample query rows runs transforms and updates artifacts;

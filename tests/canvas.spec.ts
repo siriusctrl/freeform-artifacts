@@ -1,4 +1,32 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { writeFile } from "node:fs/promises";
+
+async function chartLabelLayout(page: Page, hostTestId: string, labels: string[]) {
+  return page.getByTestId(hostTestId).evaluate((host, expectedLabels) => {
+    const hostRect = host.getBoundingClientRect();
+    const textElements = Array.from(host.querySelectorAll("svg text"));
+    const matches = expectedLabels.map((label) => ({
+      label,
+      element: textElements.find((element) => element.textContent?.includes(label)),
+    }));
+
+    return {
+      missing: matches.filter(({ element }) => !element).map(({ label }) => label),
+      overflow: matches.flatMap(({ label, element }) => {
+        if (!element) return [];
+        const rect = element.getBoundingClientRect();
+        const outside =
+          rect.left < hostRect.left - 1 ||
+          rect.right > hostRect.right + 1 ||
+          rect.top < hostRect.top - 1 ||
+          rect.bottom > hostRect.bottom + 1;
+        return outside
+          ? [{ label, host: { left: hostRect.left, right: hostRect.right, top: hostRect.top, bottom: hostRect.bottom }, rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom } }]
+          : [];
+      }),
+    };
+  }, labels);
+}
 
 test("freeform canvas supports pan, zoom, node drag, select, and add artifact", async ({ page }) => {
   await page.goto("/");
@@ -193,6 +221,107 @@ test("freeform canvas supports pan, zoom, node drag, select, and add artifact", 
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.snapToGrid)).toBe(true);
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.storageMode)).toBe("indexeddb");
+});
+
+test("managed charts keep essential labels inside default and minimum card sizes", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+
+  await expect.poll(() => chartLabelLayout(page, "echarts-inflection-probability", ["P75"])).toEqual({
+    missing: [],
+    overflow: [],
+  });
+  await expect.poll(() => chartLabelLayout(page, "echarts-sankey-flow", ["AI servers", "Client"])).toEqual({
+    missing: [],
+    overflow: [],
+  });
+  await expect(page.locator(".inspector")).toHaveCount(0);
+
+  const undersizedWorkspace = await page.evaluate(() => {
+    const state = window.__FREEFORM_STATE__!;
+    return {
+      version: 1,
+      templateId: state.templateId,
+      templateVersion: 1,
+      updatedAt: new Date().toISOString(),
+      board: {
+        version: 1,
+        nodes: state.nodes.map((node) =>
+          node.id === "node-probability" || node.id === "node-sankey"
+            ? { ...node, width: 200, height: 150 }
+            : node,
+        ),
+        viewport: state.viewport,
+        selectedNodeId: "",
+        themeMode: state.themeMode,
+        snapToGrid: state.snapToGrid,
+      },
+    };
+  });
+  const undersizedWorkspacePath = testInfo.outputPath("undersized.freeform.json");
+  await writeFile(undersizedWorkspacePath, JSON.stringify(undersizedWorkspace));
+  await page.getByTestId("workspace-file").setInputFiles(undersizedWorkspacePath);
+  await expect.poll(async () => {
+    const state = await page.evaluate(() => window.__FREEFORM_STATE__!);
+    return state.nodes
+      .filter((node) => node.id === "node-probability" || node.id === "node-sankey")
+      .map((node) => ({ id: node.id, width: node.width, height: node.height }));
+  }).toEqual([
+    { id: "node-probability", width: 570, height: 418 },
+    { id: "node-sankey", width: 532, height: 342 },
+  ]);
+
+  const probabilityNode = page.getByTestId("node-node-probability");
+  await probabilityNode.click({ position: { x: 120, y: 18 } });
+  const probabilityResize = page.getByTestId("resize-node-probability");
+  const probabilityResizeBox = await probabilityResize.boundingBox();
+  expect(probabilityResizeBox).not.toBeNull();
+  await page.mouse.move(
+    probabilityResizeBox!.x + probabilityResizeBox!.width / 2,
+    probabilityResizeBox!.y + probabilityResizeBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(probabilityResizeBox!.x - 500, probabilityResizeBox!.y - 400, { steps: 16 });
+  await page.mouse.up();
+
+  await expect.poll(async () => {
+    const node = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.find(
+      (candidate) => candidate.id === "node-probability",
+    );
+    return node ? { width: node.width, height: node.height } : null;
+  }).toEqual({ width: 570, height: 418 });
+  await expect.poll(() => chartLabelLayout(page, "echarts-inflection-probability", ["P75"])).toEqual({
+    missing: [],
+    overflow: [],
+  });
+
+  const stageBox = await page.getByTestId("canvas-stage").boundingBox();
+  expect(stageBox).not.toBeNull();
+  await page.mouse.move(stageBox!.x + 700, stageBox!.y + 400);
+  await page.mouse.wheel(450, 480);
+  const sankeyNode = page.getByTestId("node-node-sankey");
+  await sankeyNode.click({ position: { x: 120, y: 18 } });
+  const sankeyResize = page.getByTestId("resize-node-sankey");
+  const sankeyResizeBox = await sankeyResize.boundingBox();
+  expect(sankeyResizeBox).not.toBeNull();
+  await page.mouse.move(
+    sankeyResizeBox!.x + sankeyResizeBox!.width / 2,
+    sankeyResizeBox!.y + sankeyResizeBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(sankeyResizeBox!.x - 400, sankeyResizeBox!.y - 300, { steps: 16 });
+  await page.mouse.up();
+
+  await expect.poll(async () => {
+    const node = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.find(
+      (candidate) => candidate.id === "node-sankey",
+    );
+    return node ? { width: node.width, height: node.height } : null;
+  }).toEqual({ width: 532, height: 342 });
+  await expect.poll(() => chartLabelLayout(page, "echarts-sankey-flow", ["AI servers", "Client"])).toEqual({
+    missing: [],
+    overflow: [],
+  });
 });
 
 test("each browser gets an isolated local fork that survives closing and reopening the page", async ({ browser }) => {

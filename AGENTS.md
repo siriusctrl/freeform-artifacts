@@ -12,6 +12,8 @@ on navigation, invariants, verification, and handoff rules.
   and z-order interaction mechanics.
 - `src/canvas/board.ts`: serializable board schema and legacy persistence
   migration.
+- `src/canvas/nodeSize.ts`: artifact minimum-size resolution and workspace
+  normalization.
 - `src/workspaces/`: published templates, IndexedDB/localStorage persistence,
   and workspace bundle import/export.
 - `src/canvas/debugState.ts`: Playwright/browser debug state only.
@@ -44,6 +46,8 @@ on navigation, invariants, verification, and handoff rules.
 - Generated artifacts must not mutate canvas state directly.
 - Database shaping belongs in transforms, not render components.
 - ECharts lifecycle stays inside `EChartsArtifactHost`.
+- Dense artifacts declare `minSize`; essential labels must fit at both default
+  and minimum dimensions.
 - Prefer managed ECharts artifacts for standard charts.
 - Use custom React artifacts for visuals or interactions ECharts cannot express
   cleanly.

@@ -33,6 +33,13 @@ export function CanvasNodeView({
   onResizePointerDown,
 }: CanvasNodeViewProps) {
   const validation = validateArtifactPayload(node, artifact);
+  const renderProps = {
+    data: node.data,
+    config: node.config,
+    size: { width: node.width, height: Math.max(0, node.height - 32) },
+    theme: canvasTheme,
+    emit: () => undefined,
+  };
 
   return (
     <div
@@ -59,20 +66,10 @@ export function CanvasNodeView({
         ) : artifact.renderer === "echarts" ? (
           <EChartsArtifactHost
             artifact={artifact}
-            renderProps={{
-              data: node.data,
-              config: node.config,
-              theme: canvasTheme,
-              emit: () => undefined,
-            }}
+            renderProps={renderProps}
           />
         ) : (
-          artifact.render({
-            data: node.data,
-            config: node.config,
-            theme: canvasTheme,
-            emit: () => undefined,
-          })
+          artifact.render(renderProps)
         )}
       </div>
       {isSelected ? (

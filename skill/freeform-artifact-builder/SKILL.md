@@ -48,6 +48,10 @@ canvas.
 - Keep text readable in both light and dark mode.
 - Keep default demo node positions and sizes grid-friendly; the canvas host
   owns 38px snap-to-grid placement.
+- Declare `minSize` for dense or complex artifacts and use the live `size`
+  render prop to reflow content at default and minimum dimensions.
+- Keep every essential chart label and annotation inside the artifact host;
+  verify SVG text bounds instead of assuming `chart.resize()` prevents clipping.
 - Attach a Zod `dataValidator` to new artifacts.
 - Treat runtime external ESM artifacts as trusted self-hosted code, not
   sandboxed plugins.

@@ -43,10 +43,11 @@ Code orientation:
 - `src/main.tsx` mounts the React application.
 - `src/App.tsx` owns demo-level orchestration: workspace bootstrap,
   import/export, theme, snap preference, and artifact insertion.
-- `src/canvas/components/` contains the toolbar, board, node, zoom controls, and
-  selection inspector views.
+- `src/canvas/components/` contains the toolbar, board, node, and zoom controls.
 - `src/canvas/hooks/useCanvasInteractions.ts` owns pan, zoom, drag, resize, and
   snap interaction mechanics.
+- `src/canvas/nodeSize.ts` enforces artifact minimums for live resize, loaded
+  workspaces, and imported backups.
 - `src/canvas/debugState.ts` publishes the browser-verification debug handle.
 - `src/canvas/` also contains board serialization, shared canvas constants, and
   node factories.

@@ -43,7 +43,12 @@ export const artifact = {
   title: "Runtime Margin Chart",
   version: "0.1.0",
   defaultSize: { width: 520, height: 320 },
-  buildOption: ({ data, theme }) => ({ backgroundColor: "transparent", series: [] }),
+  minSize: { width: 456, height: 304 },
+  buildOption: ({ data, size, theme }) => ({
+    backgroundColor: "transparent",
+    grid: { left: 48, right: Math.max(24, size.width * 0.06) },
+    series: [],
+  }),
 };
 ```
 
@@ -101,12 +106,13 @@ export const exampleChartArtifact: EChartsArtifactDefinition<ChartData> = {
   title: "Example Chart",
   version: "0.1.0",
   defaultSize: { width: 640, height: 360 },
+  minSize: { width: 532, height: 304 },
   dataSchema: {
     type: "object",
     required: ["title", "points"],
   },
   dataValidator: exampleChartDataSchema,
-  buildOption: ({ data, theme }) => {
+  buildOption: ({ data, size, theme }) => {
     const isDark = theme.mode === "dark";
     const text = isDark ? "#eef3f3" : "#171717";
 
@@ -119,7 +125,7 @@ export const exampleChartArtifact: EChartsArtifactDefinition<ChartData> = {
         top: 20,
         textStyle: { color: text, fontFamily: "Geist Variable" },
       },
-      grid: { left: 48, right: 24, top: 76, bottom: 42 },
+      grid: { left: 48, right: Math.max(24, size.width * 0.06), top: 76, bottom: 42 },
       xAxis: {
         type: "category",
         data: data.points.map((point) => point.label),
@@ -155,4 +161,7 @@ Keep the host generic. Do not add artifact-specific lifecycle code there.
   payload shapes.
 - Use stable IDs with lowercase words and hyphens.
 - Use `CanvasTheme` values for theme-sensitive colors.
-- Avoid inline layout that can overflow the card at the declared `defaultSize`.
+- Treat `size` as the live content-box dimensions; reflow labels, annotations,
+  legends, and plot margins instead of uniformly scaling text.
+- Declare a grid-friendly `minSize` for dense visuals.
+- Keep essential content inside the host at both `defaultSize` and `minSize`.

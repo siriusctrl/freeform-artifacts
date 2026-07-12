@@ -9,7 +9,9 @@ import {
   type SetStateAction,
 } from "react";
 import type { CanvasNode, CanvasViewport } from "../../artifacts/types";
+import type { RegisteredArtifact } from "../../artifacts/registryTypes";
 import { INITIAL_VIEWPORT } from "../constants";
+import { artifactMinSize } from "../nodeSize";
 import { screenToWorld, snapToGrid, zoomAt } from "../../lib/geometry";
 
 type DragState =
@@ -24,7 +26,6 @@ type DragState =
       startHeight: number;
     };
 
-const MIN_NODE_SIZE = { width: 180, height: 130 };
 const WHEEL_LINE_HEIGHT = 16;
 const PINCH_ZOOM_SENSITIVITY = 0.014;
 
@@ -41,6 +42,7 @@ function wheelDeltaScale(event: WheelEvent, pageHeight: number) {
 }
 
 interface UseCanvasInteractionsOptions {
+  artifactRegistry: Record<string, RegisteredArtifact>;
   stageRef: RefObject<HTMLDivElement | null>;
   viewport: CanvasViewport;
   setViewport: Dispatch<SetStateAction<CanvasViewport>>;
@@ -50,6 +52,7 @@ interface UseCanvasInteractionsOptions {
 }
 
 export function useCanvasInteractions({
+  artifactRegistry,
   stageRef,
   viewport,
   setViewport,
@@ -73,21 +76,27 @@ export function useCanvasInteractions({
 
   const updateNodeSize = useCallback(
     (nodeId: string, width: number, height: number) => {
-      const nextWidth = shouldSnapToGrid ? snapToGrid(Math.max(MIN_NODE_SIZE.width, width)) : Math.round(width);
-      const nextHeight = shouldSnapToGrid ? snapToGrid(Math.max(MIN_NODE_SIZE.height, height)) : Math.round(height);
       setNodes((current) =>
-        current.map((node) =>
-          node.id === nodeId
-            ? {
-                ...node,
-                width: Math.max(MIN_NODE_SIZE.width, nextWidth),
-                height: Math.max(MIN_NODE_SIZE.height, nextHeight),
-              }
-            : node,
-        ),
+        current.map((node) => {
+          if (node.id !== nodeId) {
+            return node;
+          }
+
+          const minSize = artifactMinSize(node, artifactRegistry);
+          const clampedWidth = Math.max(minSize.width, width);
+          const clampedHeight = Math.max(minSize.height, height);
+          const nextWidth = shouldSnapToGrid ? snapToGrid(clampedWidth) : Math.round(clampedWidth);
+          const nextHeight = shouldSnapToGrid ? snapToGrid(clampedHeight) : Math.round(clampedHeight);
+
+          return {
+            ...node,
+            width: Math.max(minSize.width, nextWidth),
+            height: Math.max(minSize.height, nextHeight),
+          };
+        }),
       );
     },
-    [setNodes, shouldSnapToGrid],
+    [artifactRegistry, setNodes, shouldSnapToGrid],
   );
 
   const bringToFront = useCallback(

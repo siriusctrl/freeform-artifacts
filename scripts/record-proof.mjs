@@ -132,6 +132,31 @@ async function findBlankStagePoint(page, stageBox) {
   }, candidates);
 }
 
+async function chartLabelLayout(page, hostTestId, labels) {
+  return page.getByTestId(hostTestId).evaluate((host, expectedLabels) => {
+    const hostRect = host.getBoundingClientRect();
+    const textElements = Array.from(host.querySelectorAll("svg text"));
+    const matches = expectedLabels.map((label) => ({
+      label,
+      element: textElements.find((element) => element.textContent?.includes(label)),
+    }));
+
+    return {
+      missing: matches.filter(({ element }) => !element).map(({ label }) => label),
+      overflow: matches.flatMap(({ label, element }) => {
+        if (!element) return [];
+        const rect = element.getBoundingClientRect();
+        const outside =
+          rect.left < hostRect.left - 1 ||
+          rect.right > hostRect.right + 1 ||
+          rect.top < hostRect.top - 1 ||
+          rect.bottom > hostRect.bottom + 1;
+        return outside ? [{ label, hostRight: hostRect.right, textRight: rect.right }] : [];
+      }),
+    };
+  }, labels);
+}
+
 function checkSampledFrames(gifFile) {
   const width = 64;
   const height = 40;
@@ -233,6 +258,19 @@ try {
   for (const control of ["snap-toggle", "import-data", "theme-toggle", "add-artifact", "zoom-level"]) {
     verifyUx(`control is visible: ${control}`, await page.getByTestId(control).isVisible());
   }
+  verifyUx("selection inspector is absent from the product UI", (await page.locator(".inspector").count()) === 0);
+  const initialProbabilityLayout = await chartLabelLayout(page, "echarts-inflection-probability", ["P75"]);
+  verifyUx(
+    "probability markers fit inside the chart host",
+    initialProbabilityLayout.missing.length === 0 && initialProbabilityLayout.overflow.length === 0,
+    initialProbabilityLayout,
+  );
+  const initialSankeyLayout = await chartLabelLayout(page, "echarts-sankey-flow", ["AI servers", "Client"]);
+  verifyUx(
+    "Sankey labels fit inside the chart host",
+    initialSankeyLayout.missing.length === 0 && initialSankeyLayout.overflow.length === 0,
+    initialSankeyLayout,
+  );
 
   const stageBox = await stage.boundingBox();
   const revenueNode = page.getByTestId("node-node-revenue");
@@ -295,6 +333,12 @@ try {
     node: resizedAfter,
     gridSize: afterResize.snapGridSize,
   });
+  const probabilityLabelLayout = await chartLabelLayout(page, "echarts-inflection-probability", ["P75"]);
+  verifyUx(
+    "probability markers remain contained after resize",
+    probabilityLabelLayout.missing.length === 0 && probabilityLabelLayout.overflow.length === 0,
+    probabilityLabelLayout,
+  );
 
   await showProofStep(page, "Drag background • pan the whole world", 550);
   const blankStagePoint = await findBlankStagePoint(page, stageBox);
@@ -383,6 +427,37 @@ try {
   await page.waitForTimeout(500);
   const afterReset = await page.evaluate(() => window.__FREEFORM_STATE__.viewport);
   verifyUx("reset restores the initial viewport", afterReset.x === 80 && afterReset.y === 80 && afterReset.scale === 1, afterReset);
+
+  await showProofStep(page, "Resize Sankey • keep every label visible", 550);
+  await page.mouse.move(stageBox.x + 700, stageBox.y + 400);
+  for (let index = 0; index < 4; index += 1) {
+    await page.mouse.wheel(112.5, 120);
+    await page.waitForTimeout(70);
+  }
+  await page.waitForTimeout(350);
+  await page.getByTestId("node-node-sankey").click({ position: { x: 120, y: 18 } });
+  const sankeyResize = page.getByTestId("resize-node-sankey");
+  const sankeyResizeBox = await sankeyResize.boundingBox();
+  if (!sankeyResizeBox) throw new Error("Sankey resize handle was not visible enough to record proof");
+  await sankeyResize.hover();
+  await page.mouse.down();
+  await page.mouse.move(sankeyResizeBox.x - 400, sankeyResizeBox.y - 300, { steps: 18 });
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const resizedSankey = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.find(
+    (node) => node.id === "node-sankey",
+  );
+  verifyUx("Sankey resize respects its artifact minimum", resizedSankey?.width === 532 && resizedSankey?.height === 342, {
+    node: resizedSankey,
+  });
+  const sankeyLabelLayout = await chartLabelLayout(page, "echarts-sankey-flow", ["AI servers", "Client"]);
+  verifyUx(
+    "Sankey labels remain contained at minimum size",
+    sankeyLabelLayout.missing.length === 0 && sankeyLabelLayout.overflow.length === 0,
+    sankeyLabelLayout,
+  );
+  await page.getByTitle("Reset view").click();
+  await page.waitForTimeout(500);
 
   await showProofStep(page, "Import database rows • verify transformed UI", 550);
   await page.getByTestId("import-data").click();
@@ -520,6 +595,7 @@ try {
       "inspect initial layout and controls",
       "drag node",
       "resize chart artifact",
+      "resize Sankey to its responsive minimum",
       "drag-pan canvas",
       "wheel pan",
       "pinch zoom in and out around a stable pointer anchor",
