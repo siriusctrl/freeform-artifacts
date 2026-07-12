@@ -1039,7 +1039,9 @@ also served both prose and data, reducing typographic distinction.
 
 - Use a 54px top bar with reduced horizontal padding.
 - Group Theme and More in one 36px display-control surface; keep save status
-  flat and let the 38px Build button remain the only high-contrast command.
+  flat in a fixed-width slot before that group, and let the 38px Build button
+  remain the only high-contrast command. Status text changes must not move the
+  display controls or Build command.
 - Use Instrument Sans Variable for product chrome, prose, artifact headings,
   and ECharts explanatory text.
 - Retain Geist Mono for numeric values, dates, quarters, and axes where fixed

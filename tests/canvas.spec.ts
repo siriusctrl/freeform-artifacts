@@ -229,6 +229,33 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   expect(topbarMetrics).toMatchObject({ topbar: 54, toolStrip: 36, theme: 30, more: 30, status: 34, build: 38 });
   expect(topbarMetrics.brandFont).toContain("Instrument Sans Variable");
   expect(topbarMetrics.fontLoaded).toBe(true);
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+  const toolbarPositionsBeforeStatusChange = await page.evaluate(() => {
+    const rect = (testId: string) => {
+      const { left, right, width } = document.querySelector(`[data-testid="${testId}"]`)!.getBoundingClientRect();
+      return { left, right, width };
+    };
+    return {
+      status: rect("board-status"),
+      theme: rect("theme-toggle"),
+      more: rect("workspace-menu"),
+      build: rect("build-artifact"),
+    };
+  });
+  expect(Math.round(toolbarPositionsBeforeStatusChange.status.width)).toBe(128);
+  expect(toolbarPositionsBeforeStatusChange.status.right).toBeLessThan(toolbarPositionsBeforeStatusChange.theme.left);
+  await revenueNode.click({ position: { x: 100, y: 18 } });
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saving locally");
+  const toolbarPositionsDuringSave = await page.evaluate(() => {
+    const left = (testId: string) => document.querySelector(`[data-testid="${testId}"]`)!.getBoundingClientRect().left;
+    return { theme: left("theme-toggle"), more: left("workspace-menu"), build: left("build-artifact") };
+  });
+  expect(toolbarPositionsDuringSave).toEqual({
+    theme: toolbarPositionsBeforeStatusChange.theme.left,
+    more: toolbarPositionsBeforeStatusChange.more.left,
+    build: toolbarPositionsBeforeStatusChange.build.left,
+  });
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
   const moreAlignment = await page.getByTestId("workspace-menu").evaluate((button) => {
     const buttonRect = button.getBoundingClientRect();
     const iconRect = button.querySelector("svg")!.getBoundingClientRect();

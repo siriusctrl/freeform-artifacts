@@ -110,6 +110,10 @@ All notable user-facing changes to this project should be documented here.
   coordinates when the top bar or Views sidebar offsets the canvas.
 - Split view bootstrap from active-canvas composition and extracted artifact
   runtime, autosave, and node-factory responsibilities from `App.tsx`.
+- Moved local-save status into a fixed-width slot before Theme/More so changing
+  status text no longer shifts either toolbar controls or the Build command.
+- Prevented superseded autosave callbacks from overwriting newer import errors or
+  installation status.
 - Split the canvas runtime into focused components, an interaction hook, debug
   state helper, domain CSS files, and shared verification script helpers.
 - Slimmed `AGENTS.md` into an agent source map and moved product framing into

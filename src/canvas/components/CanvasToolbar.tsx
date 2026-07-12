@@ -134,6 +134,9 @@ export function CanvasToolbar({
         )}
       </div>
       <div className="topbar-controls">
+        <div className="status-pill" data-testid="board-status" title={`${status}. Storage: ${storageMode === "indexeddb" ? "IndexedDB" : "localStorage fallback"}`}>
+          <span className="status-mark" aria-hidden="true" /><span>{status}</span>
+        </div>
         <div className="tool-strip" aria-label="Canvas tools">
           <input
             ref={importInputRef}
@@ -192,9 +195,6 @@ export function CanvasToolbar({
           </div>
         </div>
         <div className="topbar-actions">
-          <div className="status-pill" data-testid="board-status" title={`${status}. Storage: ${storageMode === "indexeddb" ? "IndexedDB" : "localStorage fallback"}`}>
-            <span className="status-mark" aria-hidden="true" /><span>{status}</span>
-          </div>
           <button type="button" className="primary-action" onClick={onBuildArtifact} data-testid="build-artifact">
             <Sparkles size={17} /><span>Build with AI</span>
           </button>

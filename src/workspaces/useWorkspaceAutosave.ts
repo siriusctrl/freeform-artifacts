@@ -21,12 +21,14 @@ export function useWorkspaceAutosave({
 }: UseWorkspaceAutosaveOptions) {
   const latestWorkspace = useRef(workspace);
   const timer = useRef<number | null>(null);
+  const generation = useRef(0);
   const shouldSkip = useRef(skipInitialSave);
   const callbacks = useRef({ onError, onSaved, onSaving });
   latestWorkspace.current = workspace;
   callbacks.current = { onError, onSaved, onSaving };
 
   const cancelPendingSave = useCallback(() => {
+    generation.current += 1;
     if (timer.current !== null) {
       window.clearTimeout(timer.current);
       timer.current = null;
@@ -41,13 +43,18 @@ export function useWorkspaceAutosave({
 
     cancelPendingSave();
     callbacks.current.onSaving();
+    const saveGeneration = generation.current;
     timer.current = window.setTimeout(() => {
       timer.current = null;
       saveWorkspace(latestWorkspace.current)
-        .then((storage) => callbacks.current.onSaved(storage))
-        .catch((error) => callbacks.current.onError(
-          error instanceof Error ? error.message : "Local save failed",
-        ));
+        .then((storage) => {
+          if (saveGeneration === generation.current) callbacks.current.onSaved(storage);
+        })
+        .catch((error) => {
+          if (saveGeneration === generation.current) {
+            callbacks.current.onError(error instanceof Error ? error.message : "Local save failed");
+          }
+        });
     }, SAVE_DEBOUNCE_MS);
 
     return cancelPendingSave;

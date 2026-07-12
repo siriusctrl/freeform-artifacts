@@ -203,6 +203,7 @@ export function CanvasWorkspace({
   }
 
   async function importWorkspace(file: File) {
+    cancelPendingSave();
     try {
       const imported = parseWorkspace(await file.text());
       const unavailableArtifactIds = [...new Set(
