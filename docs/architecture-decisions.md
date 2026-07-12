@@ -968,3 +968,48 @@ from the Freeform spatial model.
 
 Revisit screenshot previews only if exact visual recognition becomes more
 valuable than storage size, freshness, and renderer isolation.
+
+## ADR-0020: Make artifact hierarchy and dark-mode styling part of the contract
+
+Status: Accepted
+
+Date: 2026-07-12
+
+### Context
+
+The first examples proved renderer and persistence mechanics but carried weak
+presentation defaults: an internal table name leaked into the UI, the pipeline
+stacked counters and decoration into a small frame, generic supply analysis
+still carried domain-specific wording, and every Sankey node used one fill.
+ECharts also does not inherit the host's CSS theme for option-level text,
+tooltips, axes, nodes, or links.
+
+### Decision
+
+- Treat internal data and transform names as implementation details, never
+  presentation copy.
+- Keep one primary idea and at most three visible hierarchy levels inside an
+  artifact body. Remove redundant counters, badges, nested panels, and
+  decoration before shrinking text.
+- Keep public examples domain-generic unless specificity is necessary to
+  understand the visualization.
+- Give categorical and topological nodes distinct, controlled colors. Sankey
+  links use source-to-target gradients rather than one anonymous fill.
+- Require every ECharts `buildOption` to branch on `theme.mode` and style all
+  relevant text, grid, tooltip, series, node, link, and emphasis tokens.
+- Require browser inspection at default and minimum size in both light and dark
+  mode, including SVG bounds and categorical color counts.
+- Capture these constraints in the project skill's visual style guide so
+  personal bundles follow the same quality bar as shared examples.
+
+### Tradeoffs
+
+- Artifact definitions contain more explicit theme tokens.
+- Geometry-based checks cannot judge every aesthetic choice, so screenshot,
+  contact-sheet, and GIF inspection remain required.
+- Distinct palettes need deliberate contrast review in both themes rather than
+  automatic reuse of the product accent.
+
+Revisit shared theme-token helpers when three or more artifacts repeat the same
+complete chart palette; do not centralize prematurely at the cost of chart-
+specific legibility.

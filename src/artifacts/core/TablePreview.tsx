@@ -8,12 +8,11 @@ export const tablePreviewArtifact: ArtifactDefinition<TablePreviewData> = {
   defaultSize: { width: 430, height: 260 },
   dataSchema: {
     type: "object",
-    required: ["title", "columns", "rows"],
+    required: ["columns", "rows"],
   },
   dataValidator: tablePreviewDataSchema,
   render: ({ data }) => (
     <article className="artifact table-card">
-      <div className="table-title">{data.title}</div>
       <table>
         <thead>
           <tr>

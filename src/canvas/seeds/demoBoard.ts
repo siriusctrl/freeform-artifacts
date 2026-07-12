@@ -22,18 +22,18 @@ export const initialNodes: CanvasNode[] = [
   {
     id: "node-probability",
     artifactId: "inflection-probability",
-    title: "Renewable Supply Model",
+    title: "Supply Model",
     x: 410,
     y: 80,
     width: 720,
     height: 460,
     zIndex: 1,
     data: {
-      title: "Renewable supply-demand probability",
+      title: "Supply-demand probability",
       note: {
-        what: "Probability that renewable power supply growth outpaces demand by quarter.",
+        what: "Probability that supply growth outpaces demand by quarter.",
         read: "Bars show the quarterly shift probability; the line shows cumulative probability.",
-        logic: "Requires generation above demand, reserve recovery, and new capacity online.",
+        logic: "Requires supply above demand, inventory recovery, and new capacity online.",
       },
       points: [
         { quarter: "2026Q2", probabilityAt: 0, probabilityBy: 0 },
@@ -69,12 +69,12 @@ export const initialNodes: CanvasNode[] = [
     height: 300,
     zIndex: 1,
     data: {
-      title: "Database rows to generated artifact",
-      summary: "AI output stays inside the registry contract.",
+      title: "Rows to artifact",
+      summary: "A typed path from query output to a rendered view.",
       steps: [
-        { label: "Query", detail: "6 revenue rows", metric: "raw" },
-        { label: "Transform", detail: "normalize fields", metric: "typed" },
-        { label: "Render", detail: "React artifact", metric: "live" },
+        { label: "Query", detail: "Fetch source rows", metric: "Raw data" },
+        { label: "Transform", detail: "Normalize fields", metric: "Typed data" },
+        { label: "Render", detail: "Compose the view", metric: "Artifact" },
       ],
     },
     config: {},
@@ -89,8 +89,8 @@ export const initialNodes: CanvasNode[] = [
     height: 360,
     zIndex: 2,
     data: {
-      title: "Supply allocation flow",
-      subtitle: "Available generation moves through storage and grid balancing into regional demand.",
+      title: "Supply allocation",
+      subtitle: "Available supply moves through storage and balancing into regional demand.",
       nodes: [
         { name: "Solar" },
         { name: "Wind" },

@@ -48,6 +48,11 @@ All notable user-facing changes to this project should be documented here.
   asking the agent to clarify what artifact the user wants.
 - Smooth **Views** sidebar transitions and data-derived canvas previews beneath
   each view name.
+- Polished default examples: removed the internal table name, simplified the
+  artifact pipeline, generalized supply copy, and added distinct light/dark
+  Sankey node palettes.
+- Artifact skill visual style guide with mandatory dual-theme chart and browser
+  verification rules.
 
 ### Fixed
 
@@ -63,8 +68,8 @@ All notable user-facing changes to this project should be documented here.
   feedback, and aligned all top-level toolbar controls to one height.
 - Split probability chart guidance into three independently positioned SVG
   lines so What, Read, and Logic remain inside the note panel.
-- Replaced semiconductor-specific demo wording with a generic renewable supply
-  and allocation scenario.
+- Replaced domain-specific demo wording with a generic supply and allocation
+  scenario.
 - Reflowed managed ECharts options from live content-box dimensions so
   probability markers and Sankey labels stay inside their hosts.
 - Added artifact-specific minimum resize dimensions for dense charts.

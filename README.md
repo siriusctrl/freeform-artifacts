@@ -369,7 +369,7 @@ Implemented:
 - Transform registry with fixtures for raw query rows.
 - Zod-backed artifact payload validation with invalid-card fallback rendering.
 - Registry-backed metric, table, flow-diagram, probability chart, and Sankey
-  artifacts.
+  artifacts, polished and verified in both light and dark mode.
 - Layered artifact registries for core, example, and future generated
   artifacts.
 - Auto-discovered repo-generated TSX artifacts and base-aware trusted runtime
@@ -385,6 +385,8 @@ Implemented:
   drag behavior during canvas moves.
 - Handoff docs for the next Codex session.
 - Project-local `freeform-artifact-builder` skill for future artifact work.
+- Artifact visual style guide covering hierarchy, spacing, chart composition,
+  categorical color, and required dark-mode behavior.
 
 TODO:
 

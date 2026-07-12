@@ -191,6 +191,14 @@ async function probabilityNoteLayout(page) {
   });
 }
 
+async function sankeyNodeColors(page) {
+  return page.getByTestId("echarts-sankey-flow").locator("svg").evaluate((svg) =>
+    [...svg.querySelectorAll("path")]
+      .map((path) => path.getAttribute("fill"))
+      .filter((fill) => fill && fill !== "none" && !fill.startsWith("url") && fill !== "rgb(0,0,0)"),
+  );
+}
+
 function checkSampledFrames(gifFile) {
   const width = 64;
   const height = 40;
@@ -361,13 +369,19 @@ try {
     initialProbabilityNote.missing.length === 0 && initialProbabilityNote.overflow.length === 0 && new Set(initialProbabilityNote.tops).size === 3,
     initialProbabilityNote,
   );
-  verifyUx("published example contains no DRAM wording", !(await page.locator("body").innerText()).match(/DRAM/i));
+  verifyUx("published probability example uses generic supply wording", await page.getByText("Supply-demand probability", { exact: true }).isVisible());
   const initialSankeyLayout = await chartLabelLayout(page, "echarts-sankey-flow", ["North", "South"]);
   verifyUx(
     "Sankey labels fit inside the chart host",
     initialSankeyLayout.missing.length === 0 && initialSankeyLayout.overflow.length === 0,
     initialSankeyLayout,
   );
+  await showProofStep(page, "Polished examples • clear hierarchy and distinct flow colors", 1500);
+  verifyUx("table hides internal data names", (await page.getByText(/^[a-z]+_[a-z_]+$/).count()) === 0 && (await page.locator(".table-title").count()) === 0);
+  verifyUx("pipeline removes cramped counters and decoration", (await page.locator(".flow-step").count()) === 3 && (await page.locator(".flow-step-index, .flow-rail").count()) === 0);
+  verifyUx("supply example stays generic", await page.getByText("Supply-demand probability", { exact: true }).isVisible() && await page.getByText("Supply Model", { exact: true }).isVisible());
+  const lightSankeyColors = [...new Set(await sankeyNodeColors(page))];
+  verifyUx("light Sankey assigns six distinct node colors", lightSankeyColors.length === 6, { lightSankeyColors });
 
   await showProofStep(page, "Rename canvas • edit the centered title", 900);
   await page.getByTestId("canvas-title").dblclick();
@@ -697,6 +711,8 @@ try {
   await page.getByTestId("theme-toggle").click();
   await page.waitForTimeout(600);
   verifyUx("theme switch reaches dark mode", (await page.evaluate(() => window.__FREEFORM_STATE__.themeMode)) === "dark");
+  const darkSankeyColors = [...new Set(await sankeyNodeColors(page))];
+  verifyUx("dark mode supplies a distinct six-color Sankey palette", darkSankeyColors.length === 6 && darkSankeyColors.some((color) => !lightSankeyColors.includes(color)), { lightSankeyColors, darkSankeyColors });
 
   await showProofStep(page, "Build with AI • generate a no-code bundle handoff", 900);
   const beforeHandoff = await page.evaluate(() => window.__FREEFORM_STATE__);

@@ -14,31 +14,33 @@ canvas.
    existing artifact module.
 2. Read [references/artifact-contract.md](references/artifact-contract.md)
    before writing or changing an artifact.
-3. Read [references/layout-verification.md](references/layout-verification.md)
+3. Read [references/visual-style-guide.md](references/visual-style-guide.md)
+   before choosing copy, hierarchy, colors, typography, or chart composition.
+4. Read [references/layout-verification.md](references/layout-verification.md)
    before changing initial node placement or visual proof behavior.
-4. Choose the renderer:
+5. Choose the renderer:
    - Use `renderer: "echarts"` for standard charts.
    - Use React artifacts for custom UI, composition, or visuals ECharts does not
      express cleanly.
-5. Keep database shaping outside artifact render/build functions. Pass normalized
+6. Keep database shaping outside artifact render/build functions. Pass normalized
    data through `CanvasNode.data`.
-6. For a user-owned view, create a trusted `.freeform-artifact.json` bundle by
+7. For a user-owned view, create a trusted `.freeform-artifact.json` bundle by
    following [references/artifact-bundle.md](references/artifact-bundle.md).
    Install it through `window.__FREEFORM_AGENT__.installArtifact`; do not modify
    or commit the app repository.
-7. For maintainer-owned repo-compiled artifacts, create
+8. For maintainer-owned repo-compiled artifacts, create
    `src/artifacts/generated/<name>.artifact.tsx`; the generated registry
    auto-discovers that filename pattern.
-8. For deployment-owned runtime external artifacts, create a compiled ESM file under
+9. For deployment-owned runtime external artifacts, create a compiled ESM file under
    `public/artifacts/generated/` and list it in
    `public/artifacts/generated/manifest.json`.
-9. Register core/example artifacts in the right registry layer and add or update
+10. Register core/example artifacts in the right registry layer and add or update
    `src/canvas/seeds/demoBoard.ts` only when the demo should show it by default.
    Increment the published template version in `src/workspaces/templates.ts`
    whenever the authored demo board changes.
-10. Run `npm run check`, `npm run verify:ui`, `npm run verify:preview`, and
+11. Run `npm run check`, `npm run verify:ui`, `npm run verify:preview`, and
    `npm run verify:proof` for user-facing visual or interaction changes.
-11. Inspect the generated GIF, internal `contact-sheet.png`, and
+12. Inspect the generated GIF, internal `contact-sheet.png`, and
    `frame-check.json`; report only the GIF proof path to the user unless they
    ask for more.
 
@@ -51,7 +53,13 @@ canvas.
   primary.
 - Add `interactive: true` only when chart-level hover, tooltip, click, or brush
   behavior is required.
-- Keep text readable in both light and dark mode.
+- Implement light and dark mode deliberately. Theme ECharts titles, axes,
+  legends, annotations, tooltips, marks, nodes, links, and emphasis states; do
+  not rely on ECharts defaults to match the host.
+- Do not expose internal table, query, transform, variable, or schema names as
+  user-facing copy.
+- Remove redundant titles, counters, badges, and nested panels before reducing
+  text size to make content fit.
 - Keep default demo node positions and sizes grid-friendly; the canvas host
   owns 38px snap-to-grid placement.
 - Declare `minSize` for dense or complex artifacts and use the live `size`

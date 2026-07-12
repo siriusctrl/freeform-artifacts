@@ -66,6 +66,12 @@ Inspect the GIF and `contact-sheet.png` before reporting completion. Look for:
 - chart annotations or external labels crossing the artifact host boundary;
 - unreadable text in light or dark mode.
 
+Capture and inspect the changed artifact in both light and dark mode. For
+ECharts, verify that theme switching changes theme-sensitive SVG fills/strokes
+and that categorical charts retain the intended number of distinct colors.
+Visible text existing in the DOM is insufficient: it must be readable,
+unclipped, and visually separated from neighboring content.
+
 Also inspect `frame-check.json`; `blankFrameCount` should be 0. In final user
 replies, include the GIF path and summarize verification. Do not surface
 `contact-sheet.png` unless asked.

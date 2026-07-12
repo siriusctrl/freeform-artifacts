@@ -102,6 +102,14 @@ async function elementSize(page: Page, selector: string) {
   });
 }
 
+async function sankeyNodeColors(page: Page) {
+  return page.getByTestId("echarts-sankey-flow").locator("svg").evaluate((svg) =>
+    [...svg.querySelectorAll("path")]
+      .map((path) => path.getAttribute("fill"))
+      .filter((fill): fill is string => Boolean(fill && fill !== "none" && !fill.startsWith("url") && fill !== "rgb(0,0,0)")),
+  );
+}
+
 test("freeform canvas supports spatial editing, AI handoff, and deletion", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
@@ -370,11 +378,37 @@ test("managed charts keep essential labels inside default and minimum card sizes
   });
   await expect.poll(() => probabilityNoteLayout(page)).toMatchObject({ missing: [], overflow: [] });
   expect(new Set((await probabilityNoteLayout(page)).tops).size).toBe(3);
-  await expect(page.getByText(/DRAM/i)).toHaveCount(0);
+  await expect(page.getByText(/^[a-z]+_[a-z_]+$/)).toHaveCount(0);
+  await expect(page.locator(".table-title, .flow-step-index, .flow-rail")).toHaveCount(0);
+  await expect(page.locator(".flow-step")).toHaveCount(3);
+  const flowStepWidths = await page.locator(".flow-step").evaluateAll((steps) =>
+    steps.map((step) => step.getBoundingClientRect().width),
+  );
+  expect(flowStepWidths.every((width) => width >= 140)).toBe(true);
   await expect.poll(() => chartLabelLayout(page, "echarts-sankey-flow", ["North", "South"])).toEqual({
     missing: [],
     overflow: [],
   });
+  expect(new Set(await sankeyNodeColors(page))).toEqual(new Set([
+    "#0891b2",
+    "#0f766e",
+    "#ca8a04",
+    "#2563eb",
+    "#dc5a5f",
+    "#78716c",
+  ]));
+  await page.getByTestId("theme-toggle").click();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
+  expect(new Set(await sankeyNodeColors(page))).toEqual(new Set([
+    "#22d3ee",
+    "#2dd4bf",
+    "#facc15",
+    "#60a5fa",
+    "#fb7185",
+    "#a8a29e",
+  ]));
+  await expect(page.getByText("Supply-demand probability", { exact: true })).toBeVisible();
+  await expect(page.getByText("Rows to artifact", { exact: true })).toBeVisible();
   await expect(page.locator(".inspector")).toHaveCount(0);
 
   const undersizedWorkspace = await page.evaluate(() => {

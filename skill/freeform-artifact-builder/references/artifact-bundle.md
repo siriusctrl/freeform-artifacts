@@ -24,6 +24,8 @@ Rules:
   `window.React` without JSX.
 - Export one artifact as `artifact` or `default`.
 - Keep `node.data` and `node.config` serializable.
+- Follow [visual-style-guide.md](visual-style-guide.md), including the required
+  light/dark implementation and browser review in both modes.
 - Treat the module as trusted code. It executes in the page and is not sandboxed.
 - Validate the bundle in a real browser before installation.
 

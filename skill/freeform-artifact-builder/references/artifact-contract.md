@@ -115,6 +115,8 @@ export const exampleChartArtifact: EChartsArtifactDefinition<ChartData> = {
   buildOption: ({ data, size, theme }) => {
     const isDark = theme.mode === "dark";
     const text = isDark ? "#eef3f3" : "#171717";
+    const muted = isDark ? "#a4afb1" : "#667174";
+    const gridLine = isDark ? "rgba(238,243,243,0.18)" : "rgba(23,23,23,0.14)";
 
     return {
       backgroundColor: "transparent",
@@ -129,8 +131,19 @@ export const exampleChartArtifact: EChartsArtifactDefinition<ChartData> = {
       xAxis: {
         type: "category",
         data: data.points.map((point) => point.label),
+        axisLabel: { color: muted },
+        axisLine: { lineStyle: { color: gridLine } },
       },
-      yAxis: { type: "value" },
+      yAxis: {
+        type: "value",
+        axisLabel: { color: muted },
+        splitLine: { lineStyle: { color: gridLine } },
+      },
+      tooltip: {
+        backgroundColor: isDark ? "#202628" : "#ffffff",
+        borderColor: gridLine,
+        textStyle: { color: text },
+      },
       series: [
         {
           type: "bar",
@@ -152,6 +165,10 @@ If a chart type or component is not registered, update
 - Add them to the single `echarts.use([...])` call.
 
 Keep the host generic. Do not add artifact-specific lifecycle code there.
+
+Read [visual-style-guide.md](visual-style-guide.md) before finalizing copy,
+spacing, color, or chart options. Dark mode is part of the artifact contract,
+not an optional polish pass.
 
 ## Data Rules
 

@@ -14,16 +14,13 @@ export const flowDiagramArtifact: ArtifactDefinition<FlowDiagramData> = {
   render: ({ data }) => (
     <article className="artifact flow-diagram">
       <div className="flow-header">
-        <div>
-          <div className="artifact-kicker">artifact pipeline</div>
-          <div className="flow-title">{data.title}</div>
-        </div>
+        <div className="flow-title">{data.title}</div>
         <div className="flow-summary">{data.summary}</div>
       </div>
-      <div className="flow-grid">
-        {data.steps.map((step, index) => (
-          <div className="flow-step" key={step.label}>
-            <div className="flow-step-index">{String(index + 1).padStart(2, "0")}</div>
+      <div className="flow-grid" role="list">
+        {data.steps.map((step) => (
+          <div className="flow-step" role="listitem" key={step.label}>
+            <span className="flow-step-node" aria-hidden="true" />
             <div className="flow-step-body">
               <strong>{step.label}</strong>
               <span>{step.detail}</span>
@@ -31,11 +28,6 @@ export const flowDiagramArtifact: ArtifactDefinition<FlowDiagramData> = {
             <div className="flow-step-metric">{step.metric}</div>
           </div>
         ))}
-      </div>
-      <div className="flow-rail" aria-hidden="true">
-        <span />
-        <span />
-        <span />
       </div>
     </article>
   ),
