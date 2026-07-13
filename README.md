@@ -110,9 +110,18 @@ Current controls:
 - Double-click the centered canvas name to rename the current view.
 - Open the collapsed **Views** sidebar to browse real canvas previews, create
   views, and switch between independent browser-local workspaces.
+- Open **Artifacts** from the top bar to search built-in and personal items,
+  then click to add one at its authored or nearest open position, or drag it to
+  a specific canvas position. Removing a card does not remove its reusable
+  artifact package.
+- Use `Cmd/Ctrl+B` for Views, `Shift+Cmd/Ctrl+A` for Artifacts,
+  `Cmd/Ctrl+0` to reset the viewport, `+`/`-` to zoom, and `Escape` to close the
+  active panel or clear selection. Canvas shortcuts do not intercept editable
+  fields or the Build with AI dialog.
 - Use the **More** menu to load sample query rows, import/export a versioned
   workspace backup, or explicitly reset to the authored demo.
-- Click **Build with AI** and give its instruction to your coding agent. The
+- Open **Build with AI** from the desktop top bar or the Artifact Library footer
+  and give its instruction to your coding agent. The
   prompt explicitly selects Browser View Bundle delivery, installs the project
   skill, asks the agent to learn what artifact you want, validates the bundle
   without persistence, and then installs it into the named local view. Otherwise
@@ -162,7 +171,9 @@ and initial node data, while explicitly forbidding application repo changes.
 Bundle code is stored once per browser origin in IndexedDB; the installed node
 belongs only to the target local view. Artifact ids are immutable package
 identities: installing different code under an existing id is rejected instead
-of silently changing cards in other views.
+of silently changing cards in other views. Installed packages also appear under
+**Artifacts > Yours**, shared by every local view in that browser profile, so a
+deleted node can be placed again without reinstalling its bundle.
 
 ### Runtime Artifact Bundle
 
@@ -392,6 +403,11 @@ Implemented:
 - Published demo template with a per-browser local workspace fork.
 - Multiple named local canvas views with a smoothly animated,
   default-collapsed **Views** sidebar and data-derived page previews.
+- Searchable, default-collapsed **Artifacts** library with Built-in and Yours
+  sources, click placement, drag-to-canvas placement, and cross-view personal
+  package reuse.
+- Guarded canvas shortcuts for Views, Artifacts, viewport reset, zoom, Escape,
+  and selected-node deletion.
 - Debounced, ordered IndexedDB workspace persistence with a synchronous
   page-close recovery mirror and versioned board-data JSON import/export.
 - Transform registry with fixtures for raw query rows.
@@ -434,6 +450,12 @@ on first visit, the app copies it into the first named view owned by that browse
 origin. Users can create more empty views from the sidebar.
 Every later drag, resize, delete, zoom, theme change, or data import
 is saved locally and restored when the page is reopened.
+
+Artifact packages have a wider lifetime than nodes: built-in presets ship with
+the app, while trusted personal bundles are stored once per browser origin and
+listed under **Artifacts > Yours** in every local view. Deleting a node removes
+only that placement. Clearing site data removes both views and personal
+packages.
 
 ```text
 published template -> first-visit browser fork -> IndexedDB workspace

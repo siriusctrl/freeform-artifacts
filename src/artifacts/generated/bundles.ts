@@ -69,7 +69,11 @@ export async function prepareArtifactBundle(
   return { artifact, bundle };
 }
 
-export async function loadInstalledArtifactRegistry(): Promise<ArtifactRegistryLoadResult> {
+export interface InstalledArtifactLoadResult extends ArtifactRegistryLoadResult {
+  bundles: ArtifactBundle[];
+}
+
+export async function loadInstalledArtifacts(): Promise<InstalledArtifactLoadResult> {
   const database = await openDatabase();
   let values: unknown[];
   try {
@@ -85,18 +89,20 @@ export async function loadInstalledArtifactRegistry(): Promise<ArtifactRegistryL
   const entries = await Promise.allSettled(values.map(async (value) => {
     const bundle = artifactBundleSchema.parse(value);
     const artifact = await importBundleArtifact(bundle);
-    return [artifact.id, artifact] as const;
+    return { artifact, bundle };
   }));
   const registry: Record<string, RegisteredArtifact> = {};
+  const bundles: ArtifactBundle[] = [];
   const diagnostics: string[] = [];
   for (const entry of entries) {
     if (entry.status === "fulfilled") {
-      registry[entry.value[0]] = entry.value[1];
+      registry[entry.value.artifact.id] = entry.value.artifact;
+      bundles.push(entry.value.bundle);
     } else {
       diagnostics.push(entry.reason instanceof Error ? entry.reason.message : "Installed artifact failed to load");
     }
   }
-  return { registry, diagnostics };
+  return { registry, bundles, diagnostics };
 }
 
 export function parseArtifactBundle(source: string) {

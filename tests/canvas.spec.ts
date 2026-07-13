@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
+import { initialNodes } from "../src/canvas/seeds/demoBoard";
 
 async function chartLabelLayout(page: Page, hostTestId: string, labels: string[]) {
   return page.getByTestId(hostTestId).evaluate((host, expectedLabels) => {
@@ -378,7 +379,7 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   await expect(page.getByTestId("agent-instruction")).toContainText("Do not modify, commit, or deploy");
   await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
   expect((await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length).toBe(beforeHandoffCount);
-  await page.getByTitle("Close").click();
+  await page.getByTitle("Close", { exact: true }).click();
 
   await expect(page.getByTestId("delete-node-revenue")).toBeVisible();
   await page.keyboard.press("Delete");
@@ -729,49 +730,55 @@ test("named canvas views can be created, renamed, switched, and restored", async
 });
 
 test("published example migration refreshes copy without replacing personal layout", async ({ page }) => {
-  await page.goto("/");
-  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
-  const movedX = await page.evaluate(async () => {
-    const state = window.__FREEFORM_STATE__!;
-    const nextX = state.nodes.find((node) => node.id === "node-probability")!.x + 38;
-    const workspace = {
+  const movedX = initialNodes.find((node) => node.id === "node-probability")!.x + 38;
+  const workspace = {
+    version: 1,
+    templateId: "market-overview",
+    title: "Market overview",
+    templateVersion: 2,
+    updatedAt: new Date().toISOString(),
+    board: {
       version: 1,
-      templateId: "market-overview",
-      title: "Market overview",
-      templateVersion: 2,
-      updatedAt: new Date(Date.now() + 10_000).toISOString(),
-      board: {
-        version: 1,
-        nodes: state.nodes
-          .filter((node) => node.id !== "node-revenue")
-          .map((node) => {
-            if (node.id === "node-probability") return { ...node, x: nextX, title: "Old model", data: { ...(node.data as object), title: "Old probability" } };
-            if (node.id === "node-flow") return { ...node, data: { ...(node.data as object), title: "Old pipeline" } };
-            if (node.id === "node-sankey") return { ...node, data: { ...(node.data as object), title: "Old allocation" } };
-            return node;
-          }),
-        viewport: state.viewport,
-        selectedNodeId: "",
-        themeMode: state.themeMode,
-        snapToGrid: state.snapToGrid,
-      },
-    };
+      nodes: structuredClone(initialNodes)
+        .filter((node) => node.id !== "node-revenue")
+        .map((node) => {
+          if (node.id === "node-probability") return { ...node, x: movedX, title: "Old model", data: { ...(node.data as object), title: "Old probability" } };
+          if (node.id === "node-flow") return { ...node, data: { ...(node.data as object), title: "Old pipeline" } };
+          if (node.id === "node-sankey") return { ...node, data: { ...(node.data as object), title: "Old allocation" } };
+          return node;
+        }),
+      viewport: { x: 80, y: 80, scale: 1 },
+      selectedNodeId: "",
+      themeMode: "light",
+      snapToGrid: true,
+    },
+  };
+
+  await page.goto("/artifacts/generated/manifest.json");
+  await page.evaluate(async (seededWorkspace) => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("freeform-artifacts", 2);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains("workspaces")) {
+          request.result.createObjectStore("workspaces", { keyPath: "templateId" });
+        }
+        if (!request.result.objectStoreNames.contains("artifact-packages")) {
+          request.result.createObjectStore("artifact-packages", { keyPath: "artifactId" });
+        }
+      };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction("workspaces", "readwrite");
-      transaction.objectStore("workspaces").put(workspace);
+      transaction.objectStore("workspaces").put(seededWorkspace);
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
     });
     database.close();
-    return nextX;
-  });
+  }, workspace);
 
-  await page.reload();
+  await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await expect(page.getByTestId("node-node-revenue")).toHaveCount(0);
   const migrated = await page.evaluate(async () => {

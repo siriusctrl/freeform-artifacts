@@ -1149,3 +1149,51 @@ locations, but one skill workflow did not make that distinction prominent.
 Revisit the v1 capability set when several real artifacts need the same missing
 chart behavior; extend Chart Kit by repeated use case rather than by copying the
 entire ECharts API.
+
+## ADR-0024: Separate reusable artifact packages from view placements
+
+Status: Accepted
+
+Date: 2026-07-13
+
+### Context
+
+The canvas could install a trusted personal package and create a node, but the
+only visible way to use that package again was reinstalling its bundle. Deleting
+the node hid a still-valid origin-wide package, and built-in artifacts had no
+reusable placement surface outside the published demo seed. Views and packages
+already had intentionally different storage scopes.
+
+### Decision
+
+- Add a default-collapsed right-side Artifact Library, leaving the left side for
+  Views.
+- Present Built-in presets and successfully loaded personal bundles as separate
+  tabs in one searchable catalog.
+- Keep built-in preset payloads in the product catalog and personal executable
+  source in the existing IndexedDB package store; do not create a second
+  persistence layer.
+- Treat click and drag as two placement inputs that both create ordinary
+  view-scoped nodes, run payload preflight, honor grid snap, and autosave. Click
+  placement prefers the authored position and searches for a nearby open grid
+  position; explicit drag placement honors the user's drop point.
+- Deleting a node never deletes its package. Personal packages remain available
+  to every local view on the same browser origin and remain isolated from other
+  browser profiles.
+- Keep global canvas shortcuts in one guarded hook and ignore editable targets
+  and modal workflows.
+
+### Tradeoffs
+
+- Built-in catalog entries need an explicit reusable preset; a renderer
+  definition alone cannot invent meaningful sample data.
+- Personal package uninstall and version migration remain separate future
+  workflows. Node deletion is deliberately not overloaded with either action.
+- The right panel overlays rather than resizes the canvas so drag targets and
+  world coordinates do not jump while browsing. It temporarily covers a narrow
+  strip of the stage.
+- HTML drag/drop is a desktop enhancement; click placement remains the complete
+  keyboard and mobile path.
+
+Revisit the catalog model when artifacts support multiple named presets,
+package metadata editing, explicit uninstall, or cross-device package sync.

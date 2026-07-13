@@ -5,6 +5,7 @@ import {
   Ellipsis,
   Frame,
   Grid3X3,
+  LibraryBig,
   Moon,
   PanelLeft,
   RotateCcw,
@@ -20,9 +21,11 @@ interface CanvasToolbarProps {
   storageMode: "indexeddb" | "localstorage";
   viewTitle: string;
   sidebarOpen: boolean;
+  artifactLibraryOpen: boolean;
   themeMode: ThemeMode;
   snapToGrid: boolean;
   onBuildArtifact: () => void;
+  onToggleArtifactLibrary: () => void;
   onExportWorkspace: () => void;
   onImportData: () => void;
   onImportWorkspace: (file: File) => void;
@@ -39,9 +42,11 @@ export function CanvasToolbar({
   storageMode,
   viewTitle,
   sidebarOpen,
+  artifactLibraryOpen,
   themeMode,
   snapToGrid,
   onBuildArtifact,
+  onToggleArtifactLibrary,
   onExportWorkspace,
   onImportData,
   onImportWorkspace,
@@ -87,7 +92,7 @@ export function CanvasToolbar({
         <button
           type="button"
           className={`icon-button sidebar-toggle ${sidebarOpen ? "active" : ""}`}
-          title={sidebarOpen ? "Hide views" : "Show views"}
+          title={`${sidebarOpen ? "Hide" : "Show"} views (Cmd/Ctrl+B)`}
           aria-pressed={sidebarOpen}
           data-testid="sidebar-toggle"
           onClick={onToggleSidebar}
@@ -195,6 +200,17 @@ export function CanvasToolbar({
           </div>
         </div>
         <div className="topbar-actions">
+          <button
+            type="button"
+            className={`icon-button artifact-library-toggle ${artifactLibraryOpen ? "active" : ""}`}
+            title="Artifacts (Shift+Cmd/Ctrl+A)"
+            aria-pressed={artifactLibraryOpen}
+            data-testid="artifact-library-toggle"
+            onClick={onToggleArtifactLibrary}
+          >
+            <LibraryBig size={18} />
+            <span>Artifacts</span>
+          </button>
           <button type="button" className="primary-action" onClick={onBuildArtifact} data-testid="build-artifact">
             <Sparkles size={17} /><span>Build with AI</span>
           </button>

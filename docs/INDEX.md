@@ -47,9 +47,13 @@ Code orientation:
 - `src/artifacts/chartKit.ts` turns declarative bar/line/combo specs into managed
   ECharts options and publishes browser-visible capabilities.
 - `src/canvas/components/` contains the toolbar, default-collapsed view sidebar,
-  AI handoff dialog, board, node, and zoom controls.
+  default-collapsed artifact library, AI handoff dialog, board, node, and zoom
+  controls.
+- `src/canvas/artifactCatalog.ts` combines built-in presets and installed
+  personal bundles without duplicating package storage.
 - `src/canvas/hooks/useCanvasInteractions.ts` owns pan, zoom, drag, resize, and
   snap interaction mechanics.
+- `src/canvas/hooks/useCanvasShortcuts.ts` owns guarded global canvas commands.
 - `src/canvas/nodeSize.ts` enforces artifact minimums for live resize, loaded
   workspaces, and imported backups.
 - `src/canvas/debugState.ts` publishes the browser-verification debug handle.
@@ -80,6 +84,8 @@ Code orientation:
 - `src/styles.css` imports domain styles from `src/styles/`.
 - `tests/canvas.spec.ts` drives a real Chromium browser and asserts core
   canvas interactions.
+- `tests/artifact-library.spec.ts` verifies shortcuts, click/drag placement,
+  cross-view package reuse, reload, and browser-profile isolation.
 - `scripts/record-proof.mjs` records the browser proof WebM, converts it to
   GIF, asserts a complete UX journey, and writes manifest, screenshot,
   contact-sheet, UX-check, frame-check, and inspection artifacts.

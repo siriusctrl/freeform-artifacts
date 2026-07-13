@@ -3,7 +3,8 @@ import { expect, test } from "@playwright/test";
 test("mobile canvas keeps core controls visible without horizontal overflow", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("canvas-stage")).toBeVisible();
-  await expect(page.getByTestId("build-artifact")).toBeVisible();
+  await expect(page.getByTestId("artifact-library-toggle")).toBeVisible();
+  await expect(page.getByTestId("build-artifact")).not.toBeVisible();
   await expect(page.getByTestId("theme-toggle")).toBeVisible();
   await expect(page.getByTestId("workspace-menu")).toBeVisible();
   const topbarMetrics = await page.evaluate(() => ({
@@ -22,8 +23,23 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
 
   await page.getByTestId("theme-toggle").click();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
+  await page.getByTestId("artifact-library-toggle").click();
+  await expect(page.getByTestId("artifact-library")).toBeVisible();
+  await expect.poll(async () => page.getByTestId("artifact-library").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return Math.max(0, rect.right - window.innerWidth);
+  })).toBeLessThanOrEqual(1);
+  const libraryMetrics = await page.getByTestId("artifact-library").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, width: rect.width, viewport: window.innerWidth };
+  });
+  expect(libraryMetrics.left).toBeGreaterThanOrEqual(-1);
+  expect(libraryMetrics.right).toBeLessThanOrEqual(libraryMetrics.viewport + 1);
+  await expect(page.getByTestId("artifact-tab-built-in")).toContainText("5");
+  await page.getByTestId("artifact-tab-personal").click();
+  await expect(page.getByTestId("artifact-library-empty")).toBeVisible();
   const nodeCount = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length;
-  await page.getByTestId("build-artifact").click();
+  await page.getByTestId("library-build-artifact").click();
   await expect(page.getByTestId("agent-request")).toHaveCount(0);
   await expect(page.getByTestId("agent-instruction")).toContainText("ask the user what artifact they want to build");
   await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_VIEW_BUNDLE");
@@ -34,7 +50,7 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   }));
   expect(dialogDimensions.scrollWidth).toBeLessThanOrEqual(dialogDimensions.innerWidth);
   expect((await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length).toBe(nodeCount);
-  await page.getByTitle("Close").click();
+  await page.getByTitle("Close", { exact: true }).click();
 
   await page.getByTestId("workspace-menu").click();
   await expect(page.getByTestId("snap-toggle")).toHaveAttribute("aria-checked", "true");

@@ -1,4 +1,5 @@
-import type { PointerEvent, RefObject } from "react";
+import type { DragEvent, PointerEvent, RefObject } from "react";
+import { ARTIFACT_DRAG_TYPE } from "../artifactCatalog";
 import type { RegisteredArtifact } from "../../artifacts/registryTypes";
 import type { CanvasNode, CanvasTheme, CanvasViewport } from "../../artifacts/types";
 import { CANVAS_GRID_SIZE } from "../../lib/geometry";
@@ -12,10 +13,12 @@ interface CanvasBoardProps {
   selectedNodeId: string;
   stageRef: RefObject<HTMLDivElement | null>;
   viewport: CanvasViewport;
+  artifactDragActive: boolean;
   onChangeZoom: (factor: number) => void;
   onDeleteNode: (nodeId: string) => void;
   onNodePointerDown: (event: PointerEvent<HTMLDivElement>, node: CanvasNode) => void;
   onResetView: () => void;
+  onArtifactDrop: (catalogItemId: string, clientX: number, clientY: number) => void;
   onResizePointerDown: (event: PointerEvent<HTMLButtonElement>, node: CanvasNode) => void;
   onStagePointerDown: (event: PointerEvent<HTMLDivElement>) => void;
 }
@@ -27,22 +30,37 @@ export function CanvasBoard({
   selectedNodeId,
   stageRef,
   viewport,
+  artifactDragActive,
   onChangeZoom,
   onDeleteNode,
   onNodePointerDown,
   onResetView,
+  onArtifactDrop,
   onResizePointerDown,
   onStagePointerDown,
 }: CanvasBoardProps) {
   return (
     <div
       ref={stageRef}
-      className="canvas-stage"
+      tabIndex={0}
+      aria-label="Canvas"
+      className={`canvas-stage ${artifactDragActive ? "artifact-drop-active" : ""}`}
       data-testid="canvas-stage"
       data-scale={viewport.scale.toFixed(3)}
       data-selected-node={selectedNodeId}
       onPointerDown={onStagePointerDown}
       onDragStart={(event) => event.preventDefault()}
+      onDragOver={(event: DragEvent<HTMLDivElement>) => {
+        if (!event.dataTransfer.types.includes(ARTIFACT_DRAG_TYPE)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDrop={(event: DragEvent<HTMLDivElement>) => {
+        const catalogItemId = event.dataTransfer.getData(ARTIFACT_DRAG_TYPE);
+        if (!catalogItemId) return;
+        event.preventDefault();
+        onArtifactDrop(catalogItemId, event.clientX, event.clientY);
+      }}
     >
       <div
         className="grid-plane"

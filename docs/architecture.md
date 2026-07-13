@@ -104,6 +104,25 @@ view-scoped. Package and target workspace writes share one IndexedDB transaction
 invalid targets and payloads are rejected before persistence. Loader failures
 are quarantined per source/package, and renderer errors are isolated per card.
 
+The Artifact Library projects two sources into one placement UI:
+
+- Built-in entries pair registered system artifacts with reusable demo presets.
+- Yours entries pair successfully loaded IndexedDB bundles with their initial
+  node payloads.
+
+The catalog does not duplicate executable source or workspace state. Removing a
+node changes only its active view; the package remains available to every view
+on the same browser origin. Clicking an entry prefers its authored position and
+then searches outward on the world grid to avoid existing nodes. Dragging
+carries only a catalog id and converts the drop point from screen coordinates
+into canvas world coordinates before optional grid snap. Separate browser
+profiles retain isolated package stores.
+
+Canvas-level keyboard commands live in one guarded hook. `Cmd/Ctrl+B` toggles
+Views, `Shift+Cmd/Ctrl+A` toggles Artifacts, `Cmd/Ctrl+0` resets the viewport,
+`+`/`-` zoom, and `Escape` dismisses the active panel or selection. Editable
+targets and the modal AI handoff are excluded from global handling.
+
 ## Artifact Registry
 
 Artifact definitions live behind this interface:

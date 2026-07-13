@@ -4,6 +4,7 @@ import {
   prepareArtifactBundle,
 } from "../artifacts/generated/bundles";
 import { artifactRegistry } from "../artifacts/registry";
+import { createArtifactCatalog, type ArtifactCatalogItem } from "./artifactCatalog";
 import { assertSupportedRawEChartsOption, buildChartKitOption, CHART_KIT_CAPABILITIES } from "../artifacts/chartKit";
 import type { RegisteredArtifact } from "../artifacts/registryTypes";
 import type { CanvasNode, CanvasViewport } from "../artifacts/types";
@@ -11,7 +12,7 @@ import { useArtifactRuntime } from "../artifacts/useArtifactRuntime";
 import { validateArtifactPayload } from "../artifacts/validation";
 import { importedRevenueRows } from "../data/transformFixtures";
 import { revenueSummaryTransform, revenueTableTransform, runTransform } from "../data/transforms";
-import { CANVAS_GRID_SIZE } from "../lib/geometry";
+import { CANVAS_GRID_SIZE, clientToStage, screenToWorld, snapToGrid as snapWorldToGrid } from "../lib/geometry";
 import { downloadWorkspace, parseWorkspace } from "../workspaces/bundle";
 import {
   commitWorkspaceWithArtifactPackage,
@@ -25,13 +26,15 @@ import { createWorkspacePreview } from "../workspaces/preview";
 import type { WorkspaceLoadResult, WorkspaceRecord, WorkspaceSummary, WorkspaceTemplate } from "../workspaces/types";
 import { createBoardState } from "./board";
 import { AgentHandoffDialog } from "./components/AgentHandoffDialog";
+import { ArtifactLibrary } from "./components/ArtifactLibrary";
 import { CanvasBoard } from "./components/CanvasBoard";
 import { CanvasSidebar } from "./components/CanvasSidebar";
 import { CanvasToolbar } from "./components/CanvasToolbar";
 import { themeFor, type ThemeMode } from "./constants";
 import { publishCanvasDebugState } from "./debugState";
 import { useCanvasInteractions } from "./hooks/useCanvasInteractions";
-import { createBundleNode } from "./nodeFactory";
+import { useCanvasShortcuts } from "./hooks/useCanvasShortcuts";
+import { createArtifactNode, createBundleNode, moveNodeToNearestOpenPosition } from "./nodeFactory";
 import { clampNodesToArtifactMinimums } from "./nodeSize";
 
 interface CanvasWorkspaceProps {
@@ -75,13 +78,24 @@ export function CanvasWorkspace({
   const [status, setStatus] = useState(initialStatus);
   const [storageMode, setStorageMode] = useState<WorkspaceLoadResult["storage"]>(initialStorage);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
-  const { diagnostics: artifactDiagnostics, registry: runtimeArtifactRegistry, setRegistry: setRuntimeArtifactRegistry } =
-    useArtifactRuntime(artifactRegistry);
+  const [artifactLibraryOpen, setArtifactLibraryOpen] = useState(false);
+  const [draggingCatalogItemId, setDraggingCatalogItemId] = useState("");
+  const {
+    diagnostics: artifactDiagnostics,
+    personalBundles,
+    registry: runtimeArtifactRegistry,
+    setPersonalBundles,
+    setRegistry: setRuntimeArtifactRegistry,
+  } = useArtifactRuntime(artifactRegistry);
   const artifactIssueStatus = artifactDiagnostics.length
     ? `Loaded with ${artifactDiagnostics.length} artifact issue${artifactDiagnostics.length === 1 ? "" : "s"}`
     : null;
 
   const canvasTheme = useMemo(() => themeFor(themeMode), [themeMode]);
+  const artifactCatalog = useMemo(
+    () => createArtifactCatalog(runtimeArtifactRegistry, personalBundles),
+    [personalBundles, runtimeArtifactRegistry],
+  );
   const canvasInteractions = useCanvasInteractions({
     artifactRegistry: runtimeArtifactRegistry,
     setNodes,
@@ -133,6 +147,11 @@ export function CanvasWorkspace({
 
   useEffect(() => {
     publishCanvasDebugState({
+      artifactLibraryOpen,
+      artifactLibraryCounts: {
+        builtIn: artifactCatalog.builtIn.length,
+        personal: artifactCatalog.personal.length,
+      },
       artifactRegistry: runtimeArtifactRegistry,
       nodes,
       selectedNodeId,
@@ -143,31 +162,12 @@ export function CanvasWorkspace({
       themeMode,
       viewport,
     });
-  }, [nodes, viewport, selectedNodeId, themeMode, snapToGrid, status, storageMode, runtimeArtifactRegistry, initialWorkspace.templateId]);
+  }, [artifactCatalog, artifactLibraryOpen, nodes, viewport, selectedNodeId, themeMode, snapToGrid, status, storageMode, runtimeArtifactRegistry, initialWorkspace.templateId]);
 
   function deleteNode(nodeId: string) {
     setNodes((current) => current.filter((node) => node.id !== nodeId));
     setSelectedNodeId((current) => (current === nodeId ? "" : current));
   }
-
-  useEffect(() => {
-    function handleDeleteKey(event: KeyboardEvent) {
-      if (!selectedNodeId || (event.key !== "Delete" && event.key !== "Backspace")) return;
-      const target = event.target;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        (target instanceof HTMLElement && target.isContentEditable)
-      ) {
-        return;
-      }
-      event.preventDefault();
-      deleteNode(selectedNodeId);
-    }
-    window.addEventListener("keydown", handleDeleteKey);
-    return () => window.removeEventListener("keydown", handleDeleteKey);
-  }, [selectedNodeId]);
 
   function importData() {
     const summary = runTransform(revenueSummaryTransform, importedRevenueRows);
@@ -179,14 +179,14 @@ export function CanvasWorkspace({
 
     setNodes((current) =>
       current.map((node) => {
-        if (node.id === "node-revenue") {
+        if (node.dataBinding?.transformId === revenueSummaryTransform.id) {
           return {
             ...node,
             data: summary.data,
             dataBinding: { sourceId: "imported-revenue", transformId: revenueSummaryTransform.id },
           };
         }
-        if (node.id === "node-table") {
+        if (node.dataBinding?.transformId === revenueTableTransform.id) {
           return {
             ...node,
             data: table.data,
@@ -261,6 +261,29 @@ export function CanvasWorkspace({
     setSnapToGrid((current) => !current);
   }
 
+  function toggleViews() {
+    setArtifactLibraryOpen(false);
+    setDraggingCatalogItemId("");
+    void onToggleSidebar();
+  }
+
+  function toggleArtifactLibrary() {
+    const opening = !artifactLibraryOpen;
+    setArtifactLibraryOpen(opening);
+    setDraggingCatalogItemId("");
+    if (opening && sidebarOpen) void onToggleSidebar();
+  }
+
+  function closeArtifactLibrary(restoreToolbarFocus = false) {
+    setArtifactLibraryOpen(false);
+    setDraggingCatalogItemId("");
+    if (restoreToolbarFocus) {
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLButtonElement>('[data-testid="artifact-library-toggle"]')?.focus();
+      });
+    }
+  }
+
   function validatePreparedArtifact(node: CanvasNode, artifact: RegisteredArtifact) {
     const validation = validateArtifactPayload(node, artifact);
     if (!validation.ok) throw new Error(validation.message);
@@ -280,6 +303,54 @@ export function CanvasWorkspace({
     }
     return renderChecks;
   }
+
+  function addCatalogItem(item: ArtifactCatalogItem, clientPoint?: { x: number; y: number }) {
+    const artifact = runtimeArtifactRegistry[item.artifactId];
+    if (!artifact) {
+      setStatus(`Artifact unavailable: ${item.title}`);
+      return;
+    }
+    const stageRect = stageRef.current?.getBoundingClientRect();
+    const center = clientPoint && stageRect
+      ? screenToWorld(clientToStage(clientPoint, stageRect), viewport)
+      : undefined;
+    let node = createArtifactNode(item.node, artifact, nodes, viewport, {
+      center,
+      position: clientPoint ? undefined : item.preferredPosition,
+      stageSize: stageRect ? { width: stageRect.width, height: stageRect.height } : undefined,
+    });
+    if (snapToGrid) {
+      node.x = snapWorldToGrid(node.x);
+      node.y = snapWorldToGrid(node.y);
+    }
+    if (!clientPoint) node = moveNodeToNearestOpenPosition(node, nodes, CANVAS_GRID_SIZE);
+    validatePreparedArtifact(node, artifact);
+    setNodes((current) => [...current, node]);
+    setSelectedNodeId(node.id);
+    closeArtifactLibrary();
+    setStatus(`Added ${item.title}`);
+    window.requestAnimationFrame(() => stageRef.current?.focus({ preventScroll: true }));
+  }
+
+  function findCatalogItem(id: string) {
+    return [...artifactCatalog.builtIn, ...artifactCatalog.personal].find((item) => item.id === id);
+  }
+
+  useCanvasShortcuts({
+    disabled: agentDialogOpen,
+    selectedNodeId,
+    onDeleteNode: deleteNode,
+    onDismiss: () => {
+      if (artifactLibraryOpen) closeArtifactLibrary(true);
+      else if (sidebarOpen) void onToggleSidebar();
+      else setSelectedNodeId("");
+    },
+    onResetView: resetView,
+    onToggleArtifacts: toggleArtifactLibrary,
+    onToggleViews: toggleViews,
+    onZoomIn: () => canvasInteractions.changeZoom(1.15),
+    onZoomOut: () => canvasInteractions.changeZoom(0.85),
+  });
 
   async function validateBundle(value: unknown) {
     const { artifact, bundle } = await prepareArtifactBundle(value, runtimeArtifactRegistry);
@@ -312,6 +383,7 @@ export function CanvasWorkspace({
       cancelPendingSave();
       const mode = await commitWorkspaceWithArtifactPackage(workspace, bundle);
       setRuntimeArtifactRegistry((current) => ({ ...current, [artifact.id]: artifact }));
+      setPersonalBundles((current) => [...current.filter((entry) => entry.artifactId !== bundle.artifactId), bundle]);
       setNodes(nextNodes);
       setSelectedNodeId(node.id);
       setStorageMode(mode);
@@ -336,6 +408,7 @@ export function CanvasWorkspace({
     };
     await commitWorkspaceWithArtifactPackage(workspace, bundle);
     setRuntimeArtifactRegistry((current) => ({ ...current, [artifact.id]: artifact }));
+    setPersonalBundles((current) => [...current.filter((entry) => entry.artifactId !== bundle.artifactId), bundle]);
     return { artifactId: artifact.id, nodeId: node.id, viewId: targetViewId };
   }
 
@@ -387,9 +460,10 @@ export function CanvasWorkspace({
           storageMode={storageMode}
           viewTitle={viewTitle}
           sidebarOpen={sidebarOpen}
+          artifactLibraryOpen={artifactLibraryOpen}
           themeMode={themeMode}
           snapToGrid={snapToGrid}
-          onBuildArtifact={() => setAgentDialogOpen(true)}
+          onBuildArtifact={() => { setArtifactLibraryOpen(false); setAgentDialogOpen(true); }}
           onExportWorkspace={exportWorkspace}
           onImportData={importData}
           onImportWorkspace={importWorkspace}
@@ -399,7 +473,8 @@ export function CanvasWorkspace({
             onViewTitleChange(initialWorkspace.templateId, title);
           }}
           onThemeToggle={() => setThemeMode((current) => (current === "light" ? "dark" : "light"))}
-          onToggleSidebar={onToggleSidebar}
+          onToggleArtifactLibrary={toggleArtifactLibrary}
+          onToggleSidebar={toggleViews}
           onToggleSnapToGrid={toggleSnapToGrid}
         />
         <CanvasBoard
@@ -409,14 +484,32 @@ export function CanvasWorkspace({
           selectedNodeId={selectedNodeId}
           stageRef={stageRef}
           viewport={viewport}
+          artifactDragActive={Boolean(draggingCatalogItemId)}
           onChangeZoom={canvasInteractions.changeZoom}
           onDeleteNode={deleteNode}
           onNodePointerDown={canvasInteractions.handleNodePointerDown}
           onResetView={resetView}
+          onArtifactDrop={(catalogItemId, clientX, clientY) => {
+            const item = findCatalogItem(catalogItemId);
+            if (item) addCatalogItem(item, { x: clientX, y: clientY });
+            else setDraggingCatalogItemId("");
+          }}
           onResizePointerDown={canvasInteractions.handleResizePointerDown}
           onStagePointerDown={canvasInteractions.handleStagePointerDown}
         />
       </section>
+      <div className={`artifact-library-slot ${artifactLibraryOpen ? "open" : ""}`} aria-hidden={!artifactLibraryOpen} inert={!artifactLibraryOpen}>
+        <ArtifactLibrary
+          builtIn={artifactCatalog.builtIn}
+          open={artifactLibraryOpen}
+          personal={artifactCatalog.personal}
+          onAdd={addCatalogItem}
+          onBuildArtifact={() => { setArtifactLibraryOpen(false); setAgentDialogOpen(true); }}
+          onClose={() => closeArtifactLibrary(true)}
+          onDragEnd={() => setDraggingCatalogItemId("")}
+          onDragStart={(item) => setDraggingCatalogItemId(item.id)}
+        />
+      </div>
       <AgentHandoffDialog
         open={agentDialogOpen}
         viewId={initialWorkspace.templateId}
