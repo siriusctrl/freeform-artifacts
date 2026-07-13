@@ -157,6 +157,33 @@ async function chartLabelLayout(page, hostTestId, labels) {
   }, labels);
 }
 
+async function artifactPreviewGeometry(page, artifactId) {
+  const preview = page.getByTestId(`artifact-preview-${artifactId}`);
+  await preview.scrollIntoViewIfNeeded();
+  await preview.waitFor({ state: "visible" });
+  await page.waitForFunction(
+    (id) => document.querySelector(`[data-testid="artifact-preview-${id}"]`)?.getAttribute("data-preview-ready") === "true",
+    artifactId,
+  );
+  return preview.evaluate((frame) => {
+    const node = frame.querySelector(".artifact-preview-node");
+    if (!(node instanceof HTMLElement)) return null;
+    const frameRect = frame.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    return {
+      artifactId: frame.dataset.testid,
+      scale: Number(frame.getAttribute("data-preview-scale")),
+      frame: { width: frameRect.width, height: frameRect.height },
+      node: { width: nodeRect.width, height: nodeRect.height },
+      contained:
+        nodeRect.left >= frameRect.left - 1 &&
+        nodeRect.right <= frameRect.right + 1 &&
+        nodeRect.top >= frameRect.top - 1 &&
+        nodeRect.bottom <= frameRect.bottom + 1,
+    };
+  });
+}
+
 async function probabilityNoteLayout(page) {
   return page.getByTestId("echarts-inflection-probability").evaluate((host) => {
     const hostRect = host.getBoundingClientRect();
@@ -864,11 +891,52 @@ try {
   const libraryCounts = await page.evaluate(() => window.__FREEFORM_STATE__.artifactLibraryCounts);
   verifyUx("Shift+Cmd+A opens the shared Artifact Library", await page.getByTestId("artifact-library").isVisible());
   verifyUx("Artifact Library exposes five built-ins and one personal package", libraryCounts.builtIn === 5 && libraryCounts.personal === 1, libraryCounts);
+  verifyUx(
+    "Artifact Library replaces renderer glyphs and technical labels with real previews",
+    (await page.locator(".artifact-library-glyph, .artifact-library-copy small").count()) === 0,
+  );
+  await showProofStep(page, "Artifact previews • real renderers, scaled whole rather than cropped", 900);
+  const previewGeometries = [];
+  const previewRendererChecks = [];
+  for (const artifactId of ["metric-card", "table-preview", "flow-diagram", "inflection-probability", "sankey-flow"]) {
+    previewGeometries.push(await artifactPreviewGeometry(page, artifactId));
+    if (artifactId === "flow-diagram") {
+      previewRendererChecks.push((await page.getByTestId("artifact-preview-flow-diagram").locator(".flow-diagram").count()) === 1);
+    }
+    if (artifactId === "inflection-probability" || artifactId === "sankey-flow") {
+      previewRendererChecks.push((await page.getByTestId(`preview-echarts-${artifactId}`).locator("svg").count()) === 1);
+    }
+  }
+  verifyUx(
+    "all five built-in previews contain the complete rendered artifact",
+    previewGeometries.every((geometry) => geometry?.contained && geometry.scale > 0 && geometry.scale <= 1),
+    { previewGeometries },
+  );
+  verifyUx(
+    "preview catalog mounts the real React and ECharts renderers",
+    previewRendererChecks.length === 3 && previewRendererChecks.every(Boolean),
+    { previewRendererChecks },
+  );
+  verifyUx(
+    "preview renderer subtrees are keyboard-inert",
+    (await page.locator(".artifact-preview-node:not([inert])").count()) === 0,
+  );
+  verifyUx(
+    "offscreen preview renderers release outside the library scroll neighborhood",
+    (await page.getByTestId("artifact-preview-metric-card").getAttribute("data-preview-ready")) === "false",
+  );
+  await showProofStep(page, "Preview gallery • Probability and Allocation stay fully visible", 1300);
   await showProofStep(page, "Artifact Library • switch from Built-in to Yours", 850);
   await page.getByTestId("artifact-tab-personal").click();
   const personalLibraryItem = page.getByTestId("artifact-library-item-agent-capacity-card");
   await personalLibraryItem.waitFor({ state: "visible" });
   verifyUx("deleted personal card remains available under Yours", await personalLibraryItem.isVisible());
+  const personalPreviewGeometry = await artifactPreviewGeometry(page, "agent-capacity-card");
+  verifyUx(
+    "personal package receives the same complete real-renderer preview",
+    Boolean(personalPreviewGeometry?.contained && await page.getByTestId("preview-echarts-agent-capacity-card").locator("svg").count()),
+    { personalPreviewGeometry },
+  );
 
   await showProofStep(page, "Drag from Yours • place the saved artifact back on this canvas", 900);
   await personalLibraryItem.dragTo(stage, { targetPosition: { x: 620, y: 360 } });
@@ -898,6 +966,23 @@ try {
   const restoredMetricNode = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.find((node) => node.artifactId === "metric-card");
   if (!restoredMetricNode) throw new Error("Built-in metric did not return from the library");
   verifyUx("built-in artifact can be restored after node deletion", restoredMetricNode.id !== "node-revenue", { restoredMetricNode });
+  const restoredMetricVisibility = await page.getByTestId(`node-${restoredMetricNode.id}`).evaluate((node) => {
+    const nodeRect = node.getBoundingClientRect();
+    const stageRect = document.querySelector('[data-testid="canvas-stage"]')?.getBoundingClientRect();
+    if (!stageRect) return null;
+    return {
+      left: nodeRect.left >= stageRect.left - 1,
+      right: nodeRect.right <= stageRect.right + 1,
+      top: nodeRect.top >= stageRect.top - 1,
+      bottom: nodeRect.bottom <= stageRect.bottom + 1,
+    };
+  });
+  verifyUx(
+    "click placement keeps the restored artifact inside the current viewport",
+    Boolean(restoredMetricVisibility && Object.values(restoredMetricVisibility).every(Boolean)),
+    { restoredMetricVisibility },
+  );
+  await showProofStep(page, "Click placement • restored artifact stays in the visible canvas", 900);
   await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saved locally");
   await page.waitForTimeout(650);
 

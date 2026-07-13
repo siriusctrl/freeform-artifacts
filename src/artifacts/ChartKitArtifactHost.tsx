@@ -6,10 +6,12 @@ import { EChartsArtifactHost } from "./EChartsArtifactHost";
 
 interface ChartKitArtifactHostProps {
   artifact: ChartKitArtifactDefinition<any, any>;
+  preview?: boolean;
   renderProps: ArtifactRenderProps<any, any>;
+  testIdPrefix?: string;
 }
 
-export function ChartKitArtifactHost({ artifact, renderProps }: ChartKitArtifactHostProps) {
+export function ChartKitArtifactHost({ artifact, preview, renderProps, testIdPrefix }: ChartKitArtifactHostProps) {
   const managedArtifact = useMemo<EChartsArtifactDefinition<any, any>>(
     () => ({
       id: artifact.id,
@@ -26,5 +28,5 @@ export function ChartKitArtifactHost({ artifact, renderProps }: ChartKitArtifact
     [artifact],
   );
 
-  return <EChartsArtifactHost artifact={managedArtifact} renderProps={renderProps} />;
+  return <EChartsArtifactHost artifact={managedArtifact} preview={preview} renderProps={renderProps} testIdPrefix={testIdPrefix} />;
 }

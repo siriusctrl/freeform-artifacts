@@ -1,11 +1,8 @@
 import { AppWindow, Scaling, Trash2 } from "lucide-react";
 import type { PointerEvent } from "react";
-import { ArtifactErrorBoundary } from "../../artifacts/ArtifactErrorBoundary";
-import { ChartKitArtifactHost } from "../../artifacts/ChartKitArtifactHost";
-import { EChartsArtifactHost } from "../../artifacts/EChartsArtifactHost";
+import { ArtifactContent } from "../../artifacts/ArtifactContent";
 import type { RegisteredArtifact } from "../../artifacts/registryTypes";
-import type { ArtifactRenderProps, CanvasNode, CanvasTheme } from "../../artifacts/types";
-import { validateArtifactPayload } from "../../artifacts/validation";
+import type { CanvasNode, CanvasTheme } from "../../artifacts/types";
 import { artifactObjectScale } from "../nodeSize";
 
 interface CanvasNodeViewProps {
@@ -18,32 +15,6 @@ interface CanvasNodeViewProps {
   onResizePointerDown: (event: PointerEvent<HTMLButtonElement>, node: CanvasNode) => void;
 }
 
-function InvalidArtifactCard({ message }: { message?: string }) {
-  return (
-    <article className="artifact invalid-artifact">
-      <div className="artifact-kicker">artifact unavailable</div>
-      <strong>Unable to render this artifact</strong>
-      <span>{message ?? "The artifact data or config did not match its contract."}</span>
-    </article>
-  );
-}
-
-function ArtifactRenderer({
-  artifact,
-  renderProps,
-}: {
-  artifact: RegisteredArtifact;
-  renderProps: ArtifactRenderProps<any, any>;
-}) {
-  return artifact.renderer === "echarts" ? (
-    <EChartsArtifactHost artifact={artifact} renderProps={renderProps} />
-  ) : artifact.renderer === "chart-kit" ? (
-    <ChartKitArtifactHost artifact={artifact} renderProps={renderProps} />
-  ) : (
-    artifact.render(renderProps)
-  );
-}
-
 export function CanvasNodeView({
   artifact,
   canvasTheme,
@@ -53,15 +24,8 @@ export function CanvasNodeView({
   onNodePointerDown,
   onResizePointerDown,
 }: CanvasNodeViewProps) {
-  const validation = validateArtifactPayload(node, artifact);
   const baseSize = artifact?.defaultSize ?? { width: node.width, height: node.height };
   const objectScale = artifactObjectScale(node, artifact);
-  const renderProps = {
-    data: node.data,
-    config: node.config,
-    size: { width: baseSize.width, height: Math.max(0, baseSize.height - 32) },
-    theme: canvasTheme,
-  };
 
   return (
     <div
@@ -100,16 +64,12 @@ export function CanvasNodeView({
         ) : null}
       </div>
       <div className="node-body">
-        {!validation.ok || !artifact ? (
-          <InvalidArtifactCard message={validation.message} />
-        ) : (
-          <ArtifactErrorBoundary
-            key={`${artifact.id}:${artifact.version}`}
-            fallback={(message) => <InvalidArtifactCard message={message} />}
-          >
-            <ArtifactRenderer artifact={artifact} renderProps={renderProps} />
-          </ArtifactErrorBoundary>
-        )}
+        <ArtifactContent
+          artifact={artifact}
+          canvasTheme={canvasTheme}
+          node={node}
+          renderSize={{ width: baseSize.width, height: Math.max(0, baseSize.height - 32) }}
+        />
       </div>
       {isSelected ? (
         <button

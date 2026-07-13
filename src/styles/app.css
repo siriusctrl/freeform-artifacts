@@ -281,6 +281,23 @@
   display: none;
 }
 
+@media (min-width: 1200px) {
+  .artifact-library-toggle {
+    width: 96px;
+    flex-basis: 96px;
+    display: grid;
+    grid-template-columns: 18px auto;
+    gap: 7px;
+    padding: 0 11px;
+  }
+
+  .artifact-library-toggle span {
+    display: block;
+    font-size: 12px;
+    font-weight: 580;
+  }
+}
+
 .icon-button:focus-visible,
 .theme-toggle:focus-visible,
 .primary-action:focus-visible,
@@ -476,7 +493,7 @@
   right: 0;
   bottom: 0;
   z-index: 14;
-  width: min(340px, 100vw);
+  width: min(388px, 100vw);
   visibility: hidden;
   pointer-events: none;
   transform: translateX(100%);
@@ -494,7 +511,7 @@
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-rows: 54px 42px 54px minmax(0, 1fr) 58px;
+  grid-template-rows: 56px 43px 56px minmax(0, 1fr) 60px;
   color: var(--text);
   background: var(--panel);
   border-left: 1px solid var(--line);
@@ -509,27 +526,15 @@
   border-bottom: 1px solid var(--line);
 }
 
-.artifact-library > header > div {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
 .artifact-library > header strong {
   font-size: 14px;
   font-weight: 650;
 }
 
-.artifact-library > header span {
-  color: var(--faint);
-  font-family: var(--font-mono), monospace;
-  font-size: 11px;
-}
-
 .artifact-library-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  padding: 5px 10px 0;
+  padding: 5px 12px 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -603,32 +608,34 @@
 .artifact-library-list {
   min-height: 0;
   overflow: auto;
-  padding: 4px 10px 18px;
+  padding: 2px 12px 24px;
+  scrollbar-gutter: stable;
 }
 
 .artifact-library-item {
   width: 100%;
-  min-height: 82px;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 18px;
-  align-items: center;
-  gap: 11px;
-  margin-bottom: 6px;
-  padding: 11px 10px;
+  gap: 9px;
+  margin-bottom: 5px;
+  padding: 9px 8px 13px;
   color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
   text-align: left;
   cursor: grab;
-  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+  outline: none;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
 .artifact-library-item:hover,
 .artifact-library-item:focus-visible {
-  background: var(--panel-soft);
-  border-color: var(--line);
-  outline: none;
+  background: color-mix(in srgb, var(--panel-soft), transparent 18%);
+  border-color: var(--line-strong);
+}
+
+.artifact-library-item:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent), transparent 58%);
 }
 
 .artifact-library-item:active {
@@ -636,39 +643,70 @@
   transform: scale(0.99);
 }
 
-.artifact-library-item > svg {
-  color: var(--faint);
+.artifact-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: var(--stage-bg);
+  background-image: radial-gradient(circle at 0 0, color-mix(in srgb, var(--grid-dot), transparent 34%) 0.8px, transparent 1px);
+  background-size: 13px 13px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
-.artifact-library-item:hover > svg,
-.artifact-library-item:focus-visible > svg {
-  color: var(--accent);
+.artifact-library-item:hover .artifact-preview,
+.artifact-library-item:focus-visible .artifact-preview {
+  border-color: color-mix(in srgb, var(--accent), var(--line) 56%);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--shadow), transparent 34%);
 }
 
-.artifact-library-glyph {
-  width: 42px;
-  height: 42px;
+.artifact-preview-node {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   display: grid;
-  place-items: center;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent), var(--panel) 92%);
-  border: 1px solid color-mix(in srgb, var(--accent), transparent 76%);
+  grid-template-rows: 32px minmax(0, 1fr);
+  transform-origin: center;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 18px 42px var(--shadow);
+}
+
+.artifact-preview-node,
+.artifact-preview-node * {
+  animation: none !important;
+  transition: none !important;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.artifact-preview-placeholder {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 12px;
+  bottom: 12px;
+  background: color-mix(in srgb, var(--panel-soft), transparent 22%);
+  border: 1px solid var(--line);
   border-radius: 6px;
 }
 
 .artifact-library-copy {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 4px;
+  padding: 0 2px;
 }
 
 .artifact-library-copy strong,
-.artifact-library-copy span,
-.artifact-library-copy small {
+.artifact-library-copy > span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .artifact-library-copy strong {
@@ -676,15 +714,60 @@
   font-weight: 620;
 }
 
-.artifact-library-copy span {
+.artifact-library-copy > span:last-child {
+  display: -webkit-box;
+  overflow: hidden;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
-.artifact-library-copy small {
+.artifact-library-item-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.artifact-library-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.artifact-library-grip {
   color: var(--faint);
-  font-family: var(--font-mono), monospace;
-  font-size: 10px;
+}
+
+.artifact-library-item:hover .artifact-library-grip,
+.artifact-library-item:focus-visible .artifact-library-grip {
+  color: var(--muted);
+}
+
+.artifact-library-item-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-library-add {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.artifact-library-item:hover .artifact-library-add,
+.artifact-library-item:focus-visible .artifact-library-add {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent), var(--line) 48%);
 }
 
 .artifact-library-empty {
@@ -728,7 +811,8 @@
   .canvas-sidebar,
   .canvas-sidebar nav button,
   .artifact-library-slot,
-  .artifact-library-item {
+  .artifact-library-item,
+  .artifact-preview {
     transition-duration: 0.01ms;
   }
 }

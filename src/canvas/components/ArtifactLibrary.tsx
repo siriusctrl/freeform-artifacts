@@ -1,11 +1,16 @@
-import { Blocks, ChartNoAxesCombined, Gauge, Plus, Search, Sparkles, Table2, Waypoints, Workflow, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { GripVertical, Plus, Search, Sparkles, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import type { RegisteredArtifact } from "../../artifacts/registryTypes";
+import type { CanvasTheme } from "../../artifacts/types";
 import { ARTIFACT_DRAG_TYPE, type ArtifactCatalogItem } from "../artifactCatalog";
+import { ArtifactPreview } from "./ArtifactPreview";
 
 interface ArtifactLibraryProps {
   builtIn: ArtifactCatalogItem[];
+  canvasTheme: CanvasTheme;
   open: boolean;
   personal: ArtifactCatalogItem[];
+  registry: Record<string, RegisteredArtifact>;
   onAdd: (item: ArtifactCatalogItem) => void;
   onBuildArtifact: () => void;
   onClose: () => void;
@@ -13,19 +18,12 @@ interface ArtifactLibraryProps {
   onDragStart: (item: ArtifactCatalogItem) => void;
 }
 
-function ArtifactGlyph({ artifactId, renderer }: Pick<ArtifactCatalogItem, "artifactId" | "renderer">) {
-  if (artifactId === "metric-card") return <Gauge size={19} />;
-  if (artifactId === "table-preview") return <Table2 size={19} />;
-  if (artifactId === "flow-diagram") return <Workflow size={19} />;
-  if (artifactId === "inflection-probability") return <ChartNoAxesCombined size={19} />;
-  if (artifactId === "sankey-flow") return <Waypoints size={19} />;
-  return renderer === "React" ? <Blocks size={19} /> : <ChartNoAxesCombined size={19} />;
-}
-
 export function ArtifactLibrary({
   builtIn,
+  canvasTheme,
   open,
   personal,
+  registry,
   onAdd,
   onBuildArtifact,
   onClose,
@@ -41,14 +39,14 @@ export function ArtifactLibrary({
   const visibleItems = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     if (!normalizedQuery) return items;
-    return items.filter((item) => `${item.title} ${item.summary} ${item.renderer}`.toLocaleLowerCase().includes(normalizedQuery));
+    return items.filter((item) => `${item.title} ${item.summary}`.toLocaleLowerCase().includes(normalizedQuery));
   }, [items, query]);
 
   useEffect(() => {
     if (open) closeButtonRef.current?.focus({ preventScroll: true });
   }, [open]);
 
-  function startDrag(event: DragEvent<HTMLButtonElement>, item: ArtifactCatalogItem) {
+  function startDrag(event: DragEvent<HTMLElement>, item: ArtifactCatalogItem) {
     event.dataTransfer.effectAllowed = "copy";
     event.dataTransfer.setData(ARTIFACT_DRAG_TYPE, item.id);
     onDragStart(item);
@@ -61,13 +59,17 @@ export function ArtifactLibrary({
     });
   }
 
+  function addFromKeyboard(event: KeyboardEvent<HTMLElement>, item: ArtifactCatalogItem) {
+    if (event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onAdd(item);
+  }
+
   return (
     <aside className="artifact-library" aria-label="Artifacts" data-testid="artifact-library">
       <header>
-        <div>
-          <strong>Artifacts</strong>
-          <span>{builtIn.length + personal.length}</span>
-        </div>
+        <strong>Artifacts</strong>
         <button ref={closeButtonRef} type="button" className="icon-button" title="Close artifacts" onClick={onClose}>
           <X size={18} />
         </button>
@@ -129,25 +131,37 @@ export function ArtifactLibrary({
 
       <div className="artifact-library-list" role="tabpanel" aria-live="polite">
         {visibleItems.map((item) => (
-          <button
+          <article
             key={item.id}
-            type="button"
             className="artifact-library-item"
             draggable
+            role="button"
+            tabIndex={0}
+            aria-label={`Add ${item.title}`}
             title={`Add ${item.title}`}
             data-testid={`artifact-library-item-${item.artifactId}`}
             onClick={() => onAdd(item)}
+            onKeyDown={(event) => addFromKeyboard(event, item)}
             onDragStart={(event) => startDrag(event, item)}
             onDragEnd={onDragEnd}
           >
-            <span className="artifact-library-glyph"><ArtifactGlyph artifactId={item.artifactId} renderer={item.renderer} /></span>
+            <ArtifactPreview
+              active={open}
+              artifact={registry[item.artifactId]}
+              canvasTheme={canvasTheme}
+              item={item}
+            />
             <span className="artifact-library-copy">
-              <strong>{item.title}</strong>
+              <span className="artifact-library-item-title">
+                <strong>{item.title}</strong>
+                <span className="artifact-library-item-actions" aria-hidden="true">
+                  <GripVertical className="artifact-library-grip" size={15} />
+                  <span className="artifact-library-add"><Plus size={16} /></span>
+                </span>
+              </span>
               <span>{item.summary}</span>
-              <small>{item.renderer}</small>
             </span>
-            <Plus size={17} aria-hidden="true" />
-          </button>
+          </article>
         ))}
 
         {!visibleItems.length && source === "personal" && !query ? (

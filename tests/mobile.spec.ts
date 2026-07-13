@@ -35,7 +35,32 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   });
   expect(libraryMetrics.left).toBeGreaterThanOrEqual(-1);
   expect(libraryMetrics.right).toBeLessThanOrEqual(libraryMetrics.viewport + 1);
+  expect(libraryMetrics.width).toBe(libraryMetrics.viewport);
   await expect(page.getByTestId("artifact-tab-built-in")).toContainText("5");
+  const metricPreview = page.getByTestId("artifact-preview-metric-card");
+  await expect(metricPreview).toHaveAttribute("data-preview-ready", "true");
+  const previewContained = await metricPreview.evaluate((frame) => {
+    const node = frame.querySelector<HTMLElement>(".artifact-preview-node")!;
+    const frameRect = frame.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    return nodeRect.left >= frameRect.left && nodeRect.right <= frameRect.right &&
+      nodeRect.top >= frameRect.top && nodeRect.bottom <= frameRect.bottom;
+  });
+  expect(previewContained).toBe(true);
+  await page.getByTestId("artifact-library-item-metric-card").click();
+  const addedMetricVisibility = await page.evaluate(() => {
+    const state = window.__FREEFORM_STATE__!;
+    const selected = document.querySelector<HTMLElement>(`[data-testid="node-${state.selectedNodeId}"]`)!.getBoundingClientRect();
+    const stage = document.querySelector<HTMLElement>('[data-testid="canvas-stage"]')!.getBoundingClientRect();
+    return {
+      left: selected.left >= stage.left - 1,
+      right: selected.right <= stage.right + 1,
+      top: selected.top >= stage.top - 1,
+      bottom: selected.bottom <= stage.bottom + 1,
+    };
+  });
+  expect(addedMetricVisibility).toEqual({ left: true, right: true, top: true, bottom: true });
+  await page.getByTestId("artifact-library-toggle").click();
   await page.getByTestId("artifact-tab-personal").click();
   await expect(page.getByTestId("artifact-library-empty")).toBeVisible();
   const nodeCount = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length;

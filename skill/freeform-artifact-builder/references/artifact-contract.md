@@ -74,6 +74,12 @@ Blob-backed runtime module.
 Runtime React artifacts can use `window.React.createElement`; runtime `.js`
 files cannot contain raw JSX unless they are compiled first.
 
+The host may mount a trusted artifact in the canvas and in an Artifact Library
+preview. Keep render functions pure, dispose observers, timers, and chart
+instances on unmount, and never assume one global renderer instance. Library
+previews disable host-managed ECharts animation and pointer interaction, but a
+custom React artifact remains responsible for its own lifecycle cleanup.
+
 ## React Artifact Shape
 
 ```ts

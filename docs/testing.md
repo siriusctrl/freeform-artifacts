@@ -69,8 +69,12 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   previews, create/switch, and active-view reload recovery;
 - guarded `Cmd/Ctrl+B`, `Shift+Cmd/Ctrl+A`, `Cmd/Ctrl+0`, zoom, Escape, and
   deletion shortcuts, including input-field exemption;
-- Built-in artifact search plus click and drag placement with world-coordinate
-  conversion and grid snap;
+- Built-in artifact search, visible-viewport click placement, and drag placement
+  with world-coordinate conversion and grid snap;
+- complete contained live previews for all built-in renderer families, personal
+  bundle previews, inert preview controls, scroller-relative offscreen lifecycle
+  release, dual-theme rendering, and mobile panel geometry without horizontal
+  overflow;
 - personal package survival after node deletion, reuse from Yours across local
   views, reload recovery, and isolation between browser contexts;
 - Agent API and file-fallback bundle installation plus registry/node recovery

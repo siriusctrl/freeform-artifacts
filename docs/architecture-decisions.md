@@ -1175,8 +1175,9 @@ already had intentionally different storage scopes.
   persistence layer.
 - Treat click and drag as two placement inputs that both create ordinary
   view-scoped nodes, run payload preflight, honor grid snap, and autosave. Click
-  placement prefers the authored position and searches for a nearby open grid
-  position; explicit drag placement honors the user's drop point.
+  placement starts at the current viewport center and searches only its visible
+  grid for a nearby open position; if no opening exists, it stays centered on
+  the top layer. Explicit drag placement honors the user's drop point.
 - Deleting a node never deletes its package. Personal packages remain available
   to every local view on the same browser origin and remain isolated from other
   browser profiles.
@@ -1197,3 +1198,127 @@ already had intentionally different storage scopes.
 
 Revisit the catalog model when artifacts support multiple named presets,
 package metadata editing, explicit uninstall, or cross-device package sync.
+
+## ADR-0025: Deliver browser-local artifacts through a short-lived relay
+
+Status: Proposed
+
+Date: 2026-07-13
+
+### Context
+
+The browser Agent API can install a bundle when an agent controls the same page,
+and the file fallback works when a user manually transfers the bundle. A remote
+agent running on another machine cannot write the site's origin-scoped IndexedDB
+or initiate an inbound connection to a user's Chrome profile. The browser must
+receive the bundle through a connection it initiated and then perform its own
+validation and persistence.
+
+The desired Build with AI workflow should support several artifacts in one
+conversation without requiring browser automation, repository changes, or a
+separate manual upload for every artifact. Long-term canvas and package state
+must remain in the user's browser.
+
+### Proposed decision
+
+- Add an ephemeral HTTPS relay, initially deployed as a Cloudflare Worker with
+  one SQLite-backed Durable Object per Build Session.
+- Treat a Build Session as a temporary delivery channel rather than a single
+  artifact. A session may receive multiple deliveries, and one delivery may
+  contain one or more independently validated artifact bundles.
+- Let the browser create the session and maintain a hibernating WebSocket. Give
+  the trusted agent a separate one-time, capability-scoped upload credential in
+  the copied Build with AI instruction.
+- Keep the relay transport-only. Store encrypted pending payloads for at most 30
+  minutes, delete them after acknowledgement or expiry, and never store canvas
+  workspaces or browser package registries there.
+- Validate every artifact in the browser before installation. For a multi-item
+  delivery, validate the complete selection before committing package and view
+  writes so a failed item cannot leave an accidental partial dashboard.
+- Place delivered artifacts using host-owned layout knowledge. Search the
+  current target-view viewport for a complete non-overlapping position nearest
+  its center, snap it to the grid, and append it at the highest z-index. If no
+  complete position exists, place it at the viewport center; offset additional
+  fallback items by one grid step so they do not become perfectly hidden.
+- Keep the existing file installer as the offline fallback. Do not require an
+  npm-published delivery CLI initially; the project skill may invoke a bundled
+  script or the relay HTTP contract directly.
+- Bound abuse from the first deployment: limit bundle and session payload size,
+  artifacts per session, session creation by source, token lifetime, and active
+  sessions; retain an operational kill switch.
+
+### Tradeoffs
+
+- Fully automatic remote delivery introduces a small hosted service and an
+  external availability dependency even though durable user state remains
+  browser-local.
+- Capability tokens authorize delivery of executable trusted code. Short
+  lifetimes, narrow session scope, browser validation, and an explicit install
+  confirmation remain necessary boundaries.
+- Free service quotas are ample for a personal demo only if the browser uses a
+  hibernating WebSocket rather than periodic polling. Public deployment still
+  needs rate limits to avoid quota exhaustion.
+- A session bound to another view uses that view's last persisted viewport for
+  placement; it must not silently retarget itself when the user navigates.
+
+### Prerequisite and resume point
+
+Implementation is intentionally deferred until a Cloudflare account and
+`workers.dev` subdomain are available. Resume by implementing and testing the
+versioned delivery protocol, local Worker/Durable Object emulator, browser
+session client, agent delivery command, reconnect/expiry behavior, and
+adversarial quota controls before enabling the production endpoint.
+
+## ADR-0026: Use contained live renderers for Artifact Library previews
+
+Status: Accepted
+
+Date: 2026-07-13
+
+### Context
+
+The first Artifact Library represented every catalog item with a category icon
+and a renderer label. Neither communicated what a user would actually place on
+the canvas, especially for personal artifacts whose composition cannot be
+inferred from their renderer family. Cropped screenshots would improve
+recognition but introduce stale binary state, theme drift, capture complexity,
+and another persistence lifecycle.
+
+The catalog already pairs every built-in or personal artifact definition with a
+reusable initial node payload. That is enough to render the actual object.
+
+### Decision
+
+- Extract one validated ArtifactContent surface for React, Chart Kit, and raw
+  ECharts, and use it in both CanvasNodeView and catalog previews.
+- Render the catalog preset at the artifact's authored default size in the
+  current host theme. Include node chrome so the thumbnail matches the object
+  that will appear on the canvas.
+- Fit the complete object into a stable 16:10 frame with one aspect-preserving
+  contain scale capped at 1. Never crop the object or independently reflow its
+  inner renderer to thumbnail dimensions.
+- Remove category glyphs and renderer implementation labels from the browsing
+  surface. Keep the title, concise summary, familiar Add affordance, click, and
+  drag behavior.
+- Disable host-managed chart animation and pointer interaction in preview mode.
+  Use IntersectionObserver to mount only the visible scroll neighborhood and
+  unmount offscreen content so ECharts cleanup remains bounded.
+- Preserve renderer-free geometry summaries for the Views sidebar. Whole-board
+  navigation and single-artifact discovery have different cost and recognition
+  requirements.
+
+### Tradeoffs
+
+- Opening the library may mount a trusted artifact a second time. Custom React
+  artifacts must keep render pure and clean up their own effects on unmount.
+- Live thumbnails use more CPU than static glyphs, but they stay current across
+  theme and package changes and avoid screenshot storage. Visibility-managed
+  mounting bounds the active cost to a few entries.
+- Dense charts become small by design. The preview optimizes accurate visual
+  recognition, while the title and summary remain the readable catalog labels.
+- A renderer failure affects only that preview through the existing error
+  boundary and does not remove the package or break the rest of the library.
+
+Revisit cached preview images only if measured renderer cost remains high after
+visibility management, or if sandboxed artifacts can no longer be mounted in
+the host document.

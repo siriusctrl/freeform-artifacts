@@ -49,6 +49,8 @@ Code orientation:
 - `src/canvas/components/` contains the toolbar, default-collapsed view sidebar,
   default-collapsed artifact library, AI handoff dialog, board, node, and zoom
   controls.
+- `src/canvas/components/ArtifactPreview.tsx` mounts complete, contained live
+  catalog previews only near the Artifact Library scroll viewport.
 - `src/canvas/artifactCatalog.ts` combines built-in presets and installed
   personal bundles without duplicating package storage.
 - `src/canvas/hooks/useCanvasInteractions.ts` owns pan, zoom, drag, resize, and
@@ -66,6 +68,8 @@ Code orientation:
   conversion.
 - `src/artifacts/types.ts` defines the artifact, canvas node, viewport, event,
   theme, and data binding interfaces.
+- `src/artifacts/ArtifactContent.tsx` is the shared validation, error-boundary,
+  and renderer surface for canvas nodes and live catalog previews.
 - `src/artifacts/registry.ts` merges core, example, and generated artifact
   registries.
 - `src/artifacts/core/` contains platform-provided artifact modules.

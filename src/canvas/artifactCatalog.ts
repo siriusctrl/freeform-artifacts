@@ -18,8 +18,6 @@ export interface ArtifactCatalogItem {
   title: string;
   summary: string;
   source: "built-in" | "personal";
-  renderer: "Chart Kit" | "ECharts" | "React";
-  preferredPosition?: { x: number; y: number };
   node: ArtifactNodePreset;
 }
 
@@ -31,12 +29,6 @@ const BUILT_IN_METADATA: Record<string, { title: string; summary: string }> = {
   "sankey-flow": { title: "Allocation flow", summary: "Movement from sources to destinations." },
 };
 const BUILT_IN_ORDER = ["metric-card", "table-preview", "flow-diagram", "inflection-probability", "sankey-flow"];
-
-function rendererName(artifact: RegisteredArtifact): ArtifactCatalogItem["renderer"] {
-  if (artifact.renderer === "chart-kit") return "Chart Kit";
-  if (artifact.renderer === "echarts") return "ECharts";
-  return "React";
-}
 
 export function createArtifactCatalog(
   registry: Record<string, RegisteredArtifact>,
@@ -52,8 +44,6 @@ export function createArtifactCatalog(
       title: metadata.title,
       summary: metadata.summary,
       source: "built-in",
-      renderer: rendererName(artifact),
-      preferredPosition: { x: node.x, y: node.y },
       node: {
         title: node.title,
         data: node.data,
@@ -72,10 +62,6 @@ export function createArtifactCatalog(
       title: artifact.title,
       summary: bundle.node.title === artifact.title ? "Personal artifact" : bundle.node.title,
       source: "personal",
-      renderer: rendererName(artifact),
-      preferredPosition: bundle.node.x !== undefined && bundle.node.y !== undefined
-        ? { x: bundle.node.x, y: bundle.node.y }
-        : undefined,
       node: {
         title: bundle.node.title,
         data: bundle.node.data,
