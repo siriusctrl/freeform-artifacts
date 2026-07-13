@@ -16,6 +16,8 @@ on navigation, invariants, verification, and handoff rules.
   data-derived board previews; it must not execute artifact renderers.
 - `src/canvas/components/ArtifactLibrary.tsx`: right-side Built-in/Yours catalog
   UI with click and drag placement; it must not own package persistence.
+- `src/canvas/components/ArtifactPreview.tsx`: visibility-managed, contained
+  live catalog thumbnails; it must release offscreen renderer lifecycles.
 - `src/canvas/artifactCatalog.ts`: maps built-in presets and installed bundles
   into reusable, view-independent catalog entries.
 - `src/canvas/hooks/useCanvasInteractions.ts`: drag, resize, pan, zoom, snap,
@@ -40,6 +42,8 @@ on navigation, invariants, verification, and handoff rules.
   capability manifest, and raw ECharts capability guard.
 - `src/artifacts/ChartKitArtifactHost.tsx`: adapts Chart Kit specs to the
   managed ECharts host.
+- `src/artifacts/ArtifactContent.tsx`: shared validated renderer surface used by
+  canvas nodes and Artifact Library previews.
 - `src/artifacts/core/`: platform-provided artifacts.
 - `src/artifacts/examples/`: demo and verification artifacts.
 - `src/artifacts/generated/`: AI/user-generated repo-compiled artifact entry
@@ -85,6 +89,10 @@ on navigation, invariants, verification, and handoff rules.
   then asks the agent to question the user about the requested artifact.
 - View thumbnails are geometry summaries, not cached screenshots or a second
   artifact rendering runtime.
+- Artifact Library thumbnails use the real trusted renderer and preset payload,
+  scale the complete default-size node with contain semantics, disable preview
+  animation/interaction, remain keyboard-inert, and mount only near the
+  library scroller's visible range.
 - Database shaping belongs in transforms, not render components.
 - ECharts lifecycle stays inside `EChartsArtifactHost`.
 - Dense artifacts declare `minSize`; essential labels must fit at both default

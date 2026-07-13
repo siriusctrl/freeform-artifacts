@@ -70,11 +70,18 @@ All notable user-facing changes to this project should be documented here.
   project skill and Build with AI handoff.
 - Shared Artifact Library with Built-in/Yours tabs, search, click placement,
   drag-to-canvas placement, and personal package reuse across local views.
+- Complete live Artifact Library previews backed by the real React, Chart Kit,
+  and ECharts renderers, with contained scaling and visibility-managed chart
+  lifecycles in both themes.
 - Canvas shortcuts for Views, Artifacts, viewport reset, zoom, Escape, and
   deletion with editable-field and modal guards.
 
 ### Fixed
 
+- Kept click-added artifacts inside the current visible canvas and placed them
+  at the nearest available grid position before falling back to center/top.
+- Made live library previews keyboard-inert and scoped lazy renderer mounting
+  to the library's own scroll viewport.
 - Aligned the Pipeline connector and stage markers to one shared grid geometry
   so the line remains continuous through all three stages.
 - Centered the More icon without relying on inline-button baseline layout.

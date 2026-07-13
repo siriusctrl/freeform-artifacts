@@ -1,5 +1,29 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { agentArtifactBundle } from "./helpers/runtimeBundle";
+
+async function completePreviewGeometry(page: Page, artifactId: string) {
+  const preview = page.getByTestId(`artifact-preview-${artifactId}`);
+  await preview.scrollIntoViewIfNeeded();
+  await expect(preview).toHaveAttribute("data-preview-ready", "true");
+  return preview.evaluate((frame) => {
+    const node = frame.querySelector<HTMLElement>(".artifact-preview-node");
+    if (!node) return null;
+    const frameRect = frame.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    return {
+      contained:
+        nodeRect.left >= frameRect.left - 1 &&
+        nodeRect.right <= frameRect.right + 1 &&
+        nodeRect.top >= frameRect.top - 1 &&
+        nodeRect.bottom <= frameRect.bottom + 1,
+      frameHeight: frameRect.height,
+      frameWidth: frameRect.width,
+      nodeHeight: nodeRect.height,
+      nodeWidth: nodeRect.width,
+      scale: Number(frame.getAttribute("data-preview-scale")),
+    };
+  });
+}
 
 test("canvas shortcuts and the built-in library restore or place artifacts", async ({ page }) => {
   await page.goto("/");
@@ -30,6 +54,23 @@ test("canvas shortcuts and the built-in library restore or place artifacts", asy
   await page.keyboard.press("Backspace");
   expect(await page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(nodeCountWhileLibraryFocused);
   await expect(page.getByTestId("artifact-tab-built-in")).toContainText("5");
+  await expect(page.locator(".artifact-library-glyph")).toHaveCount(0);
+  await expect(page.getByText("ECharts", { exact: true })).toHaveCount(0);
+  for (const artifactId of ["metric-card", "table-preview", "flow-diagram", "inflection-probability", "sankey-flow"]) {
+    const geometry = await completePreviewGeometry(page, artifactId);
+    expect(geometry).not.toBeNull();
+    expect(geometry!.contained).toBe(true);
+    expect(geometry!.nodeWidth).toBeLessThanOrEqual(geometry!.frameWidth);
+    expect(geometry!.nodeHeight).toBeLessThanOrEqual(geometry!.frameHeight);
+    expect(geometry!.scale).toBeGreaterThan(0);
+    expect(geometry!.scale).toBeLessThanOrEqual(1);
+    if (artifactId === "flow-diagram") {
+      await expect(page.getByTestId("artifact-preview-flow-diagram").locator(".flow-diagram")).toBeAttached();
+    }
+    if (artifactId === "inflection-probability" || artifactId === "sankey-flow") {
+      await expect(page.getByTestId(`preview-echarts-${artifactId}`).locator("svg")).toBeAttached();
+    }
+  }
   await page.getByTestId("artifact-tab-built-in").focus();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByTestId("artifact-tab-personal")).toHaveAttribute("aria-selected", "true");
@@ -57,11 +98,20 @@ test("canvas shortcuts and the built-in library restore or place artifacts", asy
   await expect(stage).toBeFocused();
   await expect.poll(async () => {
     const node = (await page.evaluate(() => window.__FREEFORM_STATE__!.nodes)).find((entry) => entry.artifactId === "metric-card");
-    return node ? [node.x % 38, node.y % 38] : null;
+    return node ? [Math.abs(node.x % 38), Math.abs(node.y % 38)] : null;
   }).toEqual([0, 0]);
   const restoredMetric = await page.evaluate(() => window.__FREEFORM_STATE__!.nodes.find((node) => node.artifactId === "metric-card")!);
-  expect(Math.abs(restoredMetric.x - 80)).toBeLessThanOrEqual(38);
-  expect(Math.abs(restoredMetric.y - 90)).toBeLessThanOrEqual(38);
+  const restoredMetricVisibility = await page.evaluate((nodeId) => {
+    const stage = document.querySelector<HTMLElement>('[data-testid="canvas-stage"]')!.getBoundingClientRect();
+    const node = document.querySelector<HTMLElement>(`[data-testid="node-${nodeId}"]`)!.getBoundingClientRect();
+    return {
+      left: node.left >= stage.left - 1,
+      right: node.right <= stage.right + 1,
+      top: node.top >= stage.top - 1,
+      bottom: node.bottom <= stage.bottom + 1,
+    };
+  }, restoredMetricId);
+  expect(restoredMetricVisibility).toEqual({ left: true, right: true, top: true, bottom: true });
   await page.getByTestId("workspace-menu").click();
   await page.getByTestId("import-data").click();
   await expect.poll(async () => {
@@ -93,6 +143,36 @@ test("canvas shortcuts and the built-in library restore or place artifacts", asy
   await page.reload();
   await expect(page.getByTestId(`node-${restoredMetricId}`)).toBeVisible();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.nodes.filter((node) => node.artifactId === "flow-diagram").length)).toBe(flowCount + 1);
+});
+
+test("library previews isolate keyboard interaction and release offscreen renderers", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("artifact-library-toggle").click();
+
+  const firstPreview = page.getByTestId("artifact-preview-metric-card");
+  const lastPreview = page.getByTestId("artifact-preview-sankey-flow");
+  await expect(firstPreview).toHaveAttribute("data-preview-ready", "true");
+
+  await firstPreview.locator(".artifact-preview-node").evaluate((preview) => {
+    const button = document.createElement("button");
+    button.dataset.testid = "adversarial-preview-control";
+    button.textContent = "Hidden preview action";
+    preview.append(button);
+  });
+  const hiddenControl = page.getByTestId("adversarial-preview-control");
+  await hiddenControl.evaluate((element) => element.focus());
+  await expect(hiddenControl).not.toBeFocused();
+  const nodeCount = await page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length);
+  await hiddenControl.dispatchEvent("keydown", { key: "Enter", bubbles: true });
+  expect(await page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(nodeCount);
+  await expect(page.getByTestId("artifact-library")).toBeVisible();
+
+  await page.locator(".artifact-library-list").evaluate((list) => { list.scrollTop = list.scrollHeight; });
+  await expect(lastPreview).toHaveAttribute("data-preview-ready", "true");
+  await expect(firstPreview).toHaveAttribute("data-preview-ready", "false");
+  await page.getByTitle("Close artifacts").click();
+  await expect(lastPreview).toHaveAttribute("data-preview-ready", "false");
 });
 
 test("runtime initialization preserves a package installed while the external manifest is pending", async ({ page }) => {
@@ -140,6 +220,9 @@ test("personal artifacts stay in the shared library across views but not browser
     await page.keyboard.press("Meta+Shift+a");
     await page.getByTestId("artifact-tab-personal").click();
     await expect(page.getByTestId(`artifact-library-item-${bundle.artifactId}`)).toBeVisible();
+    const personalPreview = await completePreviewGeometry(page, bundle.artifactId);
+    expect(personalPreview?.contained).toBe(true);
+    await expect(page.getByTestId(`preview-echarts-${bundle.artifactId}`).locator("svg")).toBeAttached();
 
     await page.keyboard.press("Meta+b");
     await expect(page.getByTestId("artifact-library")).not.toBeVisible();

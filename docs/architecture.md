@@ -112,11 +112,23 @@ The Artifact Library projects two sources into one placement UI:
 
 The catalog does not duplicate executable source or workspace state. Removing a
 node changes only its active view; the package remains available to every view
-on the same browser origin. Clicking an entry prefers its authored position and
-then searches outward on the world grid to avoid existing nodes. Dragging
-carries only a catalog id and converts the drop point from screen coordinates
-into canvas world coordinates before optional grid snap. Separate browser
-profiles retain isolated package stores.
+on the same browser origin. Clicking an entry starts at the current viewport
+center and searches its visible world grid for an open position, falling back
+to center/top when the view is full. Dragging carries only a catalog id and
+converts the drop point from screen coordinates into canvas world coordinates
+before optional grid snap. Separate browser profiles retain isolated package
+stores.
+
+Artifact Library recognition comes from the renderer itself rather than a
+category glyph. Each entry mounts its catalog preset through the same validated
+React, Chart Kit, or ECharts content surface used by a canvas node, at the
+artifact's default size and current theme. A fixed thumbnail frame applies a
+single contain scale to the complete node, including chrome, so it never crops a
+chart annotation or stretches one axis. IntersectionObserver limits mounts to
+the library scroller's visible neighborhood; offscreen ECharts instances are
+disposed, and each preview subtree is inert with animation and pointer
+interaction disabled. This is intentionally different from Views navigation
+previews, which remain renderer-free geometry summaries of complete boards.
 
 Canvas-level keyboard commands live in one guarded hook. `Cmd/Ctrl+B` toggles
 Views, `Shift+Cmd/Ctrl+A` toggles Artifacts, `Cmd/Ctrl+0` resets the viewport,

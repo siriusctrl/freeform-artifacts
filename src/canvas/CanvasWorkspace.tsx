@@ -316,14 +316,21 @@ export function CanvasWorkspace({
       : undefined;
     let node = createArtifactNode(item.node, artifact, nodes, viewport, {
       center,
-      position: clientPoint ? undefined : item.preferredPosition,
       stageSize: stageRect ? { width: stageRect.width, height: stageRect.height } : undefined,
     });
     if (snapToGrid) {
       node.x = snapWorldToGrid(node.x);
       node.y = snapWorldToGrid(node.y);
     }
-    if (!clientPoint) node = moveNodeToNearestOpenPosition(node, nodes, CANVAS_GRID_SIZE);
+    if (!clientPoint) {
+      const visibleBounds = stageRect ? {
+        left: -viewport.x / viewport.scale,
+        right: (stageRect.width - viewport.x) / viewport.scale,
+        top: -viewport.y / viewport.scale,
+        bottom: (stageRect.height - viewport.y) / viewport.scale,
+      } : undefined;
+      node = moveNodeToNearestOpenPosition(node, nodes, CANVAS_GRID_SIZE, visibleBounds);
+    }
     validatePreparedArtifact(node, artifact);
     setNodes((current) => [...current, node]);
     setSelectedNodeId(node.id);
@@ -501,8 +508,10 @@ export function CanvasWorkspace({
       <div className={`artifact-library-slot ${artifactLibraryOpen ? "open" : ""}`} aria-hidden={!artifactLibraryOpen} inert={!artifactLibraryOpen}>
         <ArtifactLibrary
           builtIn={artifactCatalog.builtIn}
+          canvasTheme={canvasTheme}
           open={artifactLibraryOpen}
           personal={artifactCatalog.personal}
+          registry={runtimeArtifactRegistry}
           onAdd={addCatalogItem}
           onBuildArtifact={() => { setArtifactLibraryOpen(false); setAgentDialogOpen(true); }}
           onClose={() => closeArtifactLibrary(true)}

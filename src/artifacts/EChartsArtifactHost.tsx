@@ -26,18 +26,23 @@ echarts.use([
 
 interface EChartsArtifactHostProps {
   artifact: EChartsArtifactDefinition<any, any>;
+  preview?: boolean;
   renderProps: ArtifactRenderProps<any, any>;
+  testIdPrefix?: string;
 }
 
-export function EChartsArtifactHost({ artifact, renderProps }: EChartsArtifactHostProps) {
+export function EChartsArtifactHost({ artifact, preview = false, renderProps, testIdPrefix }: EChartsArtifactHostProps) {
   const chartEl = useRef<HTMLDivElement | null>(null);
   const chart = useRef<EChartsType | null>(null);
   const [size, setSize] = useState(renderProps.size);
   const [lifecycleError, setLifecycleError] = useState<Error | null>(null);
   if (lifecycleError) throw lifecycleError;
   const option = useMemo<EChartsOption>(
-    () => artifact.buildOption({ ...renderProps, size }),
-    [artifact, renderProps.data, renderProps.config, renderProps.theme, size],
+    () => {
+      const built = artifact.buildOption({ ...renderProps, size });
+      return preview ? { ...built, animation: false } : built;
+    },
+    [artifact, preview, renderProps.data, renderProps.config, renderProps.theme, size],
   );
 
   useEffect(() => {
@@ -91,8 +96,8 @@ export function EChartsArtifactHost({ artifact, renderProps }: EChartsArtifactHo
   return (
     <div
       ref={chartEl}
-      className={`echarts-host ${artifact.interactive ? "interactive" : ""}`}
-      data-testid={`echarts-${artifact.id}`}
+      className={`echarts-host ${artifact.interactive && !preview ? "interactive" : ""} ${preview ? "preview" : ""}`}
+      data-testid={`${testIdPrefix ?? "echarts"}-${artifact.id}`}
     />
   );
 }

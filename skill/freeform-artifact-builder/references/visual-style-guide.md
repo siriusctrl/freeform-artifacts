@@ -86,6 +86,10 @@ project CSS must derive inline values from the provided `theme` object.
   dragging.
 - A chart resize must keep all essential labels inside the host at both
   `defaultSize` and `minSize`.
+- The Artifact Library renders the complete `defaultSize` node and scales it
+  down without cropping. Make that authored size tell the whole visual story;
+  do not depend on hover, scrolling inside the card, or content outside its
+  bounds for basic recognition.
 
 ## Review Checklist
 
@@ -97,6 +101,8 @@ Before installation or registration, inspect the artifact in a real browser:
 4. The longest label and the largest realistic value.
 5. SVG label bounds, categorical color count, and tooltip contrast for ECharts.
 6. The full canvas composition, including neighboring artifacts and node chrome.
+7. The complete Artifact Library preview in both themes, including the bottom
+   annotation, legend, or final table row that is easiest to clip.
 
 Reject the artifact if it contains redundant titles, internal data names,
 unreadable dark-mode defaults, clipped annotations, tightly stacked microcopy,

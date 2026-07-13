@@ -73,6 +73,9 @@ as supplementary checks. Look for:
 - Views or Artifacts shortcuts firing inside editable controls;
 - the Artifact Library covering its drag target, clipping on mobile, or losing
   personal packages when a node is deleted or the active view changes;
+- Artifact Library previews showing a cropped card, stretching its aspect
+  ratio, retaining offscreen chart instances, replaying distracting animation,
+  or diverging from the corresponding canvas renderer;
 - a selected-card delete control being hidden or deleting the wrong artifact;
 - local save state failing to settle after an interaction;
 - a restored workspace reverting to the published template;

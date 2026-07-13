@@ -111,9 +111,9 @@ Current controls:
 - Open the collapsed **Views** sidebar to browse real canvas previews, create
   views, and switch between independent browser-local workspaces.
 - Open **Artifacts** from the top bar to search built-in and personal items,
-  then click to add one at its authored or nearest open position, or drag it to
-  a specific canvas position. Removing a card does not remove its reusable
-  artifact package.
+  inspect a complete live preview, then click to add one at the nearest open
+  position in the current viewport, or drag it to a specific canvas position.
+  Removing a card does not remove its reusable artifact package.
 - Use `Cmd/Ctrl+B` for Views, `Shift+Cmd/Ctrl+A` for Artifacts,
   `Cmd/Ctrl+0` to reset the viewport, `+`/`-` to zoom, and `Escape` to close the
   active panel or clear selection. Canvas shortcuts do not intercept editable
@@ -438,6 +438,10 @@ Implemented:
 
 TODO:
 
+- Add the proposed short-lived Artifact Delivery Relay so a remote agent can
+  deliver one or more validated bundles into a browser-local view without
+  controlling the browser or requiring a manual file upload. This is waiting on
+  a Cloudflare account and `workers.dev` registration; see ADR-0025.
 - Add multi-select and z-order controls.
 - Add sandbox strategy before loading untrusted generated code.
 - Add file/API import for arbitrary database query result JSON.

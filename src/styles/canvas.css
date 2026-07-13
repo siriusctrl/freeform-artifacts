@@ -183,6 +183,10 @@
     transform: none;
   }
 
+  .artifact-library-slot {
+    width: 100vw;
+  }
+
   .topbar {
     grid-template-columns: 34px minmax(0, 1fr) auto;
     gap: 6px;
