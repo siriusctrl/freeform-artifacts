@@ -54,9 +54,7 @@ export function ArtifactLibrary({
 
   function moveTabFocus(nextSource: ArtifactCatalogItem["source"]) {
     setSource(nextSource);
-    window.requestAnimationFrame(() => {
-      (nextSource === "built-in" ? builtInTabRef.current : personalTabRef.current)?.focus();
-    });
+    (nextSource === "built-in" ? builtInTabRef.current : personalTabRef.current)?.focus();
   }
 
   function addFromKeyboard(event: KeyboardEvent<HTMLElement>, item: ArtifactCatalogItem) {

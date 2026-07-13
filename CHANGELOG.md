@@ -78,6 +78,8 @@ All notable user-facing changes to this project should be documented here.
 
 ### Fixed
 
+- Made Artifact Library arrow-key tab focus move synchronously with selection,
+  avoiding stale-focus reversals under a busy browser event loop.
 - Kept click-added artifacts inside the current visible canvas and placed them
   at the nearest available grid position before falling back to center/top.
 - Made live library previews keyboard-inert and scoped lazy renderer mounting
