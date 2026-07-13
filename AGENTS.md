@@ -14,8 +14,14 @@ on navigation, invariants, verification, and handoff rules.
   artifact handoff; it must not mutate the board.
 - `src/canvas/components/CanvasSidebar.tsx`: named view navigation and
   data-derived board previews; it must not execute artifact renderers.
+- `src/canvas/components/ArtifactLibrary.tsx`: right-side Built-in/Yours catalog
+  UI with click and drag placement; it must not own package persistence.
+- `src/canvas/artifactCatalog.ts`: maps built-in presets and installed bundles
+  into reusable, view-independent catalog entries.
 - `src/canvas/hooks/useCanvasInteractions.ts`: drag, resize, pan, zoom, snap,
   and z-order interaction mechanics.
+- `src/canvas/hooks/useCanvasShortcuts.ts`: guarded global canvas shortcuts;
+  editable controls and modal workflows remain exempt.
 - `src/canvas/board.ts`: serializable board schema and legacy persistence
   migration.
 - `src/canvas/nodeSize.ts`: artifact minimum-size resolution and workspace
@@ -72,6 +78,9 @@ on navigation, invariants, verification, and handoff rules.
   registered-capability escape hatch, not the default generated interface.
 - Runtime package ids are immutable across the browser origin; package and view
   writes must remain atomic, while node placement stays view-scoped.
+- Deleting a canvas node must not delete its reusable personal package. The
+  Artifact Library is origin-scoped and shared across local views, while a
+  catalog placement remains ordinary view-scoped node state.
 - Keep Build with AI agent-neutral. Its copied prompt installs the skill first,
   then asks the agent to question the user about the requested artifact.
 - View thumbnails are geometry summaries, not cached screenshots or a second

@@ -10,6 +10,22 @@
   background: var(--stage-bg);
 }
 
+.canvas-stage.artifact-drop-active::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  z-index: 20;
+  pointer-events: none;
+  border: 1px dashed color-mix(in srgb, var(--accent), transparent 22%);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--accent), transparent 90%);
+}
+
+.canvas-stage:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent), transparent 42%);
+}
+
 .grid-plane {
   position: absolute;
   inset: 0;
@@ -238,15 +254,31 @@
     padding: 0 6px;
   }
 
-  .primary-action {
-    min-width: 36px;
-    width: 36px;
-    grid-template-columns: 18px;
-    padding: 0 9px;
+  .topbar-actions .primary-action {
+    display: none;
   }
 
-  .primary-action span {
-    display: none;
+  .artifact-library-toggle {
+    width: 86px;
+    flex-basis: 86px;
+    display: grid;
+    grid-template-columns: 18px auto;
+    gap: 6px;
+    padding: 0 10px;
+  }
+
+  .artifact-library-toggle span {
+    display: block;
+    font-size: 12px;
+    font-weight: 580;
+  }
+
+}
+
+@media (max-width: 360px) {
+  .canvas-title-slot button,
+  .canvas-title-slot input {
+    width: 68px;
   }
 
 }

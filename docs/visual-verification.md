@@ -12,8 +12,9 @@ npm run verify:proof
 ```
 
 The helper starts the local Vite server, opens Chromium through Playwright, and
-runs an asserted user journey across layout, drag, resize, pan, zoom, data,
-theme, AI handoff generation, deletion, and close/reopen persistence. A verification-only
+runs an asserted user journey across layout, shortcuts, the shared artifact
+library, drag, resize, pan, zoom, data, theme, AI handoff generation, deletion,
+re-addition, and close/reopen persistence. A verification-only
 cursor and step label make each gesture legible in the recording. The helper
 captures video, converts it to GIF, and writes:
 
@@ -69,6 +70,9 @@ as supplementary checks. Look for:
 - snap-to-grid toggle not returning to the intended on/off state;
 - light/dark mode leaving illegible cards or panels;
 - AI handoff accidentally changing board state or omitting the skill command;
+- Views or Artifacts shortcuts firing inside editable controls;
+- the Artifact Library covering its drag target, clipping on mobile, or losing
+  personal packages when a node is deleted or the active view changes;
 - a selected-card delete control being hidden or deleting the wrong artifact;
 - local save state failing to settle after an interaction;
 - a restored workspace reverting to the published template;

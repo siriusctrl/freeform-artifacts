@@ -37,6 +37,10 @@ Rules:
 - A bundle package is browser-origin scoped while its node is view scoped. Board
   backup JSON does not include executable package source, so install the bundle
   separately when moving a board to another browser.
+- After installation, the package appears under **Artifacts > Yours** in every
+  local view for that browser profile. Deleting one node does not uninstall the
+  package; users can click or drag it from the library to create another
+  view-scoped placement.
 
 Direct installation when the agent controls the user's page:
 

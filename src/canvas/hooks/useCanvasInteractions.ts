@@ -232,6 +232,7 @@ export function useCanvasInteractions({
       }
 
       event.preventDefault();
+      stageRef.current?.focus({ preventScroll: true });
       setSelectedNodeId("");
       startDrag({
         type: "pan",
@@ -240,7 +241,7 @@ export function useCanvasInteractions({
         viewport,
       });
     },
-    [setSelectedNodeId, startDrag, viewport],
+    [setSelectedNodeId, stageRef, startDrag, viewport],
   );
 
   const handleNodePointerDown = useCallback(
@@ -251,6 +252,7 @@ export function useCanvasInteractions({
 
       event.preventDefault();
       event.stopPropagation();
+      stageRef.current?.focus({ preventScroll: true });
       const world = pointerWorldPosition(event.clientX, event.clientY);
       setSelectedNodeId(node.id);
       bringToFront(node.id);
@@ -263,7 +265,7 @@ export function useCanvasInteractions({
         nodeY: node.y,
       });
     },
-    [bringToFront, pointerWorldPosition, setSelectedNodeId, startDrag],
+    [bringToFront, pointerWorldPosition, setSelectedNodeId, stageRef, startDrag],
   );
 
   const handleResizePointerDown = useCallback(

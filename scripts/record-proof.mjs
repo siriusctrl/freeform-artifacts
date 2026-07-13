@@ -458,6 +458,14 @@ try {
     { before: topbarMetrics, after: topbarPositionsAfterSave },
   );
 
+  await showProofStep(page, "Shortcut • Cmd+B toggles Views without touching the canvas", 650);
+  await page.keyboard.press("Meta+b");
+  await page.getByTestId("canvas-sidebar").waitFor({ state: "visible" });
+  verifyUx("Cmd+B opens the Views sidebar", await page.getByTestId("canvas-sidebar").isVisible());
+  await page.keyboard.press("Meta+b");
+  await page.waitForTimeout(350);
+  verifyUx("Cmd+B closes the Views sidebar", !(await page.getByTestId("canvas-sidebar").isVisible()));
+
   await showProofStep(page, "Open Views • preview this canvas as the sidebar glides in", 900);
   const sidebarSlot = page.locator(".canvas-sidebar-slot");
   const closedSidebarWidth = await sidebarSlot.evaluate((element) => element.getBoundingClientRect().width);
@@ -817,7 +825,7 @@ try {
     beforeCount: beforeHandoff.nodes.length,
     afterCount: afterHandoff.nodes.length,
   });
-  await page.getByTitle("Close").click();
+  await page.getByTitle("Close", { exact: true }).click();
   await page.waitForTimeout(500);
 
   await showProofStep(page, "Agent install • add a real artifact to this view", 1000);
@@ -825,7 +833,7 @@ try {
   const proofBundle = proofArtifactBundle();
   const proofValidation = await page.evaluate((bundle) => window.__FREEFORM_AGENT__.validateArtifact(bundle), proofBundle);
   verifyUx("Agent API validates Chart Kit without persistence", proofValidation.renderer === "chart-kit" && proofValidation.renderChecks === 4 && proofValidation.persisted === false, proofValidation);
-  const installedArtifact = await page.evaluate((bundle) => window.__FREEFORM_AGENT__.installArtifact(bundle), proofBundle);
+  let installedArtifact = await page.evaluate((bundle) => window.__FREEFORM_AGENT__.installArtifact(bundle), proofBundle);
   await page.getByTestId(`node-${installedArtifact.nodeId}`).waitFor({ state: "visible" });
   await page.waitForTimeout(1500);
   const afterInstall = await page.evaluate(() => window.__FREEFORM_STATE__);
@@ -847,7 +855,31 @@ try {
   verifyUx("healthy runtime artifact remains rendered after rejection", await page.getByText("Installed directly into this view").isVisible());
   await page.waitForTimeout(1200);
 
-  await showProofStep(page, "Delete artifact • remove it from this workspace", 550);
+  await showProofStep(page, "Delete personal card • keep its package in the shared library", 650);
+  await page.getByTestId(`node-${installedArtifact.nodeId}`).click({ position: { x: 100, y: 18 } });
+  await page.keyboard.press("Delete");
+  await page.getByTestId(`node-${installedArtifact.nodeId}`).waitFor({ state: "detached" });
+  await page.keyboard.press("Meta+Shift+a");
+  await page.getByTestId("artifact-library").waitFor({ state: "visible" });
+  const libraryCounts = await page.evaluate(() => window.__FREEFORM_STATE__.artifactLibraryCounts);
+  verifyUx("Shift+Cmd+A opens the shared Artifact Library", await page.getByTestId("artifact-library").isVisible());
+  verifyUx("Artifact Library exposes five built-ins and one personal package", libraryCounts.builtIn === 5 && libraryCounts.personal === 1, libraryCounts);
+  await showProofStep(page, "Artifact Library • switch from Built-in to Yours", 850);
+  await page.getByTestId("artifact-tab-personal").click();
+  const personalLibraryItem = page.getByTestId("artifact-library-item-agent-capacity-card");
+  await personalLibraryItem.waitFor({ state: "visible" });
+  verifyUx("deleted personal card remains available under Yours", await personalLibraryItem.isVisible());
+
+  await showProofStep(page, "Drag from Yours • place the saved artifact back on this canvas", 900);
+  await personalLibraryItem.dragTo(stage, { targetPosition: { x: 620, y: 360 } });
+  await page.waitForFunction(() => window.__FREEFORM_STATE__.nodes.some((node) => node.artifactId === "agent-capacity-card"));
+  const restoredPersonalNode = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.find((node) => node.artifactId === "agent-capacity-card");
+  if (!restoredPersonalNode) throw new Error("Personal artifact did not return from the library");
+  installedArtifact = { ...installedArtifact, nodeId: restoredPersonalNode.id };
+  verifyUx("personal artifact can be dragged back after node deletion", await page.getByTestId(`node-${restoredPersonalNode.id}`).isVisible(), { restoredPersonalNode });
+  verifyUx("re-added personal artifact keeps its generated content", await page.getByText("Installed directly into this view").isVisible());
+
+  await showProofStep(page, "Delete built-in card • recover it from Built-in", 650);
   await page.getByTestId("node-node-revenue").click({ position: { x: 100, y: 18 } });
   const beforeDelete = await page.evaluate(() => window.__FREEFORM_STATE__);
   await page.getByTestId("delete-node-revenue").click();
@@ -858,6 +890,16 @@ try {
     beforeCount: beforeDelete.nodes.length,
     afterCount: afterDelete.nodes.length,
   });
+  await page.keyboard.press("Meta+Shift+a");
+  await page.getByTestId("artifact-tab-built-in").click();
+  await showProofStep(page, "Built-in library • restore Metric summary with one click", 900);
+  await page.getByTestId("artifact-library-item-metric-card").click();
+  await page.waitForFunction(() => window.__FREEFORM_STATE__.nodes.some((node) => node.artifactId === "metric-card"));
+  const restoredMetricNode = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.find((node) => node.artifactId === "metric-card");
+  if (!restoredMetricNode) throw new Error("Built-in metric did not return from the library");
+  verifyUx("built-in artifact can be restored after node deletion", restoredMetricNode.id !== "node-revenue", { restoredMetricNode });
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saved locally");
+  await page.waitForTimeout(650);
 
   await showProofStep(page, "Close page • preserve this browser’s workspace", 750);
   const persistedSnapshot = await page.evaluate(() => window.__FREEFORM_STATE__);
@@ -877,7 +919,8 @@ try {
     beforeCount: persistedSnapshot.nodes.length,
     afterCount: restoredState.nodes.length,
   });
-  verifyUx("reload preserves artifact deletion", !restoredState.nodes.some((node) => node.id === "node-revenue"));
+  verifyUx("reload preserves deletion of the original built-in node", !restoredState.nodes.some((node) => node.id === "node-revenue"));
+  verifyUx("reload restores the library-readded built-in artifact", restoredState.nodes.some((node) => node.id === restoredMetricNode.id));
   verifyUx("reload restores the agent-installed artifact", restoredState.nodes.some((node) => node.id === installedArtifact.nodeId) && restoredState.artifactIds.includes("agent-capacity-card"));
   const restoredViews = await page.evaluate(() => window.__FREEFORM_AGENT__.listViews());
   verifyUx("reload restores multiple named views", restoredViews.some((view) => view.title === "Market canvas") && restoredViews.some((view) => view.title === "Scenario canvas"), { restoredViews });
@@ -955,6 +998,7 @@ try {
     actions: [
       "inspect initial layout and controls",
       "rename the centered canvas title",
+      "toggle Views with Cmd+B",
       "open the sidebar, create and rename a second view, and switch back",
       "drag node",
       "visibly resize the complete chart object",
@@ -968,7 +1012,8 @@ try {
       "generate and copy a no-code artifact bundle handoff",
       "install a runtime artifact through the browser Agent API",
       "reject an invalid Chart Kit artifact before persistence",
-      "delete an artifact with the selected-card control",
+      "delete and drag a personal artifact back from the shared library",
+      "delete and restore a built-in artifact from the library",
       "close, reopen, and restore the browser-local workspace",
       "capture screenshot",
     ],

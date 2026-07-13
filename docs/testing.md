@@ -67,6 +67,12 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   state until a bundle is installed;
 - centered-title rename, smoothly animated Views navigation, data-derived
   previews, create/switch, and active-view reload recovery;
+- guarded `Cmd/Ctrl+B`, `Shift+Cmd/Ctrl+A`, `Cmd/Ctrl+0`, zoom, Escape, and
+  deletion shortcuts, including input-field exemption;
+- Built-in artifact search plus click and drag placement with world-coordinate
+  conversion and grid snap;
+- personal package survival after node deletion, reuse from Yours across local
+  views, reload recovery, and isolation between browser contexts;
 - Agent API and file-fallback bundle installation plus registry/node recovery
   after reload;
 - Browser bundle capability discovery and non-persisting Chart Kit preflight at

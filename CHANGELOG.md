@@ -68,6 +68,10 @@ All notable user-facing changes to this project should be documented here.
   for agent bundle preflight.
 - Explicit Browser View Bundle versus Self-Deployed Repo workflows in the
   project skill and Build with AI handoff.
+- Shared Artifact Library with Built-in/Yours tabs, search, click placement,
+  drag-to-canvas placement, and personal package reuse across local views.
+- Canvas shortcuts for Views, Artifacts, viewport reset, zoom, Escape, and
+  deletion with editable-field and modal guards.
 
 ### Fixed
 

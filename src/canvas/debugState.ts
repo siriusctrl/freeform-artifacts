@@ -4,6 +4,8 @@ import type { ThemeMode } from "./constants";
 import { CANVAS_GRID_SIZE } from "../lib/geometry";
 
 interface CanvasDebugStateOptions {
+  artifactLibraryOpen: boolean;
+  artifactLibraryCounts: { builtIn: number; personal: number };
   artifactRegistry: Record<string, RegisteredArtifact>;
   nodes: CanvasNode[];
   selectedNodeId: string;
@@ -16,6 +18,8 @@ interface CanvasDebugStateOptions {
 }
 
 export function publishCanvasDebugState({
+  artifactLibraryOpen,
+  artifactLibraryCounts,
   artifactRegistry,
   nodes,
   selectedNodeId,
@@ -27,6 +31,8 @@ export function publishCanvasDebugState({
   viewport,
 }: CanvasDebugStateOptions) {
   window.__FREEFORM_STATE__ = {
+    artifactLibraryOpen,
+    artifactLibraryCounts,
     artifactIds: Object.keys(artifactRegistry),
     nodes,
     selectedNodeId,
@@ -44,6 +50,8 @@ declare global {
   interface Window {
     __FREEFORM_STATE__?: {
       readonly nodes: CanvasNode[];
+      readonly artifactLibraryOpen: boolean;
+      readonly artifactLibraryCounts: { builtIn: number; personal: number };
       readonly viewport: CanvasViewport;
       readonly selectedNodeId: string;
       readonly themeMode: ThemeMode;
