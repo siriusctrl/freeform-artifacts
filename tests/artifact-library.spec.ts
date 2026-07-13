@@ -74,8 +74,10 @@ test("canvas shortcuts and the built-in library restore or place artifacts", asy
   await page.getByTestId("artifact-tab-built-in").focus();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByTestId("artifact-tab-personal")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("artifact-tab-personal")).toBeFocused();
   await page.keyboard.press("ArrowLeft");
   await expect(page.getByTestId("artifact-tab-built-in")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("artifact-tab-built-in")).toBeFocused();
   await page.getByTestId("artifact-search").fill("metric");
   await expect(page.getByTestId("artifact-library-item-metric-card")).toBeVisible();
   await expect(page.getByTestId("artifact-library-item-sankey-flow")).toHaveCount(0);
