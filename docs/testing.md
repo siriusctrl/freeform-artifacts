@@ -10,8 +10,10 @@ Run:
 npm run check
 ```
 
-This executes TypeScript checking and a Vite production build. It catches type,
-module, and bundling errors. It does not prove interaction behavior.
+This executes frontend TypeScript checking and a Vite production build, verifies
+generated Wrangler bindings, type-checks and dry-runs the relay Worker, and runs
+the local Worker/Durable Object suite. It catches type, module, protocol, and
+bundling errors. It does not prove browser interaction behavior.
 
 `npm run verify:preview` additionally builds and serves the production
 `/freeform-artifacts/` base path, including the base-aware generated artifact
@@ -62,9 +64,9 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - canvas zoom then applies the same second scale to the complete node;
 - theme toggle switches light/dark mode;
 - importing sample query rows runs transforms and updates artifacts;
-- Build with AI creates an immediately copyable, agent-neutral skill instruction
-  that asks the agent to discover the artifact request without changing board
-  state until a bundle is installed;
+- Build with AI creates a Turnstile-verified, target-view-bound session and an
+  immediately copyable, agent-neutral Browser Relay instruction without changing
+  board state until a delivery is installed;
 - centered-title rename, smoothly animated Views navigation, data-derived
   previews, create/switch, and active-view reload recovery;
 - guarded `Cmd/Ctrl+B`, `Shift+Cmd/Ctrl+A`, `Cmd/Ctrl+0`, zoom, Escape, and
@@ -81,8 +83,15 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   after reload;
 - Browser bundle capability discovery and non-persisting Chart Kit preflight at
   default/minimum size in both themes;
-- Build with AI prompt selection of Browser View Bundle delivery, including the
-  prohibition on self-deployed source files;
+- Build with AI prompt selection of Browser Relay delivery, including reusable
+  session-scoped upload capability, multi-bundle command, fixed target view, and
+  the prohibition on self-deployed source files;
+- encrypted multi-artifact delivery, repeat deliveries in one session, local
+  script interoperability, grid snap/highest-z placement, and centered
+  grid-offset fallback when no complete viewport opening exists;
+- all-or-nothing browser validation for a bad multi-artifact selection, target
+  binding after view navigation, pending replay after disconnect, and receipt
+  replay without duplicate placement when a post-commit ACK is lost;
 - one broken runtime renderer stays isolated to its card, package id collisions
   are rejected, invalid target views leave no package behind, and one corrupt
   installed package does not suppress healthy runtime artifacts;
@@ -110,6 +119,34 @@ another suite rather than solely to satisfy a line-count target.
 `tests/mobile.spec.ts` keeps the touch-sized layout honest without pretending
 desktop mouse gestures are touch interaction coverage.
 
+## Relay Emulator and Adversarial Coverage
+
+Run the transport suite alone with:
+
+```sh
+npm run relay:check
+npm run relay:test
+```
+
+`relay:test` uses the Workers Vitest pool and real local Durable Objects. It
+checks strict CORS, 30-minute alarms, separate browser/upload capabilities,
+WebSocket hibernation/replay, terminal ACK deletion, idempotency, capability
+substitution attempts, signed-locator forgery, changed-envelope delivery-id
+conflicts, invalid-token rate-limit isolation, fail-closed environment drift,
+malformed and oversized bodies, cross-origin uploads, session delivery ceilings,
+cleanup/upload races, and refusal after cleanup. `relay:check` also proves
+that committed Wrangler-generated types are current and that the production
+bundle/migration can be produced with `wrangler deploy --dry-run`.
+
+`tests/relay.spec.ts` launches the same local Worker/DO emulator and a real
+Chromium page. Its Turnstile stub uses Cloudflare's documented development test
+key/token only; production verification must use the real widget and siteverify.
+The browser suite also covers rapid deliveries across current persisted state,
+same-view multi-tab edits during a relay commit, page-memory-only capabilities,
+cancellation during module preparation, stale view creation responses,
+authenticated byte-identical uploader retry caching, and ambiguous network
+outcomes that preserve the original delivery id.
+
 If Chromium is missing, run:
 
 ```sh
@@ -126,8 +163,9 @@ npm run verify:proof
 
 This is the visual evidence path. It opens Chromium and runs a complete asserted
 journey through layout, drag, resize, pan, pinch in/out, toolbar zoom/reset, data
-import, theme switching, AI handoff generation, artifact deletion, and
-persistence after reopening. It
+import, theme switching, Build Session creation, encrypted multi-artifact relay
+delivery, atomic bad-selection rejection, artifact deletion, and persistence
+after reopening. It
 records WebM video with a verification-only cursor and step label, writes a
 final screenshot, converts the recording to GIF with `ffmpeg`, writes a 30-cell
 contact sheet sampled across the full timeline, runs a blank-frame check, and
@@ -163,6 +201,8 @@ The current smoke test is intentionally narrow. Add focused tests when changing:
 - artifact registry loading;
 - data transform behavior;
 - serialization;
+- relay protocol versioning, capabilities, encryption, idempotency receipts,
+  expiry, rate/size ceilings, reconnect, and target-view placement;
 - template forking and workspace migration;
 - IndexedDB failure fallback and workspace bundle import/export;
 - production preview behavior;

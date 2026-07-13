@@ -23,6 +23,20 @@ interface ArtifactModule {
   default?: RegisteredArtifact;
 }
 
+export class ArtifactBundleValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ArtifactBundleValidationError";
+  }
+}
+
+export class ArtifactBundleStorageError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ArtifactBundleStorageError";
+  }
+}
+
 async function importBundleArtifact(bundle: ArtifactBundle): Promise<RegisteredArtifact> {
   const objectUrl = URL.createObjectURL(new Blob([bundle.moduleSource], { type: "text/javascript" }));
   try {
@@ -55,16 +69,30 @@ export async function prepareArtifactBundle(
   value: unknown,
   existingRegistry: Record<string, RegisteredArtifact>,
 ) {
-  const bundle = artifactBundleSchema.parse(value);
-  const artifact = await importBundleArtifact(bundle);
-  const installed = await readBundle(bundle.artifactId);
+  const parsed = artifactBundleSchema.safeParse(value);
+  if (!parsed.success) throw new ArtifactBundleValidationError(parsed.error.message);
+  const bundle = parsed.data;
+  let artifact: RegisteredArtifact;
+  try {
+    artifact = await importBundleArtifact(bundle);
+  } catch (error) {
+    throw new ArtifactBundleValidationError(error instanceof Error ? error.message : "Artifact module could not be loaded");
+  }
+  let installed: ArtifactBundle | null;
+  try {
+    installed = await readBundle(bundle.artifactId);
+  } catch (error) {
+    throw new ArtifactBundleStorageError("Unable to inspect installed artifacts", {
+      cause: error,
+    });
+  }
   if (installed && installed.moduleSource !== bundle.moduleSource) {
-    throw new Error(
+    throw new ArtifactBundleValidationError(
       `Artifact id ${bundle.artifactId} is already installed with different code; use a new artifactId`,
     );
   }
   if (!installed && existingRegistry[bundle.artifactId]) {
-    throw new Error(`Artifact id ${bundle.artifactId} is reserved by the host; use a new artifactId`);
+    throw new ArtifactBundleValidationError(`Artifact id ${bundle.artifactId} is reserved by the host; use a new artifactId`);
   }
   return { artifact, bundle };
 }

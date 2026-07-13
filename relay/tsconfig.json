@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/vitest-pool-workers/types"],
+    "noEmit": true
+  },
+  "include": [
+    "./src/**/*.ts",
+    "./test/**/*.ts",
+    "./vitest.config.ts",
+    "./worker-configuration.d.ts",
+    "../src/relay/protocol.ts"
+  ]
+}

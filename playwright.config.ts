@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
-  timeout: 30_000,
+  timeout: 45_000,
   expect: {
     timeout: 5_000,
   },
@@ -12,12 +12,20 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  webServer: {
-    command: "npm run dev -- --host 127.0.0.1 --port 4177",
-    url: "http://127.0.0.1:4177",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: "npm run relay:dev:test",
+      url: "http://127.0.0.1:8787/health",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: "VITE_RELAY_URL=http://127.0.0.1:8787 VITE_RELAY_TURNSTILE_SITE_KEY=1x00000000000000000000AA npm run dev -- --host 127.0.0.1 --port 4177",
+      url: "http://127.0.0.1:4177",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
   projects: [
     {
       name: "chromium",

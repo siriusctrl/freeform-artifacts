@@ -75,6 +75,16 @@ All notable user-facing changes to this project should be documented here.
   lifecycles in both themes.
 - Canvas shortcuts for Views, Artifacts, viewport reset, zoom, Escape, and
   deletion with editable-field and modal guards.
+- Short-lived encrypted Artifact Delivery Relay with target-view-bound Build
+  Sessions, Turnstile, separate browser/uploader capabilities, hibernating
+  WebSockets, SQLite Durable Objects, and a 30-minute cleanup alarm.
+- Dependency-free skill delivery script for one or more bundles per delivery,
+  reusable session-scoped uploads, AES-256-GCM payloads, and idempotent retries.
+- Atomic browser validation and persistence for multi-artifact deliveries,
+  host-owned viewport placement, and delivery receipts that prevent duplicate
+  cards when an acknowledgement is lost.
+- Worker/DO emulator adversarial tests and real-browser relay journeys covering
+  reconnect, expiry, bad bundle rollback, view binding, placement, and replay.
 
 ### Fixed
 

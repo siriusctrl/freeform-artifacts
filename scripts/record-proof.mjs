@@ -18,9 +18,11 @@ const inspectionPath = path.join(outputDir, "inspection.txt");
 const frameCheckPath = path.join(outputDir, "frame-check.json");
 const uxChecksPath = path.join(outputDir, "ux-checks.json");
 const port = Number(process.env.FREEFORM_PORT ?? 4180);
+const relayPort = Number(process.env.FREEFORM_RELAY_PORT ?? 8788);
 const host = "127.0.0.1";
 const url = `http://${host}:${port}`;
-const proofTrimStartSeconds = process.env.FREEFORM_PROOF_TRIM_START ?? "2.4";
+const relayUrl = `http://${host}:${relayPort}`;
+const proofTrimStartSeconds = process.env.FREEFORM_PROOF_TRIM_START ?? "6.8";
 
 mkdirSync(videoDir, { recursive: true });
 
@@ -74,6 +76,9 @@ async function installProofOverlay(page) {
       .proof-cursor { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px;
         border: 2px solid #111418; border-radius: 50%; background: rgba(255,255,255,.72);
         box-shadow: 0 0 0 3px rgba(82,196,218,.55); transform: translate(-30px,-30px); }
+      @media (max-width: 700px) {
+        .proof-step { left: 12px; top: 8px; max-width: calc(100vw - 24px); padding: 6px 9px; font-size: 11px; }
+      }
     `;
     overlay.append(style);
     document.body.append(overlay);
@@ -295,12 +300,16 @@ function checkSampledFrames(gifFile) {
   return report;
 }
 
-function proofArtifactBundle() {
+function proofArtifactBundle(
+  artifactId = "agent-capacity-card",
+  nodeTitle = "Agent capacity",
+  chartTitle = "Installed directly into this view",
+) {
   return {
     version: 1,
-    artifactId: "agent-capacity-card",
+    artifactId,
     moduleSource: `export const artifact = {
-      id: "agent-capacity-card", renderer: "chart-kit",
+      id: ${JSON.stringify(artifactId)}, renderer: "chart-kit",
       title: "Agent Capacity", version: "1.0.0", defaultSize: { width: 480, height: 300 },
       buildChart: ({ data }) => ({
         kind: "cartesian", title: data.title,
@@ -309,8 +318,8 @@ function proofArtifactBundle() {
       }),
     };`,
     node: {
-      title: "Agent capacity",
-      data: { title: "Installed directly into this view", points: [{ label: "North", value: 34 }, { label: "South", value: 47 }] },
+      title: nodeTitle,
+      data: { title: chartTitle, points: [{ label: "North", value: 34 }, { label: "South", value: 47 }] },
       config: {},
     },
   };
@@ -330,16 +339,72 @@ function brokenProofArtifactBundle() {
   };
 }
 
-const server = spawn("npm", ["run", "dev", "--", "--host", host, "--port", String(port), "--strictPort"], {
+function parseRelayHandoff(handoff) {
+  const option = (name) => handoff.match(new RegExp(`--${name}\\s+"([^"]+)"`))?.[1];
+  const credentialsLine = handoff.split("\n").find((line) => line.startsWith('{"uploadToken"'));
+  const credentials = credentialsLine ? JSON.parse(credentialsLine) : {};
+  return {
+    endpoint: option("relay-url"),
+    sessionId: option("session-id"),
+    uploadToken: credentials.uploadToken,
+    encryptionKey: credentials.encryptionKey,
+    targetViewId: option("view-id"),
+  };
+}
+
+function deliverProofBundles(session, bundles, label) {
+  const bundlePaths = bundles.map((bundle, index) => {
+    const bundlePath = path.join(outputDir, `${label}-${index}.freeform-artifact.json`);
+    writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
+    return bundlePath;
+  });
+  const delivery = spawnSync(process.execPath, [
+    path.join(root, "skill/freeform-artifact-builder/scripts/deliver.mjs"),
+    "--relay-url", session.endpoint,
+    "--session-id", session.sessionId,
+    "--credentials-stdin",
+    "--view-id", session.targetViewId,
+    ...bundlePaths,
+  ], {
+    cwd: root,
+    encoding: "utf8",
+    input: `${JSON.stringify({ uploadToken: session.uploadToken, encryptionKey: session.encryptionKey })}\n`,
+    env: { ...process.env, FREEFORM_RELAY_CACHE_DIR: path.join(outputDir, "relay-cache") },
+  });
+  if (delivery.status !== 0) {
+    throw new Error(`Relay delivery script failed: ${delivery.stderr || "unknown error"}`);
+  }
+  return JSON.parse(delivery.stdout);
+}
+
+const relayServer = spawn("npx", [
+  "wrangler", "dev", "--config", "relay/wrangler.jsonc", "--local",
+  "--ip", host, "--port", String(relayPort), "--var", "ENVIRONMENT:development",
+  "--var", "RELAY_ROUTING_SECRET:development-only-relay-routing-secret-0001",
+  "--var", `ALLOWED_ORIGINS:${url}`,
+], {
   cwd: root,
   detached: true,
   stdio: "ignore",
   env: { ...process.env, BROWSER: "none" },
 });
 
+const server = spawn("npm", ["run", "dev", "--", "--host", host, "--port", String(port), "--strictPort"], {
+  cwd: root,
+  detached: true,
+  stdio: "ignore",
+  env: {
+    ...process.env,
+    BROWSER: "none",
+    VITE_RELAY_URL: relayUrl,
+    VITE_RELAY_TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
+  },
+});
+
 let browser;
 
 try {
+  await waitForServer(`${relayUrl}/health`);
   await waitForServer(url);
 
   browser = await chromium.launch({ headless: true });
@@ -350,6 +415,50 @@ try {
       dir: videoDir,
       size: { width: 1440, height: 900 },
     },
+  });
+  let sessionCreationAttempts = 0;
+  await context.route(`${relayUrl}/v1/sessions`, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    sessionCreationAttempts += 1;
+    if (sessionCreationAttempts > 1) {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      headers: {
+        "Access-Control-Allow-Origin": url,
+        "Vary": "Origin",
+      },
+      body: JSON.stringify({ error: "temporarily_unavailable" }),
+    });
+  });
+  const routedSockets = [];
+  let delayNextRelaySocket = false;
+  await context.routeWebSocket(/\/v1\/sessions\/[^/]+\/connect(?:\?|$)/, async (browserSocket) => {
+    if (delayNextRelaySocket) {
+      delayNextRelaySocket = false;
+      await new Promise((resolve) => setTimeout(resolve, 900));
+    }
+    const serverSocket = browserSocket.connectToServer();
+    routedSockets.push({ browserSocket, serverSocket });
+  });
+  await context.addInitScript(() => {
+    let callback;
+    window.turnstile = {
+      render: (_container, options) => {
+        callback = options.callback;
+        return "proof-turnstile";
+      },
+      execute: () => window.setTimeout(() => callback?.("test-turnstile-pass"), 850),
+      remove: () => {
+        callback = undefined;
+      },
+    };
   });
   let page = await context.newPage();
 
@@ -836,51 +945,115 @@ try {
   const darkSankeyColors = [...new Set(await sankeyNodeColors(page))];
   verifyUx("dark mode supplies a distinct six-color Sankey palette", darkSankeyColors.length === 6 && darkSankeyColors.some((color) => !lightSankeyColors.includes(color)), { lightSankeyColors, darkSankeyColors });
 
-  await showProofStep(page, "Build with AI • generate a no-code bundle handoff", 900);
+  await showProofStep(page, "Build with AI • open a private 30-minute relay session", 900);
   const beforeHandoff = await page.evaluate(() => window.__FREEFORM_STATE__);
   await page.getByTestId("build-artifact").click();
-  await page.waitForTimeout(900);
+  await page.getByTestId("relay-session-status").getByText(/Verifying this Build Session/).waitFor({ state: "visible" });
+  await showProofStep(page, "Browser verification • one consent opens the whole session", 650);
+  await page.getByTestId("relay-session-status").getByText("Needs attention", { exact: true }).waitFor({ state: "visible" });
+  verifyUx("session creation failure stays actionable inside the dialog", await page.getByText("Retry verification", { exact: true }).isVisible());
+  const creationFailureStatus = await page.getByTestId("relay-session-status").innerText();
+  verifyUx("session creation failure uses quiet product language", creationFailureStatus.includes("Build Sessions are temporarily unavailable") && !creationFailureStatus.includes("temporarily_unavailable"));
+  await showProofStep(page, "Creation interrupted • retry without leaving the dialog", 800);
+  await page.getByText("Retry verification", { exact: true }).click();
+  await page.getByTestId("relay-session-status").getByText(/Verifying this Build Session/).waitFor({ state: "visible" });
+  await showProofStep(page, "Retry verification • capabilities remain hidden", 550);
+  await page.getByTestId("relay-session-status").getByText("Relay connected", { exact: true }).waitFor({ state: "visible" });
+  await page.waitForTimeout(700);
   const instruction = await page.getByTestId("agent-instruction").innerText();
-  verifyUx("AI handoff is agent-neutral and asks the agent to discover the request", instruction.includes("Install the project artifact skill for your agent:") && instruction.includes("ask the user what artifact they want to build") && !instruction.includes("Claude Code"));
-  verifyUx("AI handoff explicitly selects browser bundle delivery", instruction.includes("Delivery mode: BROWSER_VIEW_BUNDLE") && instruction.includes("Do not use the Self-Deployed Repo workflow") && instruction.includes("Do not create src/artifacts/generated files"));
-  verifyUx("AI handoff validates Chart Kit before browser installation", instruction.includes('renderer: "chart-kit"') && instruction.includes("window.__FREEFORM_AGENT__.validateArtifact") && instruction.includes("window.__FREEFORM_AGENT__.installArtifact"));
+  verifyUx("AI handoff is agent-neutral and asks the agent to discover the request", instruction.includes("Install the project artifact skill for your agent:") && instruction.includes("Ask the user what they want to build") && !instruction.includes("Claude Code"));
+  verifyUx("AI handoff explicitly selects encrypted Browser Relay delivery", instruction.includes("Delivery mode: BROWSER_RELAY") && instruction.includes("scripts/deliver.mjs") && instruction.includes("Do not create src/artifacts/generated files"));
+  verifyUx("sensitive relay capabilities stay hidden on screen", instruction.includes("<hidden-upload-capability>") && instruction.includes("<hidden-encryption-key>"));
+  verifyUx("AI handoff promises complete browser validation and one atomic commit", instruction.includes('renderer: "chart-kit"') && instruction.includes("atomic package-and-view commit"));
+  verifyUx("Build Session is visibly connected and bound to this view", (await page.getByTestId("relay-session-status").innerText()).includes("Relay connected") && instruction.includes("Market canvas"));
   await page.getByTestId("copy-agent-instruction").click();
   await page.getByTestId("copy-agent-instruction").getByText("Copied").waitFor({ state: "visible" });
   verifyUx("AI handoff can be copied", await page.getByTestId("copy-agent-instruction").getByText("Copied").isVisible());
+  const relaySession = parseRelayHandoff(await page.evaluate(() => navigator.clipboard.readText()));
   const afterHandoff = await page.evaluate(() => window.__FREEFORM_STATE__);
   verifyUx("AI handoff does not insert a fake template card", afterHandoff.nodes.length === beforeHandoff.nodes.length, {
     beforeCount: beforeHandoff.nodes.length,
     afterCount: afterHandoff.nodes.length,
   });
-  await page.getByTitle("Close", { exact: true }).click();
-  await page.waitForTimeout(500);
-
-  await showProofStep(page, "Agent install • add a real artifact to this view", 1000);
-  const beforeInstall = await page.evaluate(() => window.__FREEFORM_STATE__);
+  const activeSocket = routedSockets.at(-1);
+  if (!activeSocket) throw new Error("Relay proof could not observe the browser WebSocket");
+  delayNextRelaySocket = true;
+  await activeSocket.browserSocket.close({ code: 1012, reason: "Proof reconnect" });
+  await page.getByTestId("relay-session-status").getByText("Reconnecting", { exact: true }).waitFor({ state: "visible" });
+  await showProofStep(page, "Connection interrupted • pending delivery channel reconnects", 750);
+  await page.getByTestId("relay-session-status").getByText("Relay connected", { exact: true }).waitFor({ state: "visible" });
+  verifyUx("hibernating WebSocket reconnects without creating a new Build Session", sessionCreationAttempts === 2 && routedSockets.length >= 2, {
+    sessionCreationAttempts,
+    socketConnections: routedSockets.length,
+  });
   const proofBundle = proofArtifactBundle();
-  const proofValidation = await page.evaluate((bundle) => window.__FREEFORM_AGENT__.validateArtifact(bundle), proofBundle);
-  verifyUx("Agent API validates Chart Kit without persistence", proofValidation.renderer === "chart-kit" && proofValidation.renderChecks === 4 && proofValidation.persisted === false, proofValidation);
-  let installedArtifact = await page.evaluate((bundle) => window.__FREEFORM_AGENT__.installArtifact(bundle), proofBundle);
-  await page.getByTestId(`node-${installedArtifact.nodeId}`).waitFor({ state: "visible" });
-  await page.waitForTimeout(1500);
-  const afterInstall = await page.evaluate(() => window.__FREEFORM_STATE__);
-  verifyUx("Agent API installs and selects a persisted artifact without a deploy", afterInstall.nodes.length === beforeInstall.nodes.length + 1 && afterInstall.artifactIds.includes("agent-capacity-card"), { installedArtifact });
-  verifyUx("installed artifact renders its generated content", await page.getByText("Installed directly into this view").isVisible());
-
-  await showProofStep(page, "Invalid artifact • reject before installation", 900);
-  const nodeCountBeforeRejection = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.length;
-  const rejectionMessage = await page.evaluate(async (bundle) => {
-    try {
-      await window.__FREEFORM_AGENT__.validateArtifact(bundle);
-      return "";
-    } catch (error) {
-      return error instanceof Error ? error.message : String(error);
-    }
-  }, brokenProofArtifactBundle());
-  verifyUx("Chart Kit preflight rejects invalid series before persistence", rejectionMessage.includes("must match the category count"), { rejectionMessage });
-  verifyUx("preflight rejection leaves the canvas unchanged", (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.length === nodeCountBeforeRejection);
-  verifyUx("healthy runtime artifact remains rendered after rejection", await page.getByText("Installed directly into this view").isVisible());
+  const outlookBundle = proofArtifactBundle("agent-outlook-card", "Agent outlook", "Delivered together in one encrypted selection");
+  await showProofStep(page, "Encrypted relay • deliver two artifacts in one selection", 900);
+  const deliveryResponse = deliverProofBundles(relaySession, [proofBundle, outlookBundle], "relay-valid");
+  await page.getByTestId("relay-session-status").getByText(/Installed 2 artifacts/).waitFor({ state: "visible" });
   await page.waitForTimeout(1200);
+  const afterInstall = await page.evaluate(() => window.__FREEFORM_STATE__);
+  verifyUx("one encrypted delivery installs both artifacts without a deploy", deliveryResponse.accepted === true && deliveryResponse.artifactIds.length === 2 && afterInstall.nodes.length === beforeHandoff.nodes.length + 2 && afterInstall.artifactIds.includes("agent-capacity-card") && afterInstall.artifactIds.includes("agent-outlook-card"), { deliveryId: deliveryResponse.deliveryId, artifactIds: deliveryResponse.artifactIds });
+
+  await showProofStep(page, "Atomic validation • reject the whole bad selection", 900);
+  const nodeCountBeforeRejection = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.length;
+  const shouldNotInstall = proofArtifactBundle("relay-proof-should-not-install", "Should not install", "Atomic rollback proof");
+  deliverProofBundles(relaySession, [shouldNotInstall, brokenProofArtifactBundle()], "relay-invalid");
+  await page.getByTestId("relay-session-status").getByText(/Delivery rejected:.*category count/).waitFor({ state: "visible" });
+  await page.waitForTimeout(900);
+  const afterRejection = await page.evaluate(() => window.__FREEFORM_STATE__);
+  verifyUx("browser preflight rejects an invalid Chart Kit delivery", (await page.getByTestId("relay-session-status").innerText()).includes("category count"));
+  verifyUx("bad multi-artifact selection leaves no partial dashboard", afterRejection.nodes.length === nodeCountBeforeRejection && !afterRejection.artifactIds.includes("relay-proof-should-not-install"));
+
+  const offlineInvalidPath = path.join(outputDir, "offline-invalid.freeform-artifact.json");
+  writeFileSync(offlineInvalidPath, `${JSON.stringify(brokenProofArtifactBundle(), null, 2)}\n`);
+  await showProofStep(page, "Offline fallback • invalid file leaves the view untouched", 650);
+  const [fileChooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.getByTestId("install-bundle").click(),
+  ]);
+  await fileChooser.setFiles(offlineInvalidPath);
+  await page.locator(".agent-dialog-feedback").getByText(/Install failed:.*Nothing was installed/).waitFor({ state: "visible" });
+  await page.waitForTimeout(850);
+  const afterOfflineRejection = await page.evaluate(() => window.__FREEFORM_STATE__);
+  verifyUx("offline bundle validation reports inline and leaves no partial install", afterOfflineRejection.nodes.length === nodeCountBeforeRejection && (await page.locator(".agent-dialog-feedback").innerText()).includes("Nothing was installed"));
+
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.waitForTimeout(450);
+  const compactDialog = await page.evaluate(() => {
+    const dialog = document.querySelector(".agent-dialog")?.getBoundingClientRect();
+    const actions = document.querySelector(".agent-dialog-actions")?.getBoundingClientRect();
+    const expiry = document.querySelector(".relay-session-state time");
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      dialog: dialog ? { top: dialog.top, bottom: dialog.bottom } : null,
+      actions: actions ? { top: actions.top, bottom: actions.bottom } : null,
+      expiryVisible: expiry instanceof HTMLElement && expiry.getClientRects().length > 0,
+    };
+  });
+  verifyUx("short landscape keeps session expiry and every dialog action reachable", Boolean(
+    compactDialog.dialog && compactDialog.actions && compactDialog.expiryVisible &&
+    compactDialog.dialog.top >= 0 && compactDialog.actions.bottom <= compactDialog.viewport.height + 1
+  ), compactDialog);
+  await showProofStep(page, "Short landscape • expiry and all actions stay reachable", 1000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(450);
+
+  const latestSocket = routedSockets.at(-1);
+  if (!latestSocket) throw new Error("Relay proof lost the active browser WebSocket");
+  await latestSocket.browserSocket.send(JSON.stringify({ version: 1, type: "expired" }));
+  await page.getByTestId("relay-session-status").getByText("Expired", { exact: true }).waitFor({ state: "visible" });
+  verifyUx("expired session removes capabilities and offers a new session", await page.getByText("Start new session", { exact: true }).isVisible() && !(await page.getByTestId("agent-instruction").innerText()).includes("<hidden-upload-capability>"));
+  await page.getByTestId("copy-agent-instruction").getByText("Copy instruction", { exact: true }).waitFor({ state: "visible" });
+  verifyUx("expired session clears stale copy confirmation", !(await page.getByTestId("copy-agent-instruction").innerText()).includes("Copied"));
+  await showProofStep(page, "Session expired • capabilities disappear and restart stays explicit", 900);
+  await page.getByTitle("Close", { exact: true }).click();
+  await page.getByText("Installed directly into this view").waitFor({ state: "visible" });
+  await page.waitForTimeout(1300);
+  verifyUx("both healthy relay artifacts render after the dialog closes", await page.getByText("Installed directly into this view").isVisible() && await page.getByText("Delivered together in one encrypted selection").isVisible());
+  const capacityNode = afterInstall.nodes.find((node) => node.artifactId === "agent-capacity-card");
+  if (!capacityNode) throw new Error("Relay capacity artifact node was not installed");
+  let installedArtifact = { artifactId: "agent-capacity-card", nodeId: capacityNode.id, viewId: relaySession.targetViewId };
 
   await showProofStep(page, "Delete personal card • keep its package in the shared library", 650);
   await page.getByTestId(`node-${installedArtifact.nodeId}`).click({ position: { x: 100, y: 18 } });
@@ -890,7 +1063,7 @@ try {
   await page.getByTestId("artifact-library").waitFor({ state: "visible" });
   const libraryCounts = await page.evaluate(() => window.__FREEFORM_STATE__.artifactLibraryCounts);
   verifyUx("Shift+Cmd+A opens the shared Artifact Library", await page.getByTestId("artifact-library").isVisible());
-  verifyUx("Artifact Library exposes five built-ins and one personal package", libraryCounts.builtIn === 5 && libraryCounts.personal === 1, libraryCounts);
+  verifyUx("Artifact Library exposes five built-ins and two relay-delivered personal packages", libraryCounts.builtIn === 5 && libraryCounts.personal === 2, libraryCounts);
   verifyUx(
     "Artifact Library replaces renderer glyphs and technical labels with real previews",
     (await page.locator(".artifact-library-glyph, .artifact-library-copy small").count()) === 0,
@@ -1077,6 +1250,7 @@ try {
 
   const manifest = {
     url,
+    relayUrl,
     createdAt: new Date().toISOString(),
     proofTrimStartSeconds,
     proofDuration,
@@ -1094,9 +1268,14 @@ try {
       "toolbar zoom and viewport reset",
       "import query result",
       "toggle dark mode",
-      "generate and copy a no-code artifact bundle handoff",
-      "install a runtime artifact through the browser Agent API",
-      "reject an invalid Chart Kit artifact before persistence",
+      "show Turnstile verification, an actionable creation failure, and retry",
+      "open and copy a capability-redacted, view-bound encrypted Build Session handoff",
+      "reconnect the hibernating WebSocket without retargeting the session",
+      "deliver two artifacts atomically through the relay script",
+      "reject a bad multi-artifact relay selection without partial persistence",
+      "reject an invalid offline bundle with inline feedback",
+      "verify the complete dialog at a 667x375 short-landscape viewport",
+      "expire the session and remove its browser-visible handoff capabilities",
       "delete and drag a personal artifact back from the shared library",
       "delete and restore a built-in artifact from the library",
       "close, reopen, and restore the browser-local workspace",
@@ -1145,4 +1324,5 @@ try {
     await browser.close();
   }
   stopProcessGroup(server);
+  stopProcessGroup(relayServer);
 }

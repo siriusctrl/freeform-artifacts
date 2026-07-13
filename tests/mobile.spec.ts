@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { stubTurnstile } from "./helpers/relay";
 
 test("mobile canvas keeps core controls visible without horizontal overflow", async ({ page }) => {
+  await stubTurnstile(page);
   await page.goto("/");
   await expect(page.getByTestId("canvas-stage")).toBeVisible();
   await expect(page.getByTestId("artifact-library-toggle")).toBeVisible();
@@ -66,8 +68,9 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   const nodeCount = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length;
   await page.getByTestId("library-build-artifact").click();
   await expect(page.getByTestId("agent-request")).toHaveCount(0);
-  await expect(page.getByTestId("agent-instruction")).toContainText("ask the user what artifact they want to build");
-  await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_VIEW_BUNDLE");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("agent-instruction")).toContainText("Ask the user what they want to build");
+  await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_RELAY");
   await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
   const dialogDimensions = await page.evaluate(() => ({
     innerWidth: window.innerWidth,
@@ -80,4 +83,23 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   await page.getByTestId("workspace-menu").click();
   await expect(page.getByTestId("snap-toggle")).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("menuitem", { name: "Load sample data" })).toBeVisible();
+});
+
+test("short landscape keeps every Build Session action reachable", async ({ page }) => {
+  await page.setViewportSize({ width: 667, height: 375 });
+  await stubTurnstile(page);
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("artifact-library-toggle").click();
+  await page.getByTestId("artifact-tab-personal").click();
+  await page.getByTestId("library-build-artifact").click();
+  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-session-status").locator("time")).toBeVisible();
+  const metrics = await page.locator(".agent-dialog-actions button").evaluateAll((buttons) => ({
+    viewportHeight: window.innerHeight,
+    bottoms: buttons.map((button) => Math.round(button.getBoundingClientRect().bottom)),
+    dialogBottom: Math.round(document.querySelector(".agent-dialog")!.getBoundingClientRect().bottom),
+  }));
+  expect(Math.max(...metrics.bottoms)).toBeLessThanOrEqual(metrics.viewportHeight);
+  expect(Math.max(...metrics.bottoms)).toBeLessThanOrEqual(metrics.dialogBottom);
 });

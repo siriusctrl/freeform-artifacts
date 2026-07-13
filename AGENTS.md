@@ -30,6 +30,11 @@ on navigation, invariants, verification, and handoff rules.
   normalization.
 - `src/workspaces/`: published templates, IndexedDB/localStorage persistence,
   and workspace bundle import/export.
+- `src/relay/`: browser Build Session lifecycle, AES-GCM protocol helpers,
+  hibernating WebSocket client, atomic multi-bundle install, receipts, and
+  host-owned placement.
+- `relay/`: independently deployed Cloudflare Worker, SQLite Durable Object,
+  Wrangler config, generated bindings, and emulator tests.
 - `src/workspaces/useWorkspaceAutosave.ts`: debounced saves, close-time recovery,
   and save status transitions.
 - `src/workspaces/preview.ts`: strips boards down to navigation-safe preview
@@ -57,6 +62,8 @@ on navigation, invariants, verification, and handoff rules.
 - `src/styles.css` and `src/styles/`: product styling entry point and domain
   styles.
 - `tests/canvas.spec.ts`: Playwright interaction smoke test.
+- `tests/relay.spec.ts`: real-browser relay, multi-delivery, atomicity,
+  target-binding, idempotency, placement, and reconnect journeys.
 - `scripts/`: preview and proof verification.
 - `skill/freeform-artifact-builder/`: project-local artifact authoring skill.
 - `skill/freeform-artifact-builder/references/visual-style-guide.md`: required
@@ -73,15 +80,24 @@ on navigation, invariants, verification, and handoff rules.
 - Preserve the legacy `templateId` storage key as the local view id; do not
   expose that historical naming in product UI.
 - Generated artifacts must not mutate canvas state directly.
-- Build with AI is bundle-first: trusted packages install into IndexedDB and a
-  target local view without a repository change.
+- Build with AI is a roughly 30-minute, explicit-consent session. Trusted
+  packages install into IndexedDB and the session's immutable target local view
+  without a repository change; do not add a confirmation per delivery.
 - Artifact delivery mode must stay explicit: in-product Build with AI produces a
-  Browser View Bundle; self-deployed work belongs in
-  `src/artifacts/generated/*.artifact.tsx`.
+  Browser Relay handoff; offline file transfer uses Browser View Bundle;
+  self-deployed work belongs in `src/artifacts/generated/*.artifact.tsx`.
 - Prefer Chart Kit for ordinary bar, line, and combo charts. Raw ECharts is a
   registered-capability escape hatch, not the default generated interface.
 - Runtime package ids are immutable across the browser origin; package and view
   writes must remain atomic, while node placement stays view-scoped.
+- Relay installation must atomically write every selected package, the target
+  workspace, and its successful delivery receipt. ACK loss must replay the
+  receipt, never place another node.
+- Keep browser and uploader capabilities separate, store only hashes in the
+  relay, keep the AES-GCM key out of the Worker, bind the session to its original
+  view, and never put capabilities in URLs, logs, or persisted bundle source.
+- The relay remains ephemeral transport: no canvas/package state and no D1, KV,
+  or R2 without a new accepted architecture decision.
 - Deleting a canvas node must not delete its reusable personal package. The
   Artifact Library is origin-scoped and shared across local views, while a
   catalog placement remains ordinary view-scoped node state.
@@ -125,6 +141,9 @@ on navigation, invariants, verification, and handoff rules.
 - Persistence changes must prove close/reopen recovery and isolation between
   two Playwright browser contexts.
 - Run `npm run verify:proof` for user-facing visual changes.
+- Relay changes must also cover `npm run relay:test`, the `tests/relay.spec.ts`
+  real-browser journey, `npm run relay:check`, and a deployed `/health` plus
+  production Build Session smoke.
 - Inspect `proof.gif`, every cell in `contact-sheet.png`, `ux-checks.json`, and
   `frame-check.json` before claiming visual behavior works.
 - The GIF must visibly exercise every changed user-facing function with a named

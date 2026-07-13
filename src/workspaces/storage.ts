@@ -10,10 +10,12 @@ import {
 } from "./types";
 
 export const WORKSPACE_DATABASE_NAME = "freeform-artifacts";
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 export const WORKSPACE_STORE = "workspaces";
 export const ARTIFACT_PACKAGE_STORE = "artifact-packages";
+export const RELAY_RECEIPT_STORE = "relay-receipts";
 const ACTIVE_WORKSPACE_KEY = "freeform-artifacts.active-view.v1";
+const RELAY_RECEIPT_RETENTION_MS = 24 * 60 * 60 * 1_000;
 const workspaceWriteQueues = new Map<string, Promise<unknown>>();
 
 function enqueueWorkspaceWrite<T>(workspaceId: string, operation: () => Promise<T>): Promise<T> {
@@ -42,6 +44,9 @@ export function openDatabase(): Promise<IDBDatabase> {
       }
       if (!database.objectStoreNames.contains(ARTIFACT_PACKAGE_STORE)) {
         database.createObjectStore(ARTIFACT_PACKAGE_STORE, { keyPath: "artifactId" });
+      }
+      if (!database.objectStoreNames.contains(RELAY_RECEIPT_STORE)) {
+        database.createObjectStore(RELAY_RECEIPT_STORE, { keyPath: "id" });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -206,42 +211,194 @@ export interface StoredArtifactPackage {
   [key: string]: unknown;
 }
 
+export interface RelayInstallReceipt {
+  id: string;
+  sessionId: string;
+  deliveryId: string;
+  targetViewId: string;
+  artifactIds: string[];
+  nodeIds: string[];
+  installedAt: string;
+}
+
+export class RelayReceiptAlreadyExistsError extends Error {
+  readonly receiptId: string;
+
+  constructor(receiptId: string) {
+    super("Relay delivery was already committed by another browser tab");
+    this.name = "RelayReceiptAlreadyExistsError";
+    this.receiptId = receiptId;
+  }
+}
+
+export function relayReceiptId(sessionId: string, deliveryId: string) {
+  return `${sessionId}:${deliveryId}`;
+}
+
+export async function loadRelayInstallReceipt(sessionId: string, deliveryId: string) {
+  const database = await openDatabase();
+  try {
+    return await new Promise<RelayInstallReceipt | null>((resolve, reject) => {
+      const request = database.transaction(RELAY_RECEIPT_STORE, "readonly")
+        .objectStore(RELAY_RECEIPT_STORE)
+        .get(relayReceiptId(sessionId, deliveryId));
+      request.onsuccess = () => {
+        const value = request.result as RelayInstallReceipt | undefined;
+        resolve(
+          value && value.sessionId === sessionId && value.deliveryId === deliveryId &&
+            Array.isArray(value.artifactIds) && Array.isArray(value.nodeIds)
+            ? value
+            : null,
+        );
+      };
+      request.onerror = () => reject(request.error ?? new Error("Unable to inspect relay delivery receipt"));
+    });
+  } finally {
+    database.close();
+  }
+}
+
 export async function commitWorkspaceWithArtifactPackage(
   workspace: WorkspaceRecord,
   artifactPackage: StoredArtifactPackage,
 ) {
+  return commitWorkspaceWithArtifactPackages(workspace, [artifactPackage]);
+}
+
+export async function commitWorkspaceWithArtifactPackages(
+  workspace: WorkspaceRecord,
+  artifactPackages: StoredArtifactPackage[],
+  relayReceipt?: RelayInstallReceipt,
+  options: { signal?: AbortSignal } = {},
+) {
   const checked = workspaceRecordSchema.parse(workspace);
+  if (!artifactPackages.length) throw new Error("At least one artifact package is required");
+  const packageIds = new Set<string>();
+  for (const artifactPackage of artifactPackages) {
+    if (packageIds.has(artifactPackage.artifactId)) {
+      throw new Error(`Artifact id ${artifactPackage.artifactId} appears more than once in this delivery`);
+    }
+    packageIds.add(artifactPackage.artifactId);
+  }
   return enqueueWorkspaceWrite(checked.templateId, async () => {
+    if (options.signal?.aborted) throw new DOMException("Build Session is no longer active", "AbortError");
     const database = await openDatabase();
+    let committedWorkspace = checked;
     try {
       await new Promise<void>((resolve, reject) => {
-        const transaction = database.transaction([WORKSPACE_STORE, ARTIFACT_PACKAGE_STORE], "readwrite");
+        const stores = relayReceipt
+          ? [WORKSPACE_STORE, ARTIFACT_PACKAGE_STORE, RELAY_RECEIPT_STORE]
+          : [WORKSPACE_STORE, ARTIFACT_PACKAGE_STORE];
+        const transaction = database.transaction(stores, "readwrite");
+        const abortTransaction = () => {
+          try {
+            transaction.abort();
+          } catch {
+            // The transaction already reached a terminal state.
+          }
+        };
+        options.signal?.addEventListener("abort", abortTransaction, { once: true });
+        const finish = () => options.signal?.removeEventListener("abort", abortTransaction);
         const packageStore = transaction.objectStore(ARTIFACT_PACKAGE_STORE);
-        const existingRequest = packageStore.get(artifactPackage.artifactId);
+        const workspaceStore = transaction.objectStore(WORKSPACE_STORE);
+        let duplicateReceipt = false;
+        if (relayReceipt) {
+          const receiptStore = transaction.objectStore(RELAY_RECEIPT_STORE);
+          const receiptRequest = receiptStore.add(relayReceipt);
+          receiptRequest.onerror = () => {
+            duplicateReceipt = receiptRequest.error?.name === "ConstraintError";
+          };
+          const pruneRequest = receiptStore.getAll();
+          pruneRequest.onsuccess = () => {
+            const cutoff = Date.now() - RELAY_RECEIPT_RETENTION_MS;
+            for (const value of pruneRequest.result as RelayInstallReceipt[]) {
+              const installedAt = Date.parse(value.installedAt);
+              if (!Number.isFinite(installedAt) || installedAt < cutoff) receiptStore.delete(value.id);
+            }
+          };
+        }
+        const existingRequest = packageStore.getAll();
+        const workspaceRequest = workspaceStore.get(checked.templateId);
+        let packagesReady = false;
+        let workspaceReady = false;
         let conflict: Error | null = null;
 
-        existingRequest.onsuccess = () => {
-          const existing = existingRequest.result as StoredArtifactPackage | undefined;
-          if (existing && existing.moduleSource !== artifactPackage.moduleSource) {
-            conflict = new Error(
-              `Artifact id ${artifactPackage.artifactId} is already installed with different code; use a new artifactId`,
-            );
-            transaction.abort();
-            return;
+        const commitWhenReady = () => {
+          if (!packagesReady || !workspaceReady) return;
+          const existingById = new Map(
+            (existingRequest.result as StoredArtifactPackage[]).map((entry) => [entry.artifactId, entry]),
+          );
+          for (const artifactPackage of artifactPackages) {
+            const existing = existingById.get(artifactPackage.artifactId);
+            if (existing && existing.moduleSource !== artifactPackage.moduleSource) {
+              conflict = new Error(
+                `Artifact id ${artifactPackage.artifactId} is already installed with different code; use a new artifactId`,
+              );
+              transaction.abort();
+              return;
+            }
           }
-          packageStore.put({ ...artifactPackage, installedAt: new Date().toISOString() });
-          transaction.objectStore(WORKSPACE_STORE).put(checked);
+          const installedAt = new Date().toISOString();
+          for (const artifactPackage of artifactPackages) {
+            packageStore.put({ ...artifactPackage, installedAt });
+          }
+          const current = workspaceRecordSchema.safeParse(workspaceRequest.result);
+          if (relayReceipt && current.success) {
+            const deliveredNodeIds = new Set(relayReceipt.nodeIds);
+            const existingNodeIds = new Set(current.data.board.nodes.map((node) => node.id));
+            const deliveredNodes = checked.board.nodes.filter((node) =>
+              deliveredNodeIds.has(node.id) && !existingNodeIds.has(node.id));
+            committedWorkspace = {
+              ...current.data,
+              updatedAt: checked.updatedAt,
+              board: {
+                ...current.data.board,
+                nodes: [...current.data.board.nodes, ...deliveredNodes],
+                selectedNodeId: checked.board.selectedNodeId,
+              },
+            };
+          }
+          workspaceStore.put(committedWorkspace);
+        };
+
+        existingRequest.onsuccess = () => {
+          packagesReady = true;
+          commitWhenReady();
         };
         existingRequest.onerror = () => reject(existingRequest.error ?? new Error("Unable to inspect artifact package"));
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(conflict ?? transaction.error ?? new Error("Unable to install artifact"));
-        transaction.onabort = () => reject(conflict ?? transaction.error ?? new Error("Artifact installation was aborted"));
+        workspaceRequest.onsuccess = () => {
+          workspaceReady = true;
+          commitWhenReady();
+        };
+        workspaceRequest.onerror = () => reject(workspaceRequest.error ?? new Error("Unable to inspect target workspace"));
+        transaction.oncomplete = () => {
+          finish();
+          resolve();
+        };
+        transaction.onerror = () => {
+          finish();
+          reject(
+            duplicateReceipt && relayReceipt
+              ? new RelayReceiptAlreadyExistsError(relayReceipt.id)
+              : conflict ?? transaction.error ?? new Error("Unable to install artifact"),
+          );
+        };
+        transaction.onabort = () => {
+          finish();
+          reject(
+            options.signal?.aborted
+              ? new DOMException("Build Session is no longer active", "AbortError")
+              : duplicateReceipt && relayReceipt
+                ? new RelayReceiptAlreadyExistsError(relayReceipt.id)
+                : conflict ?? transaction.error ?? new Error("Artifact installation was aborted"),
+          );
+        };
       });
     } finally {
       database.close();
     }
-    writeWorkspaceRecovery(checked);
-    return "indexeddb" as const;
+    writeWorkspaceRecovery(committedWorkspace);
+    return { storage: "indexeddb" as const, workspace: committedWorkspace };
   });
 }
 

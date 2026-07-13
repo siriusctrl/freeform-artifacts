@@ -35,6 +35,11 @@ export function useWorkspaceAutosave({
     }
   }, []);
 
+  const skipNextSave = useCallback(() => {
+    cancelPendingSave();
+    shouldSkip.current = true;
+  }, [cancelPendingSave]);
+
   useEffect(() => {
     if (shouldSkip.current) {
       shouldSkip.current = false;
@@ -72,5 +77,5 @@ export function useWorkspaceAutosave({
     };
   }, [cancelPendingSave]);
 
-  return { cancelPendingSave };
+  return { cancelPendingSave, skipNextSave };
 }

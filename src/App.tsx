@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CanvasWorkspace } from "./canvas/CanvasWorkspace";
+import { installRelayDeliveryIntoStoredView } from "./relay/installDelivery";
+import type { RelayDeliveryIdentity, RelayLiveInstaller } from "./relay/types";
+import { useArtifactRelaySession } from "./relay/useArtifactRelaySession";
 import {
   createWorkspace,
   listWorkspaces,
   loadOrCreateWorkspace,
+  loadRelayInstallReceipt,
   loadWorkspaceById,
+  RelayReceiptAlreadyExistsError,
   setActiveWorkspaceId,
 } from "./workspaces/storage";
 import { getRequestedTemplate } from "./workspaces/templates";
@@ -26,7 +31,42 @@ export default function App() {
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [views, setViews] = useState<WorkspaceSummary[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const liveRelayInstallerRef = useRef<RelayLiveInstaller | null>(null);
   const template = useMemo(() => getRequestedTemplate(), []);
+
+  const installRelayDelivery = useCallback(async (
+    targetViewId: string,
+    bundles: unknown[],
+    placement: { stageSize: { width: number; height: number } },
+    identity: RelayDeliveryIdentity,
+  ) => {
+    const receipt = await loadRelayInstallReceipt(identity.sessionId, identity.deliveryId);
+    if (receipt) {
+      if (receipt.targetViewId !== targetViewId) throw new Error("Relay receipt target does not match this session");
+      return { artifactIds: receipt.artifactIds, nodeIds: receipt.nodeIds };
+    }
+    const liveInstaller = liveRelayInstallerRef.current;
+    let result;
+    try {
+      result = liveInstaller?.viewId === targetViewId
+        ? await liveInstaller.install(bundles, placement, identity)
+        : await installRelayDeliveryIntoStoredView(targetViewId, bundles, placement, identity).then((prepared) => ({
+          artifactIds: prepared.artifacts.map((artifact) => artifact.id),
+          nodeIds: prepared.nodes.map((node) => node.id),
+        }));
+    } catch (error) {
+      if (!(error instanceof RelayReceiptAlreadyExistsError)) throw error;
+      const racedReceipt = await loadRelayInstallReceipt(identity.sessionId, identity.deliveryId);
+      if (!racedReceipt || racedReceipt.targetViewId !== targetViewId) throw error;
+      result = { artifactIds: racedReceipt.artifactIds, nodeIds: racedReceipt.nodeIds };
+    }
+    setViews(await listWorkspaces());
+    return result;
+  }, []);
+  const relay = useArtifactRelaySession(installRelayDelivery);
+  const registerRelayInstaller = useCallback((installer: RelayLiveInstaller | null) => {
+    liveRelayInstallerRef.current = installer;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,10 +144,12 @@ export default function App() {
       template={bootstrapped.template}
       views={views}
       sidebarOpen={sidebarOpen}
+      relay={relay}
       onCreateView={addView}
       onSelectView={selectView}
       onToggleSidebar={toggleSidebar}
       onViewTitleChange={updateViewTitle}
+      onRegisterRelayInstaller={registerRelayInstaller}
     />
   );
 }

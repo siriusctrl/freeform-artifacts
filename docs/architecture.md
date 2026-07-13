@@ -104,6 +104,82 @@ view-scoped. Package and target workspace writes share one IndexedDB transaction
 invalid targets and payloads are rejected before persistence. Loader failures
 are quarantined per source/package, and renderer errors are isolated per card.
 
+## Artifact Delivery Relay
+
+**Build with AI** opens a roughly 30-minute, view-bound delivery session. It does
+not move durable workspace state to a backend. The browser creates separate
+browser and uploader capabilities plus a 256-bit AES-GCM key, sends only
+capability hashes to the relay, and copies the uploader capability and key into
+the agent handoff. The Worker therefore sees routing metadata, artifact count,
+ciphertext size, and encrypted payloads, but never bundle source, node data, or
+the decryption key.
+
+```mermaid
+sequenceDiagram
+    participant B as "Browser-local view"
+    participant R as "Relay Worker and session DO"
+    participant A as "Remote agent delivery script"
+    B->>R: "Turnstile-verified session plus token hashes"
+    B->>R: "Hibernating WebSocket with browser capability"
+    A->>R: "AES-GCM ciphertext plus upload capability"
+    R-->>B: "Pending delivery over WebSocket"
+    B->>B: "Decrypt and validate every bundle"
+    B->>B: "Atomic packages, workspace, and receipt commit"
+    B->>R: "Installed or rejected ACK"
+    R->>R: "Delete pending ciphertext"
+```
+
+The version 1 transport lives under `relay/` and uses one SQLite-backed Durable
+Object per session. Access ends at the 30-minute expiry timestamp; its alarm
+then deletes the SQL tables and ciphertext. Hibernating
+WebSockets avoid polling and allow an idle session to release Worker memory.
+The Durable Object stores session metadata, SHA-256 capability hashes,
+idempotency outcomes, and bounded pending ciphertext. It does not use D1, KV, or
+R2 and never stores canvases or artifact registries.
+
+One session accepts several deliveries; one delivery contains 1–12 bundles.
+The uploader capability is reusable only within that session, while every
+delivery uses a UUID plus an envelope digest that cannot represent different
+ciphertext on retry. The delivery script keeps the encrypted envelope (never
+the key or upload capability) in a private OS cache only while an outcome is
+ambiguous so a later process can make a byte-identical retry. Definitive results
+delete it; later runs opportunistically prune owned entries older than 24 hours.
+A changed payload, unauthenticated cache entry, or missing retry cache fails
+locally. The browser serializes processing. It validates the complete decrypted
+selection,
+then writes all packages, the target workspace, and a delivery receipt in one
+IndexedDB transaction. If the network drops after that commit but before ACK,
+the Durable Object replays the ciphertext and the browser uses the receipt to
+ACK without adding duplicate nodes. Rejected selections leave no package,
+workspace, or receipt fragment. The transaction reads the latest persisted
+workspace, merges delivered nodes, and returns that exact committed record to
+the live tab; the tab skips its otherwise redundant autosave so a same-view edit
+saved by another tab is not overwritten by a stale pre-delivery snapshot.
+
+Browser-only capability material stays in module-private page memory and is not
+written to Web Storage. Reloading therefore ends the browser side of a Build
+Session. The upload capability and encryption key appear only in the copied
+agent handoff, are visually masked in the dialog, and enter the uploader over
+stdin rather than process arguments.
+
+Placement stays host-owned. The session captures its target view and stage size;
+navigation never retargets it. Installation uses that view's current or last
+persisted viewport, snaps the candidate to the 38px grid, searches outward from
+the center for the nearest fully visible non-overlapping position, and assigns
+successively highest z-indices. If no complete position exists, the first card
+stays centered on top and additional cards offset diagonally by one grid step.
+
+Session creation requires a strict allowed browser origin and Turnstile. The
+Worker applies an IP creation limit and a per-source upload limit. Only a
+request whose upload capability the Durable Object has authenticated consumes
+the per-session upload budget. Additional limits include 24 delivery ids,
+2 MB ciphertext per delivery, and 8 MB pending ciphertext
+per session. Browser WebSocket and agent upload capabilities cannot substitute
+for one another. The fixed Turnstile test token is accepted only in the exact
+`development` environment from a loopback origin; every other environment
+fails closed without a real secret. `RELAY_ENABLED` is the operational kill switch. The existing
+file installer and direct same-browser Agent API remain offline/local fallbacks.
+
 The Artifact Library projects two sources into one placement UI:
 
 - Built-in entries pair registered system artifacts with reusable demo presets.
@@ -305,16 +381,19 @@ ink, geometric shapes, or extremely large visual primitive counts.
 
 ## Runtime Module Boundaries
 
-`src/App.tsx` is the view-bootstrap boundary: it opens, creates, and switches
-browser-local views. `src/canvas/CanvasWorkspace.tsx` composes the active canvas,
-while focused runtime and autosave hooks load artifacts and persist board state.
+`src/App.tsx` is the view-bootstrap and relay-routing boundary: it opens,
+creates, and switches browser-local views, and routes a delivery to the active
+installer or the stored target view without retargeting it.
+`src/canvas/CanvasWorkspace.tsx` composes the active canvas, while focused
+runtime and autosave hooks load artifacts and persist board state.
 The workspace publishes Playwright debug state and wires product actions such as
 import/export, theme switching, snap preference, deletion, and the AI handoff dialog. Personal
-artifact creation is bundle-first: an agent installs a trusted ESM bundle into
-one browser-local view through `window.__FREEFORM_AGENT__`, or the user imports
-the same bundle file. Neither path requires an application commit or deploy.
-The copyable handoff is agent-neutral: it installs the project skill, then asks
-the agent to question the user about the artifact before authoring the bundle.
+artifact creation is bundle-first: a remote agent delivers encrypted bundles
+through `src/relay/`, a same-browser agent uses `window.__FREEFORM_AGENT__`, or
+the user imports the same bundle file. None requires an application commit or
+deploy. The copyable handoff is agent-neutral: it installs the project skill,
+then asks the agent to question the user before authoring and delivering one or
+more bundles.
 
 Canvas runtime behavior lives under `src/canvas/`:
 
@@ -322,6 +401,10 @@ Canvas runtime behavior lives under `src/canvas/`:
 - `hooks/useCanvasInteractions.ts` owns pointer drag, resize, wheel pan, pinch
   zoom, toolbar zoom, z-order bumping, and snap-to-grid math.
 - `debugState.ts` is the only place that writes `window.__FREEFORM_STATE__`.
+- `src/relay/` owns browser session consent, capabilities, encryption,
+  reconnect/replay, atomic multi-bundle preparation, and placement.
+- `relay/` is the independently deployable transport Worker and Durable Object;
+  it must remain unable to decrypt artifact source or own durable product state.
 
 Styles are also split by domain under `src/styles/` and imported through
 `src/styles.css`. Keep new visual rules near the surface they style instead of

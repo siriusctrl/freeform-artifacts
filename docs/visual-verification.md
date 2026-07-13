@@ -15,7 +15,10 @@ The helper starts the local Vite server, opens Chromium through Playwright, and
 runs an asserted user journey across layout, shortcuts, the shared artifact
 library, drag, resize, pan, zoom, data, theme, AI handoff generation, deletion,
 re-addition, and close/reopen persistence. A verification-only
-cursor and step label make each gesture legible in the recording. The helper
+cursor and step label make each gesture legible in the recording. It launches a
+local relay emulator, opens a real Build Session, delivers two encrypted bundles
+with the skill script, and visibly rejects a mixed invalid selection without a
+partial install. The helper
 captures video, converts it to GIF, and writes:
 
 - `proof.gif` for quick user-facing review.
@@ -69,7 +72,11 @@ as supplementary checks. Look for:
 - top toolbar zoom controls not changing scale;
 - snap-to-grid toggle not returning to the intended on/off state;
 - light/dark mode leaving illegible cards or panels;
-- AI handoff accidentally changing board state or omitting the skill command;
+- Build Session status failing to become connected, omitting the skill/delivery
+  command, silently changing its target view, or changing board state before a
+  delivery;
+- multi-artifact relay delivery appearing partially, stacking every fallback in
+  exactly one hidden position, or showing a rejected selection on the canvas;
 - Views or Artifacts shortcuts firing inside editable controls;
 - the Artifact Library covering its drag target, clipping on mobile, or losing
   personal packages when a node is deleted or the active view changes;
@@ -85,7 +92,8 @@ as supplementary checks. Look for:
 
 ## Future Improvements
 
-- Add frame-diff checks for blank frames.
+- Add perceptual frame-diff checks for one-frame UI regressions beyond the
+  current blank-frame detector.
 - Add visible-latency metrics for drag and zoom.
 - Add production preview proof after `npm run build`.
 - Add mobile viewport proof once touch gestures are implemented.

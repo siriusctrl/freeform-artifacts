@@ -173,7 +173,7 @@ export function ArtifactLibrary({
         ) : null}
       </div>
       <footer className="artifact-library-footer">
-        <button type="button" className="secondary-action" data-testid="library-build-artifact" onClick={onBuildArtifact}>
+        <button type="button" className="secondary-action" data-testid="library-build-artifact" onClick={onBuildArtifact} title="Start a private 30-minute Build Session for this view">
           <Sparkles size={16} /><span>Build with AI</span>
         </button>
       </footer>

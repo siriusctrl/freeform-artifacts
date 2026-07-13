@@ -211,7 +211,7 @@ export function CanvasToolbar({
             <LibraryBig size={18} />
             <span>Artifacts</span>
           </button>
-          <button type="button" className="primary-action" onClick={onBuildArtifact} data-testid="build-artifact">
+          <button type="button" className="primary-action" onClick={onBuildArtifact} data-testid="build-artifact" title="Start a private 30-minute Build Session for this view">
             <Sparkles size={17} /><span>Build with AI</span>
           </button>
         </div>

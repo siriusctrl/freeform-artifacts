@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import { initialNodes } from "../src/canvas/seeds/demoBoard";
+import { stubTurnstile } from "./helpers/relay";
 
 async function chartLabelLayout(page: Page, hostTestId: string, labels: string[]) {
   return page.getByTestId(hostTestId).evaluate((host, expectedLabels) => {
@@ -96,6 +97,7 @@ async function pipelineConnectorGeometry(page: Page) {
 }
 
 test("freeform canvas supports spatial editing, AI handoff, and deletion", async ({ page }) => {
+  await stubTurnstile(page);
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
 
@@ -245,12 +247,25 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   });
   expect(Math.round(toolbarPositionsBeforeStatusChange.status.width)).toBe(128);
   expect(toolbarPositionsBeforeStatusChange.status.right).toBeLessThan(toolbarPositionsBeforeStatusChange.theme.left);
-  await revenueNode.click({ position: { x: 100, y: 18 } });
-  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saving locally");
-  const toolbarPositionsDuringSave = await page.evaluate(() => {
-    const left = (testId: string) => document.querySelector(`[data-testid="${testId}"]`)!.getBoundingClientRect().left;
-    return { theme: left("theme-toggle"), more: left("workspace-menu"), build: left("build-artifact") };
+  await page.getByTestId("board-status").evaluate((status) => {
+    status.setAttribute("data-saving-toolbar-positions", "");
+    const observer = new MutationObserver(() => {
+      if (!status.textContent?.includes("Saving locally")) return;
+      const left = (testId: string) => document.querySelector(`[data-testid="${testId}"]`)!.getBoundingClientRect().left;
+      status.setAttribute("data-saving-toolbar-positions", JSON.stringify({
+        theme: left("theme-toggle"),
+        more: left("workspace-menu"),
+        build: left("build-artifact"),
+      }));
+      observer.disconnect();
+    });
+    observer.observe(status, { childList: true, characterData: true, subtree: true });
   });
+  await revenueNode.click({ position: { x: 100, y: 18 } });
+  await expect(page.getByTestId("board-status")).not.toHaveAttribute("data-saving-toolbar-positions", "");
+  const toolbarPositionsDuringSave = JSON.parse(
+    (await page.getByTestId("board-status").getAttribute("data-saving-toolbar-positions"))!,
+  );
   expect(toolbarPositionsDuringSave).toEqual({
     theme: toolbarPositionsBeforeStatusChange.theme.left,
     more: toolbarPositionsBeforeStatusChange.more.left,
@@ -359,21 +374,16 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   await expect(page.getByTestId("agent-instruction")).toContainText(
     "Install the project artifact skill for your agent:",
   );
-  await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_VIEW_BUNDLE");
-  await expect(page.getByTestId("agent-instruction")).toContainText("Do not use the Self-Deployed Repo workflow");
-  await expect(page.getByTestId("agent-instruction")).toContainText(
-    "this browser mode produces a .freeform-artifact.json bundle outside the app source tree",
-  );
-  await expect(page.getByTestId("agent-instruction")).toContainText(
-    "Self-deployed mode produces src/artifacts/generated/<name>.artifact.tsx",
-  );
+  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_RELAY");
+  await expect(page.getByTestId("agent-instruction")).toContainText("Browser Relay workflow");
   await expect(page.getByTestId("agent-instruction")).toContainText(
     "npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder",
   );
-  await expect(page.getByTestId("agent-instruction")).toContainText("ask the user what artifact they want to build");
+  await expect(page.getByTestId("agent-instruction")).toContainText("Ask the user what they want to build");
   await expect(page.getByTestId("agent-instruction")).not.toContainText("Claude Code");
-  await expect(page.getByTestId("agent-instruction")).toContainText("window.__FREEFORM_AGENT__.installArtifact");
-  await expect(page.getByTestId("agent-instruction")).toContainText("window.__FREEFORM_AGENT__.validateArtifact");
+  await expect(page.getByTestId("agent-instruction")).toContainText("scripts/deliver.mjs");
+  await expect(page.getByTestId("agent-instruction")).toContainText("atomic package-and-view commit");
   await expect(page.getByTestId("agent-instruction")).toContainText('renderer: "chart-kit"');
   await expect(page.getByTestId("agent-instruction")).toContainText("Do not create src/artifacts/generated files");
   await expect(page.getByTestId("agent-instruction")).toContainText("Do not modify, commit, or deploy");
@@ -381,6 +391,7 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   expect((await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length).toBe(beforeHandoffCount);
   await page.getByTitle("Close", { exact: true }).click();
 
+  await stage.focus();
   await expect(page.getByTestId("delete-node-revenue")).toBeVisible();
   await page.keyboard.press("Delete");
   await expect(page.getByTestId("node-node-revenue")).toHaveCount(0);
@@ -784,7 +795,7 @@ test("published example migration refreshes copy without replacing personal layo
   const migrated = await page.evaluate(async () => {
     const nodes = window.__FREEFORM_STATE__!.nodes;
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("freeform-artifacts", 2);
+      const request = indexedDB.open("freeform-artifacts", 3);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });

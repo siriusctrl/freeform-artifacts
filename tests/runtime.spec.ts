@@ -4,7 +4,7 @@ import { agentArtifactBundle } from "./helpers/runtimeBundle";
 async function readArtifactPackage(page: Page, artifactId: string) {
   return page.evaluate(async (id) => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("freeform-artifacts", 2);
+      const request = indexedDB.open("freeform-artifacts", 3);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -31,7 +31,7 @@ test("agent bundles install into a view without a repository change and survive 
   expect(result.artifactId).toBe(bundle.artifactId);
   await expect(page.getByTestId(`node-${result.nodeId}`)).toBeVisible();
   await expect(page.getByText("Installed without a deploy")).toBeVisible();
-  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Installed Agent Forecast");
 
   await page.reload();
   await expect(page.getByTestId(`node-${result.nodeId}`)).toBeVisible();
@@ -145,7 +145,7 @@ test("one corrupt installed package does not suppress healthy runtime artifacts"
   await page.evaluate(async (value) => window.__FREEFORM_AGENT__!.installArtifact(value), healthy);
   await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("freeform-artifacts", 2);
+      const request = indexedDB.open("freeform-artifacts", 3);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -159,7 +159,7 @@ test("one corrupt installed package does not suppress healthy runtime artifacts"
   });
 
   await page.reload();
-  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.artifactIds)).toContain(healthy.artifactId);
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__?.artifactIds ?? [])).toContain(healthy.artifactId);
   await expect(page.getByText("Installed without a deploy")).toBeVisible();
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toContain("artifact issue");
 });
