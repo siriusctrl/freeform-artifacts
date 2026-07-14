@@ -8,6 +8,7 @@ const DELETED_PREFIX = "freeform-artifacts.deleted-view.";
 const DELETED_INDEX_KEY = "freeform-artifacts.deleted-views.v1";
 
 interface PersistedWorkspace {
+  incarnationId: string;
   revision: number;
   templateId: string;
   title: string;
@@ -402,6 +403,32 @@ test("an old Undo cannot clear a newer deletion generation", async ({ browser })
 
 test("symmetric cross-view deletion recovers a non-tombstoned editable view", async ({ browser }) => {
   const context = await browser.newContext();
+  await context.addInitScript(({ deletedKeyPrefix }) => {
+    type DeferredStorageEvent = Pick<StorageEventInit, "key" | "newValue" | "oldValue" | "url">;
+    const control = window as Window & {
+      __freeformDeferredDeletedEvents?: DeferredStorageEvent[];
+      __freeformReleaseDeletedEvents?: () => void;
+    };
+    let paused = true;
+    control.__freeformDeferredDeletedEvents = [];
+    window.addEventListener("storage", (event) => {
+      if (!paused || !event.key?.startsWith(deletedKeyPrefix)) return;
+      event.stopImmediatePropagation();
+      control.__freeformDeferredDeletedEvents?.push({
+        key: event.key,
+        newValue: event.newValue,
+        oldValue: event.oldValue,
+        url: event.url,
+      });
+    }, true);
+    control.__freeformReleaseDeletedEvents = () => {
+      paused = false;
+      const deferred = control.__freeformDeferredDeletedEvents?.splice(0) ?? [];
+      for (const init of deferred) {
+        window.dispatchEvent(new StorageEvent("storage", { ...init, storageArea: localStorage }));
+      }
+    };
+  }, { deletedKeyPrefix: "freeform-artifacts.deleted-view" });
   try {
     const first = await context.newPage();
     await first.goto("/");
@@ -428,10 +455,25 @@ test("symmetric cross-view deletion recovers a non-tombstoned editable view", as
     ]);
 
     const deletedIds = ["market-overview", secondViewId];
+    await expect(first.getByTestId("view-undo-toast")).toBeVisible();
+    await expect(second.getByTestId("view-undo-toast")).toBeVisible();
+    await expect.poll(async () => {
+      const snapshot = await readStorageSnapshot(first);
+      return deletedIds.every((id) => snapshot.tombstones.includes(id))
+        && snapshot.records.every((workspace) => !deletedIds.includes(workspace.templateId));
+    }, { timeout: 15_000 }).toBe(true);
+    await Promise.all([first, second].map((page) => page.evaluate(() => {
+      const control = window as Window & { __freeformReleaseDeletedEvents?: () => void };
+      control.__freeformReleaseDeletedEvents?.();
+    })));
+
     await expect.poll(async () => {
       const snapshot = await readStorageSnapshot(first);
       return deletedIds.every((id) => snapshot.tombstones.includes(id)) && snapshot.survivors.length > 0;
-    }, { timeout: 15_000 }).toBe(true);
+    // Two tabs each process both local deletes and the sibling's storage event.
+    // Leave headroom for that event queue when the full browser suite is also
+    // exercising the relay emulator in a second worker.
+    }, { timeout: 25_000 }).toBe(true);
     await expect.poll(async () => {
       const activeId = await first.evaluate(() => window.__FREEFORM_STATE__?.templateId ?? "");
       return Boolean(activeId) && !deletedIds.includes(activeId);
@@ -457,6 +499,86 @@ test("symmetric cross-view deletion recovers a non-tombstoned editable view", as
     await waitForCanvas(first);
     await expect(first.getByTestId("canvas-title")).toHaveText("Editable recovery view");
     expect(await readIndexedWorkspace(first, recoveredId)).toMatchObject({ title: "Editable recovery view" });
+  } finally {
+    await context.close();
+  }
+});
+
+test("a delayed tab reloads an active view after delete and restore changes its incarnation", async ({ browser }) => {
+  const context = await browser.newContext();
+  try {
+    const delayed = await context.newPage();
+    await delayed.addInitScript(({ deletedPrefix }) => {
+      type DeferredStorageEvent = Pick<StorageEventInit, "key" | "newValue" | "oldValue" | "url">;
+      const control = window as Window & {
+        __freeformDeferredDeletedEvents?: DeferredStorageEvent[];
+        __freeformReleaseDeletedEvents?: () => void;
+      };
+      let paused = true;
+      control.__freeformDeferredDeletedEvents = [];
+      window.addEventListener("storage", (event) => {
+        if (!paused || !event.key?.startsWith(deletedPrefix)) return;
+        event.stopImmediatePropagation();
+        control.__freeformDeferredDeletedEvents?.push({
+          key: event.key,
+          newValue: event.newValue,
+          oldValue: event.oldValue,
+          url: event.url,
+        });
+      }, true);
+      control.__freeformReleaseDeletedEvents = () => {
+        paused = false;
+        const deferred = control.__freeformDeferredDeletedEvents?.splice(0) ?? [];
+        for (const init of deferred) {
+          window.dispatchEvent(new StorageEvent("storage", { ...init, storageArea: localStorage }));
+        }
+      };
+    }, { deletedPrefix: DELETED_PREFIX });
+    await delayed.goto("/?view=market-overview");
+    await waitForCanvas(delayed);
+    await delayed.waitForTimeout(750);
+
+    const restorer = await context.newPage();
+    await restorer.goto("/?view=market-overview");
+    await waitForCanvas(restorer);
+    await restorer.waitForTimeout(750);
+    const restored = await restorer.evaluate(async () => {
+      const moduleUrl = "/src/workspaces/storage.ts";
+      const storage = await import(/* @vite-ignore */ moduleUrl) as
+        typeof import("../src/workspaces/storage");
+      const source = await storage.loadWorkspaceById("market-overview");
+      if (!source) throw new Error("Expected seeded workspace");
+      const deleted = await storage.deleteWorkspace("market-overview", source.workspace);
+      if (!deleted?.deletionId) throw new Error("Expected durable deletion generation");
+      await storage.restoreWorkspace({
+        ...deleted.workspace,
+        title: "Restored in another tab",
+      }, 0, deleted.deletionId);
+      const loaded = await storage.loadWorkspaceById("market-overview");
+      const summary = (await storage.listWorkspaces()).find((view) => view.id === "market-overview");
+      if (!loaded || !summary) throw new Error("Expected restored workspace summary");
+      return {
+        oldIncarnationId: deleted.workspace.incarnationId,
+        restoredIncarnationId: loaded.workspace.incarnationId,
+        summaryIncarnationId: summary.incarnationId,
+      };
+    });
+
+    expect(restored.restoredIncarnationId).not.toBe(restored.oldIncarnationId);
+    expect(restored.summaryIncarnationId).toBe(restored.restoredIncarnationId);
+    expect(await delayed.getByTestId("canvas-title").textContent()).not.toBe("Restored in another tab");
+    expect(await delayed.evaluate(() => {
+      const control = window as Window & { __freeformDeferredDeletedEvents?: StorageEventInit[] };
+      return control.__freeformDeferredDeletedEvents?.length ?? 0;
+    })).toBeGreaterThanOrEqual(2);
+
+    await delayed.evaluate(() => {
+      const control = window as Window & { __freeformReleaseDeletedEvents?: () => void };
+      control.__freeformReleaseDeletedEvents?.();
+    });
+    await expect(delayed.getByTestId("canvas-title")).toHaveText("Restored in another tab");
+    await expect.poll(async () => (await readIndexedWorkspace(delayed, "market-overview"))?.incarnationId)
+      .toBe(restored.restoredIncarnationId);
   } finally {
     await context.close();
   }

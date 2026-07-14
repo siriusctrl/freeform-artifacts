@@ -1207,6 +1207,8 @@ Status: Accepted
 
 Date: 2026-07-13
 
+Amended: 2026-07-14
+
 ### Context
 
 The browser Agent API can install a bundle when an agent controls the same page,
@@ -1229,7 +1231,8 @@ must remain in the user's browser.
   artifact. A session may receive multiple deliveries, and one delivery may
   contain one or more independently validated artifact bundles.
 - A click on **Build with AI** is explicit session-level consent. Let the browser
-  create a target-view-bound session and maintain a hibernating WebSocket. Give
+  create a target-view-incarnation-bound session and maintain a hibernating
+  WebSocket. Give
   the trusted agent a separate capability-scoped upload credential in the
   copied instruction. “One-time” means a credential exists only for one
   short-lived Build Session, not one upload: it may submit several deliveries
@@ -1240,46 +1243,65 @@ must remain in the user's browser.
   browser package registries there.
 - Generate an AES-256-GCM key in the browser and include it only in the agent
   handoff. Bind ciphertext authentication to protocol version, session id,
-  target view id, and delivery id. Store only SHA-256 capability hashes in the
-  Durable Object; the relay never receives the plaintext encryption key.
+  target view id, target view incarnation id, and delivery id. Store only
+  SHA-256 capability hashes in the Durable Object; the relay never receives the
+  plaintext encryption key.
 - Keep the browser capability in module-private page memory, never Web Storage
   or the agent handoff. Reloading ends the browser side of the session. Visually
   mask the uploader capability and encryption key; copy them only in the handoff
   and pass them to the delivery script over stdin rather than process arguments.
+- Pin the generated handoff to a reviewed Skills CLI version. Fetch the project
+  skill by full commit SHA, verify `FETCH_HEAD` equals that SHA, and install from
+  the detached local checkout because the Skills CLI does not accept a bare SHA
+  source reliably. Include an expected launcher digest, and require the launcher
+  to verify itself and its dependency-free core before reading credentials from
+  stdin.
 - Validate every artifact in the browser before installation. For a multi-item
   delivery, validate the complete selection before committing package and view
-  writes so a failed item cannot leave an accidental partial dashboard.
+  writes so a failed item cannot leave an accidental partial dashboard. Prepare
+  trusted modules outside the UI mutation gate because module evaluation can be
+  unbounded; ending the session still prevents a later commit.
 - Place delivered artifacts using host-owned layout knowledge. Search the
   current target-view viewport for a complete non-overlapping position nearest
   its center, snap it to the grid, and append it at the highest z-index. If the
-  viewport has no complete opening, continue the same center-out search across
-  the neighboring world grid until every item has its own non-overlapping
-  position; never stack a fallback at the occupied viewport center.
+  viewport has no complete opening, keep the fallback centered and visible on
+  the top layer instead of moving it outside the viewport. Stagger multiple
+  fallbacks from one delivery around that center in deterministic grid-sized
+  offsets; overlap with existing nodes is intentional in this full-view case.
 - Keep the existing file installer as the offline fallback. Do not require an
   npm-published delivery CLI initially; the project skill may invoke a bundled
   script or the relay HTTP contract directly.
 - Persist a successful browser delivery receipt in the same IndexedDB
   transaction as its packages and target workspace. If an ACK is lost, replay
   returns the receipt and sends another ACK without placing duplicate nodes.
-- Give every browser-local workspace a monotonic revision. Flush current-tab
-  dirty state before a live install, compare-and-swap ordinary saves, and merge
-  relay nodes into the transaction's latest revision. Rebase external node
-  changes through bounded in-memory history and record the delivery as one Undo
-  step instead of clearing prior Undo entries.
-- Make mounted editing surfaces inert for the short validation-and-commit
+- Give every browser-local workspace a monotonic revision and an incarnation id
+  stable for that logical lifetime. Flush current-tab dirty state before a live
+  install and require strict compare-and-swap on both values. If the revision
+  changes, reload the newest workspace, re-run host placement against its nodes,
+  and retry a bounded number of times; never merge a stale precomputed layout.
+  Rebase external node changes through bounded in-memory history and record the
+  delivery as one Undo step instead of clearing prior Undo entries.
+- Make mounted editing surfaces inert only for the short flush-and-commit
   critical section and cancel any active drag when it begins. This prevents a
   new local mutation from being accepted after the flushed snapshot but before
-  the committed workspace is applied; session controls remain available so the
-  user can still end an in-flight session.
+  the committed workspace is applied while leaving navigation and editing
+  available during trusted module preparation. Session controls remain
+  available so the user can end an in-flight session.
 - Treat a deleted target view as a terminal delivery rejection. Check its
   browser-local tombstone at the serialized write boundary and inside the
-  IndexedDB transaction; never clear that tombstone from the relay path or
-  recreate the view from an in-flight snapshot.
+  IndexedDB transaction. Relay commit and delete share one abortable,
+  per-workspace cross-tab Web Lock so the two operations have a deterministic
+  order; ending the session also cancels a queued lock request. Never clear that
+  tombstone from the relay path or recreate the view from an in-flight snapshot.
 - Store deletion as an independent per-View tombstone with a fresh generation
-  UUID, and make restore a one-time conditional write against both that
-  generation and the deleted revision. Recovery mirrors are monotonic, so
-  stale pagehide and stale Undo paths cannot resurrect or overwrite a newer
-  View, including after restore, edit, and a later deletion.
+  UUID, and make restore a one-time conditional write against that generation,
+  the deleted revision, and the deleted incarnation. A successful restore
+  creates a new incarnation, so an old Build Session cannot silently retarget
+  to a new logical View that reuses the same id. Recovery mirrors are monotonic,
+  and each committed revision carries a random commit identity used by its
+  per-page emergency journal. Stale pagehide and stale Undo paths therefore
+  cannot resurrect or overwrite a newer View, including after restore, edit,
+  and a later deletion; legacy timestamp-only in-flight journals fail closed.
 - Bind each idempotency UUID to a digest of its complete encrypted envelope.
   Reject the same id with changed ciphertext. Let the uploader retain only that
   envelope and a payload digest in a private, mode-0600 OS cache only while an
@@ -1296,6 +1318,11 @@ must remain in the user's browser.
 - Return strict CORS headers for every allowlisted browser-origin upload result,
   including errors, and canonicalize IPv6 limit keys by /64 while mapping only
   genuine IPv4-mapped IPv6 addresses into IPv4 buckets.
+- Use relay wire protocol v2 for session, WebSocket, delivery, ACK, status, and
+  health payloads. Reject v1 wire messages and pre-upgrade sessions without a
+  target incarnation. Keep `.freeform-artifact.json` at its independent bundle
+  schema version 1. Retain `/v1` as the deployed HTTP route family; it is not the
+  wire-message version.
 - Deploy the personal demo on `workers.dev`. Do not add D1, KV, or R2: the
   SQLite-backed Durable Object is sufficient for the session's bounded pending
   ciphertext and idempotency rows.
@@ -1320,26 +1347,29 @@ must remain in the user's browser.
   time. Every route and hibernating WebSocket message enforces the expiry
   timestamp synchronously, so ciphertext becomes inaccessible at 30 minutes
   even if physical deletion is delayed until the alarm retry.
-- The SQL schema-v2 upgrade adds envelope digests. An exact retry of still-
-  pending schema-v1 ciphertext is compared field-by-field and backfills its
-  digest. A terminal schema-v1 delivery whose ciphertext was already deleted is
-  conservatively rejected as unverifiable; sessions last only 30 minutes.
+- The in-object SQL schema-v3 upgrade adds target incarnation metadata. Earlier
+  rows migrate structurally, but sessions created without an incarnation are
+  conservatively treated as unavailable. Wire protocol v1 is likewise rejected;
+  invalidating at most the remainder of a 30-minute session is safer than
+  guessing a target.
 - Free service quotas are ample for a personal demo only if the browser uses a
   hibernating WebSocket rather than periodic polling. Public deployment still
   needs rate limits to avoid quota exhaustion.
 - A session bound to another view uses that view's last persisted viewport for
   placement; it must not silently retarget itself when the user navigates.
-- The mounted canvas is briefly read-only while a delivery validates and
-  commits. Normal bundles make this nearly invisible, but a slow trusted module
-  can make the busy interval noticeable.
-- Deleting the bound view invalidates future installation into it. A delivery
-  already in module preparation receives a rejected ACK rather than reviving
-  the view or retrying until session expiry.
+- The mounted canvas is briefly read-only only while the browser flushes and
+  commits. Trusted module preparation may still be slow or non-terminating, but
+  it does not hold the canvas busy; ending the session prevents its result from
+  committing.
+- Deleting or restoring the bound view invalidates future installation from the
+  old handoff. A delivery already in module preparation receives a rejected ACK
+  rather than reviving the view, retargeting to its new incarnation, or retrying
+  until session expiry.
 
 ### Implemented boundary
 
 `relay/` contains the Worker, initial SQLite-backed Durable Object class
-migration, explicit version-2 in-object SQL schema, limits, and local
+migration, explicit version-3 in-object SQL schema, limits, and local
 emulator tests. `src/relay/` owns browser capabilities, encryption, WebSocket
 reconnect, delivery receipts, atomic installation, and host placement.
 `skill/freeform-artifact-builder/scripts/deliver.mjs` is the dependency-free

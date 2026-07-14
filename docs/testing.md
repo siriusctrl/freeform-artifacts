@@ -64,9 +64,9 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - canvas zoom then applies the same second scale to the complete node;
 - theme toggle switches light/dark mode;
 - importing sample query rows runs transforms and updates artifacts;
-- Build with AI creates a Turnstile-verified, target-view-bound session and an
-  immediately copyable, agent-neutral Browser Relay instruction without changing
-  board state until a delivery is installed;
+- Build with AI creates a Turnstile-verified, target-view-incarnation-bound
+  session and an immediately copyable, agent-neutral Browser Relay instruction
+  without changing board state until a delivery is installed;
 - centered-title rename, smoothly animated Views navigation, data-derived
   previews, create/switch, persistent reorder, board-only duplication,
   bidirectional drag/menu ordering, live-snapshot duplicate/delete Undo,
@@ -141,8 +141,9 @@ npm run relay:test
 ```
 
 `relay:test` uses the Workers Vitest pool and real local Durable Objects. It
-checks strict CORS, 30-minute alarms, separate browser/upload capabilities,
-WebSocket hibernation/replay, terminal ACK deletion, idempotency, capability
+checks protocol-v2 session/incarnation binding and v1 fail-closed behavior,
+strict CORS, 30-minute alarms, separate browser/upload capabilities, WebSocket
+hibernation/replay, terminal ACK deletion, idempotency, capability
 substitution attempts, signed-locator forgery, changed-envelope delivery-id
 conflicts, invalid-token rate-limit isolation, fail-closed environment drift,
 canonical IPv6 and mapped-IPv4 rate keys, malformed and oversized bodies,
@@ -156,16 +157,21 @@ bundle/migration can be produced with `wrangler deploy --dry-run`.
 Chromium page. Its Turnstile stub uses Cloudflare's documented development test
 key/token only; production verification must use the real widget and siteverify.
 The browser suite also covers rapid deliveries across current persisted state,
-same-view multi-tab edits during a relay commit, current-tab edits inside the
-autosave window, relay Undo without clearing earlier history, stale-save and
-deleted-View resurrection resistance, page-memory-only capabilities,
-cancellation during module preparation, deletion of a target View while its
-module is preparing, stale view creation responses,
+same-view multi-tab edits during a relay commit, strict revision CAS with
+re-placement on a newer board, current-tab edits inside the autosave window,
+relay Undo without clearing earlier history, stale-save and deleted-View
+resurrection resistance, delete-plus-restore rejection for an old session
+incarnation, page-memory-only capabilities, cancellation during module
+preparation, deletion of a target View while its module is preparing, stale
+view creation responses,
 authenticated byte-identical uploader retry caching, and ambiguous network
 outcomes that preserve the original delivery id. A deterministic regression
 holds the relay IndexedDB transaction open while attempting a real title edit;
-it proves the workspace is inert until commit and that UI and IndexedDB retain
-the same title and installed artifact afterward. CI gives each independent
+it proves the workspace is inert only for the atomic commit and that UI and
+IndexedDB retain the same title and installed artifact afterward. Slow trusted
+module preparation is checked separately and must leave navigation and editing
+available; ending the session prevents its eventual result from committing. CI
+gives each independent
 browser page a documentation-range source IP because every context otherwise
 shares one loopback address; the Worker suite separately exercises shared-IP
 rate-limit exhaustion against the production binding limits. A reload removes
@@ -175,8 +181,18 @@ the server's synchronous TTL and alarm remain the final cleanup boundary.
 
 `tests/persistence.spec.ts` repeats fallback-recovery and multi-tab deletion
 races. It covers stale active deletes, competing Undo, symmetric zero-View
-recovery, and an older Undo presented after restore, edit, and a second deletion;
-the last case must preserve the newer generation UUID and latest snapshot.
+recovery, a delayed storage-event listener reloading a restored incarnation,
+and an older Undo presented after restore, edit, and a second deletion; the last
+case must preserve the newer generation UUID and latest snapshot.
+`tests/workspace-storage.spec.ts` forces IndexedDB failure in two real pages,
+holds the shared Web Lock, and proves both stale fallback writers queue before
+exactly one wins the localStorage revision CAS. It also proves a queued deletion
+wins before relay commit, ending a session cancels a pending lock without any
+package or receipt write, pagehide invalidates an older queued autosave without
+losing the newest edit, random commit identities reject a same-timestamp foreign
+winner, and an ambiguous v1 journal cannot become a fallback baseline during an
+IndexedDB outage. The relay browser suite confirms browsers without Web Locks
+make no session-creation request and retain file install as the fallback.
 
 If Chromium is missing, run:
 
@@ -200,8 +216,9 @@ npm run verify:proof
 This is the visual evidence path. It opens Chromium and runs a complete asserted
 journey through layout, multi-selection, Undo/Redo, View management,
 presentation and responsive exits, drag, resize, pan, pinch in/out, toolbar
-zoom/reset, data import, theme switching, Build Session creation, encrypted
-multi-artifact relay delivery, atomic bad-selection rejection, artifact
+zoom/reset, data import, theme switching, Build Session creation, pinned-skill
+and launcher-integrity handoff checks, encrypted protocol-v2 multi-artifact
+relay delivery, atomic bad-selection rejection, artifact
 deletion, and persistence after reopening. It
 records WebM video with a verification-only cursor and step label, writes a
 final screenshot, converts the recording to GIF with `ffmpeg`, writes a 30-cell
@@ -238,8 +255,9 @@ The current smoke test is intentionally narrow. Add focused tests when changing:
 - artifact registry loading;
 - data transform behavior;
 - serialization;
-- relay protocol versioning, capabilities, encryption, idempotency receipts,
-  expiry, rate/size ceilings, reconnect, and target-view placement;
+- relay protocol versioning, target-incarnation binding, capabilities,
+  encryption, idempotency receipts, strict revision CAS/re-placement, expiry,
+  rate/size ceilings, reconnect, and target-view placement;
 - template forking and workspace migration;
 - IndexedDB failure fallback and workspace bundle import/export;
 - production preview behavior;

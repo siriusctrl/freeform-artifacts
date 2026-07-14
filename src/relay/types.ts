@@ -1,9 +1,25 @@
 import type { ArtifactBundle } from "../artifacts/generated/bundles";
 import type { RegisteredArtifact } from "../artifacts/registryTypes";
-import type { PreparedRelayDelivery, RelayPlacementContext } from "./installDelivery";
+import type { CanvasNode } from "../artifacts/types";
+import type { WorkspaceRecord } from "../workspaces/types";
+
+export interface RelayPlacementContext {
+  stageSize: { width: number; height: number };
+}
+
+export interface RelayPreparedArtifacts {
+  artifacts: RegisteredArtifact[];
+  bundles: ArtifactBundle[];
+}
+
+export interface PreparedRelayDelivery extends RelayPreparedArtifacts {
+  nodes: CanvasNode[];
+  workspace: WorkspaceRecord;
+}
 
 export interface RelaySessionRequest extends RelayPlacementContext {
   targetViewId: string;
+  targetViewIncarnationId: string;
   targetViewTitle: string;
 }
 
@@ -25,6 +41,12 @@ export type RelayConnectionStatus =
   | "expired"
   | "error";
 
+export interface RelayDeliveryOutcome {
+  detail?: string;
+  kind: "installed" | "rejected";
+  summary: string;
+}
+
 export interface RelayInstallResult {
   artifactIds: string[];
   nodeIds: string[];
@@ -38,15 +60,11 @@ export interface RelayDeliveryIdentity {
 
 export interface RelayLiveInstaller {
   viewId: string;
-  refreshArtifacts: () => Promise<void>;
+  viewIncarnationId: string;
+  syncArtifactCatalog: (prepared: RelayPreparedArtifacts) => void;
   install: (
-    bundles: unknown[],
+    prepared: RelayPreparedArtifacts,
     placement: RelayPlacementContext,
     identity: RelayDeliveryIdentity,
   ) => Promise<RelayInstallResult>;
-}
-
-export interface RelayPreparedStateUpdate extends PreparedRelayDelivery {
-  artifacts: RegisteredArtifact[];
-  bundles: ArtifactBundle[];
 }

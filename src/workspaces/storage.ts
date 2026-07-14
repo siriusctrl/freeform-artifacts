@@ -1,43 +1,70 @@
 import { clearLegacyBoardState, loadLegacyBoardState } from "../canvas/board";
+import {
+  commitArtifactPackagesTransaction,
+  loadRelayInstallReceipt,
+  relayReceiptId,
+  RelayReceiptAlreadyExistsError,
+  type RelayInstallReceipt,
+  type StoredArtifactPackage,
+} from "./artifactPackageStorage";
+import {
+  ARTIFACT_PACKAGE_STORE,
+  openDatabase,
+  WORKSPACE_DATABASE_NAME,
+  WORKSPACE_STORE,
+} from "./database";
+import { WorkspaceConflictError, WorkspaceDeletedError } from "./errors";
 import { createWorkspaceFromTemplate, migratePublishedExamples } from "./templates";
 import { createWorkspacePreview } from "./preview";
 import {
+  createWorkspaceCommitId,
+  createWorkspaceIncarnationId,
   workspaceRecordSchema,
   type WorkspaceLoadResult,
   type WorkspaceRecord,
   type WorkspaceSummary,
   type WorkspaceTemplate,
 } from "./types";
+import {
+  clearWorkspaceDeletion,
+  listEmergencyWorkspaceRecoveries,
+  listFallbackWorkspaces,
+  markWorkspaceDeleted,
+  readCanonicalFallbackWorkspace,
+  readDeletedWorkspaceIds,
+  readFallbackWorkspace,
+  readViewOrder,
+  readWorkspaceDeletionId,
+  removeFallbackWorkspace,
+  removeObsoleteWorkspaceRecoverySnapshots,
+  writeEmergencyWorkspaceRecovery,
+  writeFallbackWorkspace,
+  writeViewOrder,
+  type EmergencyWorkspaceRecovery,
+  type EmergencyWorkspaceRecoveryExpectation,
+} from "./workspaceLocalStorage";
 
-export const WORKSPACE_DATABASE_NAME = "freeform-artifacts";
-const DATABASE_VERSION = 3;
-export const WORKSPACE_STORE = "workspaces";
-export const ARTIFACT_PACKAGE_STORE = "artifact-packages";
-export const RELAY_RECEIPT_STORE = "relay-receipts";
+export {
+  loadRelayInstallReceipt,
+  openDatabase,
+  relayReceiptId,
+  RelayReceiptAlreadyExistsError,
+  ARTIFACT_PACKAGE_STORE,
+  WORKSPACE_DATABASE_NAME,
+  WORKSPACE_STORE,
+  WorkspaceConflictError,
+  WorkspaceDeletedError,
+};
+export type { RelayInstallReceipt, StoredArtifactPackage };
+
 const ACTIVE_WORKSPACE_KEY = "freeform-artifacts.active-view.v1";
-const RELAY_RECEIPT_RETENTION_MS = 24 * 60 * 60 * 1_000;
-const VIEW_ORDER_KEY = "freeform-artifacts.view-order.v1";
-const DELETED_WORKSPACES_KEY = "freeform-artifacts.deleted-views.v1";
-const DELETED_WORKSPACE_PREFIX = "freeform-artifacts.deleted-view.";
+const WORKSPACE_WRITE_LOCK_PREFIX = "freeform-artifacts.workspace-write:";
 const workspaceWriteQueues = new Map<string, Promise<unknown>>();
 
-export class WorkspaceDeletedError extends Error {
-  readonly workspaceId: string;
-
-  constructor(workspaceId: string) {
-    super("This canvas was deleted in another browser tab. Restore it before saving more edits.");
-    this.name = "WorkspaceDeletedError";
-    this.workspaceId = workspaceId;
-  }
-}
-
-export class WorkspaceConflictError extends Error {
-  readonly workspaceId: string;
-
-  constructor(workspaceId: string) {
-    super("This canvas changed in another browser tab. Reload it before saving more edits.");
-    this.name = "WorkspaceConflictError";
-    this.workspaceId = workspaceId;
+class WorkspaceFallbackLockUnavailableError extends Error {
+  constructor() {
+    super("Safe browser fallback requires Web Locks support");
+    this.name = "WorkspaceFallbackLockUnavailableError";
   }
 }
 
@@ -54,54 +81,58 @@ function enqueueWorkspaceWrite<T>(workspaceId: string, operation: () => Promise<
   return result;
 }
 
-function fallbackKey(templateId: string) {
-  return `freeform-artifacts.workspace.${templateId}.v1`;
+function workspaceWriteLockName(workspaceId: string) {
+  return `${WORKSPACE_WRITE_LOCK_PREFIX}${encodeURIComponent(workspaceId)}`;
 }
 
-function deletedWorkspaceKey(workspaceId: string) {
-  return `${DELETED_WORKSPACE_PREFIX}${encodeURIComponent(workspaceId)}`;
-}
-
-function readWorkspaceDeletionId(workspaceId: string) {
-  try {
-    const value = window.localStorage.getItem(deletedWorkspaceKey(workspaceId));
-    return value && value !== "1" ? value : null;
-  } catch {
-    return null;
+async function withWorkspaceWriteLock<T>(
+  workspaceId: string,
+  operation: () => T | Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!navigator.locks?.request) {
+    throw new WorkspaceFallbackLockUnavailableError();
   }
+  return navigator.locks.request(
+    workspaceWriteLockName(workspaceId),
+    { mode: "exclusive", signal },
+    operation,
+  );
 }
 
-export function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = window.indexedDB.open(WORKSPACE_DATABASE_NAME, DATABASE_VERSION);
-    request.onupgradeneeded = () => {
-      const database = request.result;
-      if (!database.objectStoreNames.contains(WORKSPACE_STORE)) {
-        database.createObjectStore(WORKSPACE_STORE, { keyPath: "templateId" });
-      }
-      if (!database.objectStoreNames.contains(ARTIFACT_PACKAGE_STORE)) {
-        database.createObjectStore(ARTIFACT_PACKAGE_STORE, { keyPath: "artifactId" });
-      }
-      if (!database.objectStoreNames.contains(RELAY_RECEIPT_STORE)) {
-        database.createObjectStore(RELAY_RECEIPT_STORE, { keyPath: "id" });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("Unable to open the local workspace database"));
-    request.onblocked = () => reject(new Error("The local workspace database is blocked by another tab"));
-  });
+async function withOptionalWorkspaceWriteLock<T>(
+  workspaceId: string,
+  operation: () => T | Promise<T>,
+): Promise<T> {
+  if (!navigator.locks?.request) return operation();
+  return withWorkspaceWriteLock(workspaceId, operation);
+}
+
+function needsIdentityMigration(value: unknown, workspace: WorkspaceRecord) {
+  return !value || typeof value !== "object" ||
+    (value as { incarnationId?: unknown }).incarnationId !== workspace.incarnationId ||
+    (value as { commitId?: unknown }).commitId !== workspace.commitId;
 }
 
 async function readIndexedWorkspace(templateId: string): Promise<WorkspaceRecord | null> {
   const database = await openDatabase();
   try {
     return await new Promise((resolve, reject) => {
-      const request = database.transaction(WORKSPACE_STORE, "readonly").objectStore(WORKSPACE_STORE).get(templateId);
+      const transaction = database.transaction(WORKSPACE_STORE, "readwrite");
+      const store = transaction.objectStore(WORKSPACE_STORE);
+      const request = store.get(templateId);
+      let workspace: WorkspaceRecord | null = null;
       request.onsuccess = () => {
         const parsed = workspaceRecordSchema.safeParse(request.result);
-        resolve(parsed.success ? parsed.data : null);
+        workspace = parsed.success ? parsed.data : null;
+        if (workspace && needsIdentityMigration(request.result, workspace)) {
+          store.put(workspace);
+        }
       };
       request.onerror = () => reject(request.error ?? new Error("Unable to read the local workspace"));
+      transaction.oncomplete = () => resolve(workspace);
+      transaction.onerror = () => reject(transaction.error ?? new Error("Unable to migrate the local workspace"));
+      transaction.onabort = () => reject(transaction.error ?? new Error("Local workspace migration was aborted"));
     });
   } finally {
     database.close();
@@ -112,14 +143,22 @@ async function listIndexedWorkspaces(): Promise<WorkspaceRecord[]> {
   const database = await openDatabase();
   try {
     return await new Promise((resolve, reject) => {
-      const request = database.transaction(WORKSPACE_STORE, "readonly").objectStore(WORKSPACE_STORE).getAll();
-      request.onsuccess = () => resolve(
-        request.result.flatMap((value) => {
+      const transaction = database.transaction(WORKSPACE_STORE, "readwrite");
+      const store = transaction.objectStore(WORKSPACE_STORE);
+      const request = store.getAll();
+      let workspaces: WorkspaceRecord[] = [];
+      request.onsuccess = () => {
+        workspaces = request.result.flatMap((value) => {
           const parsed = workspaceRecordSchema.safeParse(value);
-          return parsed.success ? [parsed.data] : [];
-        }),
-      );
+          if (!parsed.success) return [];
+          if (needsIdentityMigration(value, parsed.data)) store.put(parsed.data);
+          return [parsed.data];
+        });
+      };
       request.onerror = () => reject(request.error ?? new Error("Unable to list local canvases"));
+      transaction.oncomplete = () => resolve(workspaces);
+      transaction.onerror = () => reject(transaction.error ?? new Error("Unable to migrate local canvases"));
+      transaction.onabort = () => reject(transaction.error ?? new Error("Local canvas migration was aborted"));
     });
   } finally {
     database.close();
@@ -128,10 +167,16 @@ async function listIndexedWorkspaces(): Promise<WorkspaceRecord[]> {
 
 type WorkspaceWriteMode = "save" | "restore" | "recovery";
 
+interface WorkspaceRestoreExpectation {
+  deletionId: string;
+  incarnationId: string;
+  revision: number;
+}
+
 async function writeIndexedWorkspace(
   workspace: WorkspaceRecord,
   mode: WorkspaceWriteMode,
-  deletionId?: string,
+  restoreExpectation?: WorkspaceRestoreExpectation,
 ): Promise<WorkspaceRecord> {
   const database = await openDatabase();
   let committedWorkspace = workspace;
@@ -151,8 +196,11 @@ async function writeIndexedWorkspace(
         if (mode === "restore") {
           const tombstoned = readDeletedWorkspaceIds().has(workspace.templateId);
           const currentDeletionId = readWorkspaceDeletionId(workspace.templateId);
-          if (!tombstoned || !deletionId || currentDeletionId !== deletionId ||
-            (current.success && current.data.revision !== workspace.revision)) {
+          if (!tombstoned || !restoreExpectation || currentDeletionId !== restoreExpectation.deletionId ||
+            (current.success && (
+              current.data.revision !== restoreExpectation.revision ||
+              current.data.incarnationId !== restoreExpectation.incarnationId
+            ))) {
             conflict = new WorkspaceConflictError(workspace.templateId);
             transaction.abort();
             return;
@@ -163,15 +211,22 @@ async function writeIndexedWorkspace(
           const recordExists = current.success;
           const fallback = readFallbackWorkspace(workspace.templateId);
           const resumesFallbackCommit = currentRevision < workspace.revision &&
-            fallback?.revision === workspace.revision;
+            fallback?.revision === workspace.revision &&
+            fallback.incarnationId === workspace.incarnationId;
           if ((!resumesFallbackCommit && currentRevision !== workspace.revision) ||
-            (!recordExists && workspace.revision !== 0 && !resumesFallbackCommit)) {
+            (!recordExists && workspace.revision !== 0 && !resumesFallbackCommit) ||
+            (current.success && current.data.incarnationId !== workspace.incarnationId)) {
             conflict = new WorkspaceConflictError(workspace.templateId);
             transaction.abort();
             return;
           }
         }
         if (mode === "recovery" && current.success) {
+          if (workspace.incarnationId !== current.data.incarnationId) {
+            conflict = new WorkspaceConflictError(workspace.templateId);
+            transaction.abort();
+            return;
+          }
           const recoveryIsNewer = workspace.revision > current.data.revision || (
             workspace.revision === current.data.revision && workspace.updatedAt > current.data.updatedAt
           );
@@ -198,7 +253,10 @@ async function writeIndexedWorkspace(
   }
 }
 
-async function deleteIndexedWorkspace(workspaceId: string): Promise<WorkspaceRecord | null> {
+async function deleteIndexedWorkspace(
+  workspaceId: string,
+  expectedIncarnationId: string,
+): Promise<WorkspaceRecord | null> {
   const database = await openDatabase();
   let deletedWorkspace: WorkspaceRecord | null = null;
   try {
@@ -206,133 +264,26 @@ async function deleteIndexedWorkspace(workspaceId: string): Promise<WorkspaceRec
       const transaction = database.transaction(WORKSPACE_STORE, "readwrite");
       const store = transaction.objectStore(WORKSPACE_STORE);
       const request = store.get(workspaceId);
+      let conflict: Error | null = null;
       request.onsuccess = () => {
         const parsed = workspaceRecordSchema.safeParse(request.result);
+        if (parsed.success && parsed.data.incarnationId !== expectedIncarnationId) {
+          conflict = new WorkspaceConflictError(workspaceId);
+          transaction.abort();
+          return;
+        }
         deletedWorkspace = parsed.success ? parsed.data : null;
         store.delete(workspaceId);
       };
       request.onerror = () => reject(request.error ?? new Error("Unable to inspect the canvas before deletion"));
       transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error ?? new Error("Unable to delete the local canvas"));
-      transaction.onabort = () => reject(transaction.error ?? new Error("Local canvas deletion was aborted"));
+      transaction.onerror = () => reject(conflict ?? transaction.error ?? new Error("Unable to delete the local canvas"));
+      transaction.onabort = () => reject(conflict ?? transaction.error ?? new Error("Local canvas deletion was aborted"));
     });
     return deletedWorkspace;
   } finally {
     database.close();
   }
-}
-
-function readFallbackWorkspace(templateId: string): WorkspaceRecord | null {
-  try {
-    const parsed = workspaceRecordSchema.safeParse(JSON.parse(window.localStorage.getItem(fallbackKey(templateId)) ?? "null"));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeFallbackWorkspace(workspace: WorkspaceRecord) {
-  window.localStorage.setItem(fallbackKey(workspace.templateId), JSON.stringify(workspace));
-}
-
-function readViewOrder() {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(VIEW_ORDER_KEY) ?? "[]");
-    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeViewOrder(ids: string[]) {
-  try {
-    window.localStorage.setItem(VIEW_ORDER_KEY, JSON.stringify([...new Set(ids)]));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function readDeletedWorkspaceIds() {
-  const deletedIds = new Set<string>();
-  const legacyIds = new Set<string>();
-  try {
-    const value = JSON.parse(window.localStorage.getItem(DELETED_WORKSPACES_KEY) ?? "[]");
-    if (Array.isArray(value)) {
-      for (const id of value) {
-        if (typeof id === "string") {
-          deletedIds.add(id);
-          legacyIds.add(id);
-        }
-      }
-    }
-  } catch {
-    // Per-view tombstones below remain authoritative if the legacy index is malformed.
-  }
-  if (legacyIds.size > 0) {
-    let migrated = true;
-    for (const id of legacyIds) {
-      try {
-        const key = deletedWorkspaceKey(id);
-        if (window.localStorage.getItem(key) === null) window.localStorage.setItem(key, "1");
-      } catch {
-        migrated = false;
-      }
-    }
-    if (migrated) {
-      try {
-        window.localStorage.removeItem(DELETED_WORKSPACES_KEY);
-      } catch {
-        // Keep the legacy index as a fallback if cleanup is unavailable.
-      }
-    }
-  }
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
-    if (!key?.startsWith(DELETED_WORKSPACE_PREFIX)) continue;
-    try {
-      deletedIds.add(decodeURIComponent(key.slice(DELETED_WORKSPACE_PREFIX.length)));
-    } catch {
-      // Ignore malformed keys created outside the application.
-    }
-  }
-  return deletedIds;
-}
-
-function writeDeletedWorkspaceIds(ids: Set<string>) {
-  try {
-    if (ids.size === 0) window.localStorage.removeItem(DELETED_WORKSPACES_KEY);
-    else window.localStorage.setItem(DELETED_WORKSPACES_KEY, JSON.stringify([...ids]));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function markWorkspaceDeleted(workspaceId: string, deletionId: string) {
-  readDeletedWorkspaceIds();
-  try {
-    window.localStorage.setItem(deletedWorkspaceKey(workspaceId), deletionId);
-    return { durable: true, generationSaved: true };
-  } catch {
-    // The legacy aggregate remains a fallback for older browser data.
-  }
-  const deletedIds = readDeletedWorkspaceIds();
-  deletedIds.add(workspaceId);
-  return { durable: writeDeletedWorkspaceIds(deletedIds), generationSaved: false };
-}
-
-function clearWorkspaceDeletion(workspaceId: string, expectedDeletionId: string) {
-  readDeletedWorkspaceIds();
-  if (readWorkspaceDeletionId(workspaceId) !== expectedDeletionId) return false;
-  try {
-    window.localStorage.removeItem(deletedWorkspaceKey(workspaceId));
-  } catch {
-    return false;
-  }
-  const deletedIds = readDeletedWorkspaceIds();
-  if (!deletedIds.delete(workspaceId)) return true;
-  return writeDeletedWorkspaceIds(deletedIds);
 }
 
 function ensureWorkspaceOrder(workspaceId: string) {
@@ -346,36 +297,41 @@ function insertWorkspaceOrder(workspaceId: string, index: number) {
   writeViewOrder(order);
 }
 
-export function writeWorkspaceRecovery(workspace: WorkspaceRecord) {
+function writeWorkspaceRecoveryUnlocked(workspace: WorkspaceRecord) {
+  if (readDeletedWorkspaceIds().has(workspace.templateId)) return false;
+  const current = readFallbackWorkspace(workspace.templateId);
+  if (current) {
+    if (current.revision > workspace.revision) return true;
+    if (current.revision === workspace.revision) {
+      if (current.incarnationId !== workspace.incarnationId) return true;
+      if (current.updatedAt > workspace.updatedAt) return true;
+    }
+  }
+  writeFallbackWorkspace(workspace);
+  removeObsoleteWorkspaceRecoverySnapshots(workspace);
+  return true;
+}
+
+export function writeWorkspaceEmergencyRecovery(
+  workspace: WorkspaceRecord,
+  expectedCommit?: EmergencyWorkspaceRecoveryExpectation,
+) {
   const checked = workspaceRecordSchema.parse(workspace);
-  if (readDeletedWorkspaceIds().has(checked.templateId)) return false;
+  if (expectedCommit && expectedCommit.revision !== checked.revision + 1) return false;
+  return writeEmergencyWorkspaceRecovery(checked, expectedCommit);
+}
+
+export async function writeWorkspaceRecovery(workspace: WorkspaceRecord) {
+  const checked = workspaceRecordSchema.parse(workspace);
   try {
-    const current = readFallbackWorkspace(checked.templateId);
-    if (current && (
-      current.revision > checked.revision ||
-      (current.revision === checked.revision && current.updatedAt >= checked.updatedAt)
-    )) return true;
-    writeFallbackWorkspace(checked);
-    return true;
+    // Fallback commits use this same lock around their own versioned write.
+    // Keep recovery acquisition at the public boundary so neither path ever
+    // requests the non-reentrant Web Lock while already holding it.
+    return await withWorkspaceWriteLock(checked.templateId, () =>
+      writeWorkspaceRecoveryUnlocked(checked));
   } catch {
     return false;
   }
-}
-
-function listFallbackWorkspaces(): WorkspaceRecord[] {
-  const prefix = "freeform-artifacts.workspace.";
-  const records: WorkspaceRecord[] = [];
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
-    if (!key?.startsWith(prefix)) continue;
-    try {
-      const parsed = workspaceRecordSchema.safeParse(JSON.parse(window.localStorage.getItem(key) ?? "null"));
-      if (parsed.success) records.push(parsed.data);
-    } catch {
-      // Ignore malformed fallback entries and keep scanning.
-    }
-  }
-  return records;
 }
 
 export async function listWorkspaces(): Promise<WorkspaceSummary[]> {
@@ -404,23 +360,84 @@ export async function listWorkspaces(): Promise<WorkspaceSummary[]> {
   return records
     .map((workspace) => ({
       id: workspace.templateId,
+      incarnationId: workspace.incarnationId,
       title: workspace.title,
       updatedAt: workspace.updatedAt,
       previewNodes: createWorkspacePreview(workspace.board.nodes),
     }));
 }
 
+function selectEmergencyRecovery(
+  current: WorkspaceRecord | null,
+  recoveries: EmergencyWorkspaceRecovery[],
+) {
+  return recoveries.flatMap((recovery) => {
+    const candidate = recovery.workspace;
+    if (!current) return [candidate];
+    if (
+      candidate.incarnationId !== current.incarnationId ||
+      candidate.updatedAt <= current.updatedAt
+    ) {
+      return [];
+    }
+    if (candidate.revision === current.revision && candidate.commitId === current.commitId) {
+      return [{ ...candidate, revision: current.revision }];
+    }
+    if (
+      candidate.revision + 1 === current.revision &&
+      recovery.expectedCommit?.revision === current.revision &&
+      recovery.expectedCommit.commitId === current.commitId &&
+      recovery.expectedCommit.updatedAt === current.updatedAt
+    ) {
+      return [{ ...candidate, revision: current.revision }];
+    }
+    return [];
+  }).sort((first, second) =>
+    second.revision - first.revision || second.updatedAt.localeCompare(first.updatedAt)
+  )[0] ?? null;
+}
+
+function workspaceCandidateIsNewer(candidate: WorkspaceRecord, current: WorkspaceRecord | null) {
+  if (!current) return true;
+  if (candidate.revision !== current.revision) return candidate.revision > current.revision;
+  return candidate.incarnationId === current.incarnationId && candidate.updatedAt > current.updatedAt;
+}
+
+function commitFallbackEmergencyRecoveryUnlocked(id: string) {
+  if (readDeletedWorkspaceIds().has(id)) return null;
+  const current = readCanonicalFallbackWorkspace(id);
+  const recovery = selectEmergencyRecovery(current, listEmergencyWorkspaceRecoveries(id));
+  if (!recovery) return current ?? readFallbackWorkspace(id);
+  const committed = {
+    ...recovery,
+    commitId: createWorkspaceCommitId(),
+    revision: Math.max(recovery.revision, current?.revision ?? recovery.revision) + 1,
+  };
+  writeFallbackWorkspace(committed);
+  removeObsoleteWorkspaceRecoverySnapshots(committed);
+  return committed;
+}
+
 async function loadStoredWorkspace(id: string): Promise<WorkspaceLoadResult | null> {
   if (readDeletedWorkspaceIds().has(id)) return null;
   const fallback = readFallbackWorkspace(id);
+  const emergencyRecoveries = listEmergencyWorkspaceRecoveries(id);
   try {
     let workspace = await readIndexedWorkspace(id);
     const fallbackIsNewer = fallback && (!workspace || fallback.revision > workspace.revision || (
       fallback.revision === workspace.revision && fallback.updatedAt > workspace.updatedAt
     ));
-    if (fallbackIsNewer) {
+    let recovery = fallbackIsNewer ? fallback : null;
+    const emergencyRecovery = selectEmergencyRecovery(workspace, emergencyRecoveries);
+    if (emergencyRecovery && workspaceCandidateIsNewer(emergencyRecovery, recovery)) {
+      recovery = emergencyRecovery;
+    }
+    if (recovery) {
       try {
-        workspace = await writeIndexedWorkspace(fallback, "recovery");
+        workspace = await writeIndexedWorkspace({
+          ...recovery,
+          commitId: createWorkspaceCommitId(),
+        }, "recovery");
       } catch (error) {
         if (error instanceof WorkspaceDeletedError) return null;
         if (!(error instanceof WorkspaceConflictError)) throw error;
@@ -428,12 +445,18 @@ async function loadStoredWorkspace(id: string): Promise<WorkspaceLoadResult | nu
       }
     }
     if (readDeletedWorkspaceIds().has(id)) return null;
-    if (workspace) writeWorkspaceRecovery(workspace);
+    if (workspace) await writeWorkspaceRecovery(workspace);
     return workspace ? { workspace, source: "existing", storage: "indexeddb" } : null;
   } catch (error) {
     if (error instanceof WorkspaceDeletedError) return null;
     if (readDeletedWorkspaceIds().has(id)) return null;
-    return fallback ? { workspace: fallback, source: "existing", storage: "localstorage" } : null;
+    try {
+      const recovered = await withWorkspaceWriteLock(id, () =>
+        commitFallbackEmergencyRecoveryUnlocked(id));
+      return recovered ? { workspace: recovered, source: "existing", storage: "localstorage" } : null;
+    } catch {
+      return fallback ? { workspace: fallback, source: "existing", storage: "localstorage" } : null;
+    }
   }
 }
 
@@ -467,6 +490,7 @@ export async function duplicateWorkspace(
   const workspace: WorkspaceRecord = {
     ...source,
     revision: 0,
+    incarnationId: createWorkspaceIncarnationId(),
     templateId: id,
     title: `${source.title} copy`.slice(0, 80),
     updatedAt: new Date().toISOString(),
@@ -498,24 +522,27 @@ export async function deleteWorkspace(
   const existing = providedWorkspace ?? storedWorkspace?.workspace;
   if (!existing) return null;
   const deletionId = crypto.randomUUID();
-  const deleted = await enqueueWorkspaceWrite(workspaceId, async () => {
+  const deleted = await enqueueWorkspaceWrite(workspaceId, () => withOptionalWorkspaceWriteLock(workspaceId, async () => {
     const tombstone = markWorkspaceDeleted(workspaceId, deletionId);
     let indexedWorkspaceDeleted = false;
     let fallbackWorkspaceDeleted = false;
     let deletedIndexedWorkspace: WorkspaceRecord | null = null;
     const fallbackWorkspace = readFallbackWorkspace(workspaceId);
     try {
-      deletedIndexedWorkspace = await deleteIndexedWorkspace(workspaceId);
+      deletedIndexedWorkspace = await deleteIndexedWorkspace(workspaceId, existing.incarnationId);
       indexedWorkspaceDeleted = true;
-    } catch {
+    } catch (error) {
+      if (error instanceof WorkspaceConflictError) {
+        if (tombstone.generationSaved) clearWorkspaceDeletion(workspaceId, deletionId);
+        throw error;
+      }
+      if (fallbackWorkspace && fallbackWorkspace.incarnationId !== existing.incarnationId) {
+        if (tombstone.generationSaved) clearWorkspaceDeletion(workspaceId, deletionId);
+        throw new WorkspaceConflictError(workspaceId);
+      }
       // A tombstone keeps a temporarily unavailable IndexedDB record hidden.
     }
-    try {
-      window.localStorage.removeItem(fallbackKey(workspaceId));
-      fallbackWorkspaceDeleted = true;
-    } catch {
-      // The tombstone or IndexedDB deletion can still make the logical delete durable.
-    }
+    fallbackWorkspaceDeleted = removeFallbackWorkspace(workspaceId);
     if (!tombstone.durable && !(indexedWorkspaceDeleted && fallbackWorkspaceDeleted)) {
       throw new Error("Unable to delete this canvas from browser storage");
     }
@@ -528,16 +555,27 @@ export async function deleteWorkspace(
       deletionId: tombstone.generationSaved ? deletionId : null,
       workspace,
     } : null;
-  });
+  }));
   writeViewOrder(readViewOrder().filter((id) => id !== workspaceId));
   return deleted;
 }
 
 export async function restoreWorkspace(workspace: WorkspaceRecord, index: number, deletionId: string) {
-  const saved = await persistWorkspace(
-    workspaceRecordSchema.parse({ ...workspace, updatedAt: new Date().toISOString() }),
-    "restore",
+  const deletedWorkspace = workspaceRecordSchema.parse(workspace);
+  const restoreExpectation: WorkspaceRestoreExpectation = {
     deletionId,
+    incarnationId: deletedWorkspace.incarnationId,
+    revision: deletedWorkspace.revision,
+  };
+  const saved = await persistWorkspace(
+    {
+      ...deletedWorkspace,
+      incarnationId: createWorkspaceIncarnationId(),
+      commitId: createWorkspaceCommitId(),
+      updatedAt: new Date().toISOString(),
+    },
+    "restore",
+    restoreExpectation,
   );
   insertWorkspaceOrder(workspace.templateId, index);
   return saved.storage;
@@ -563,7 +601,7 @@ export interface WorkspaceSaveResult {
 function writeFallbackWorkspaceVersioned(
   workspace: WorkspaceRecord,
   mode: Exclude<WorkspaceWriteMode, "recovery">,
-  deletionId?: string,
+  restoreExpectation?: WorkspaceRestoreExpectation,
 ) {
   const tombstoned = readDeletedWorkspaceIds().has(workspace.templateId);
   if (tombstoned && mode !== "restore") {
@@ -571,14 +609,22 @@ function writeFallbackWorkspaceVersioned(
   }
   const current = readFallbackWorkspace(workspace.templateId);
   if (mode === "restore" && (
-    !tombstoned || !deletionId || readWorkspaceDeletionId(workspace.templateId) !== deletionId ||
-    (current && current.revision !== workspace.revision)
+    !tombstoned || !restoreExpectation ||
+    readWorkspaceDeletionId(workspace.templateId) !== restoreExpectation.deletionId ||
+    (current && (
+      current.revision !== restoreExpectation.revision ||
+      current.incarnationId !== restoreExpectation.incarnationId
+    ))
   )) {
     throw new WorkspaceConflictError(workspace.templateId);
   }
   if (mode === "save") {
     const currentRevision = current?.revision ?? 0;
-    if (currentRevision !== workspace.revision || (!current && workspace.revision !== 0)) {
+    if (
+      currentRevision !== workspace.revision ||
+      (!current && workspace.revision !== 0) ||
+      (current && current.incarnationId !== workspace.incarnationId)
+    ) {
       throw new WorkspaceConflictError(workspace.templateId);
     }
   }
@@ -587,36 +633,48 @@ function writeFallbackWorkspaceVersioned(
     revision: Math.max(workspace.revision, current?.revision ?? 0) + 1,
   };
   writeFallbackWorkspace(committed);
+  removeObsoleteWorkspaceRecoverySnapshots(committed);
   return committed;
 }
 
 async function persistWorkspace(
   checked: WorkspaceRecord,
   mode: Exclude<WorkspaceWriteMode, "recovery">,
-  deletionId?: string,
+  restoreExpectation?: WorkspaceRestoreExpectation,
 ): Promise<WorkspaceSaveResult> {
   return enqueueWorkspaceWrite(checked.templateId, async () => {
     let committed: WorkspaceRecord;
     try {
-      committed = await writeIndexedWorkspace(checked, mode, deletionId);
+      committed = await writeIndexedWorkspace(checked, mode, restoreExpectation);
       ensureWorkspaceOrder(checked.templateId);
-      if (mode === "restore" && (!deletionId || !clearWorkspaceDeletion(checked.templateId, deletionId))) {
+      if (mode === "restore" && (
+        !restoreExpectation ||
+        !clearWorkspaceDeletion(checked.templateId, restoreExpectation.deletionId)
+      )) {
         throw new WorkspaceConflictError(checked.templateId);
       }
-      writeWorkspaceRecovery(committed);
+      await writeWorkspaceRecovery(committed);
       return { storage: "indexeddb", workspace: committed };
     } catch (error) {
       if (error instanceof WorkspaceDeletedError || error instanceof WorkspaceConflictError) throw error;
       try {
-        committed = writeFallbackWorkspaceVersioned(checked, mode, deletionId);
+        committed = await withWorkspaceWriteLock(checked.templateId, () =>
+          writeFallbackWorkspaceVersioned(checked, mode, restoreExpectation));
       } catch (fallbackError) {
-        if (fallbackError instanceof WorkspaceDeletedError || fallbackError instanceof WorkspaceConflictError) {
+        if (
+          fallbackError instanceof WorkspaceDeletedError ||
+          fallbackError instanceof WorkspaceConflictError ||
+          fallbackError instanceof WorkspaceFallbackLockUnavailableError
+        ) {
           throw fallbackError;
         }
         throw new Error("Unable to save this workspace in browser storage");
       }
       ensureWorkspaceOrder(checked.templateId);
-      if (mode === "restore" && (!deletionId || !clearWorkspaceDeletion(checked.templateId, deletionId))) {
+      if (mode === "restore" && (
+        !restoreExpectation ||
+        !clearWorkspaceDeletion(checked.templateId, restoreExpectation.deletionId)
+      )) {
         throw new WorkspaceConflictError(checked.templateId);
       }
       return { storage: "localstorage", workspace: committed };
@@ -624,61 +682,14 @@ async function persistWorkspace(
   });
 }
 
-export async function saveWorkspace(workspace: WorkspaceRecord): Promise<WorkspaceSaveResult> {
-  return persistWorkspace(workspaceRecordSchema.parse(workspace), "save");
-}
-
-export interface StoredArtifactPackage {
-  artifactId: string;
-  moduleSource: string;
-  [key: string]: unknown;
-}
-
-export interface RelayInstallReceipt {
-  id: string;
-  sessionId: string;
-  deliveryId: string;
-  targetViewId: string;
-  artifactIds: string[];
-  nodeIds: string[];
-  installedAt: string;
-}
-
-export class RelayReceiptAlreadyExistsError extends Error {
-  readonly receiptId: string;
-
-  constructor(receiptId: string) {
-    super("Relay delivery was already committed by another browser tab");
-    this.name = "RelayReceiptAlreadyExistsError";
-    this.receiptId = receiptId;
-  }
-}
-
-export function relayReceiptId(sessionId: string, deliveryId: string) {
-  return `${sessionId}:${deliveryId}`;
-}
-
-export async function loadRelayInstallReceipt(sessionId: string, deliveryId: string) {
-  const database = await openDatabase();
-  try {
-    return await new Promise<RelayInstallReceipt | null>((resolve, reject) => {
-      const request = database.transaction(RELAY_RECEIPT_STORE, "readonly")
-        .objectStore(RELAY_RECEIPT_STORE)
-        .get(relayReceiptId(sessionId, deliveryId));
-      request.onsuccess = () => {
-        const value = request.result as RelayInstallReceipt | undefined;
-        resolve(
-          value && value.sessionId === sessionId && value.deliveryId === deliveryId &&
-            Array.isArray(value.artifactIds) && Array.isArray(value.nodeIds)
-            ? value
-            : null,
-        );
-      };
-      request.onerror = () => reject(request.error ?? new Error("Unable to inspect relay delivery receipt"));
-    });
-  } finally {
-    database.close();
-  }
+export async function saveWorkspace(
+  workspace: WorkspaceRecord,
+  options: { commitId?: string } = {},
+): Promise<WorkspaceSaveResult> {
+  return persistWorkspace({
+    ...workspaceRecordSchema.parse(workspace),
+    commitId: options.commitId ?? createWorkspaceCommitId(),
+  }, "save");
 }
 
 export async function commitWorkspaceWithArtifactPackage(
@@ -688,13 +699,34 @@ export async function commitWorkspaceWithArtifactPackage(
   return commitWorkspaceWithArtifactPackages(workspace, [artifactPackage]);
 }
 
+export interface ArtifactPackageCommitOptions {
+  expectedIncarnationId?: string;
+  expectedRevision?: number;
+  signal?: AbortSignal;
+}
+
 export async function commitWorkspaceWithArtifactPackages(
   workspace: WorkspaceRecord,
   artifactPackages: StoredArtifactPackage[],
   relayReceipt?: RelayInstallReceipt,
-  options: { signal?: AbortSignal } = {},
+  options: ArtifactPackageCommitOptions = {},
 ) {
   const checked = workspaceRecordSchema.parse(workspace);
+  const expectedIncarnationId = options.expectedIncarnationId ?? checked.incarnationId;
+  const expectedRevision = options.expectedRevision ?? checked.revision;
+  if (
+    checked.incarnationId !== expectedIncarnationId ||
+    checked.revision !== expectedRevision ||
+    (options.expectedIncarnationId === undefined) !== (options.expectedRevision === undefined)
+  ) {
+    throw new WorkspaceConflictError(checked.templateId);
+  }
+  if (relayReceipt && (
+    relayReceipt.targetViewId !== checked.templateId ||
+    relayReceipt.targetViewIncarnationId !== expectedIncarnationId
+  )) {
+    throw new WorkspaceConflictError(checked.templateId);
+  }
   if (!artifactPackages.length) throw new Error("At least one artifact package is required");
   const packageIds = new Set<string>();
   for (const artifactPackage of artifactPackages) {
@@ -704,157 +736,32 @@ export async function commitWorkspaceWithArtifactPackages(
     packageIds.add(artifactPackage.artifactId);
   }
   return enqueueWorkspaceWrite(checked.templateId, async () => {
-    if (options.signal?.aborted) throw new DOMException("Build Session is no longer active", "AbortError");
-    if (readDeletedWorkspaceIds().has(checked.templateId)) {
-      throw new WorkspaceDeletedError(checked.templateId);
-    }
-    const database = await openDatabase();
-    let committedWorkspace = checked;
-    try {
+    const commit = async () => {
       if (options.signal?.aborted) throw new DOMException("Build Session is no longer active", "AbortError");
-      await new Promise<void>((resolve, reject) => {
-        const stores = relayReceipt
-          ? [WORKSPACE_STORE, ARTIFACT_PACKAGE_STORE, RELAY_RECEIPT_STORE]
-          : [WORKSPACE_STORE, ARTIFACT_PACKAGE_STORE];
-        const transaction = database.transaction(stores, "readwrite");
-        const abortTransaction = () => {
-          try {
-            transaction.abort();
-          } catch {
-            // The transaction already reached a terminal state.
-          }
-        };
-        const finish = () => options.signal?.removeEventListener("abort", abortTransaction);
-        options.signal?.addEventListener("abort", abortTransaction, { once: true });
-        if (options.signal?.aborted) {
-          finish();
-          abortTransaction();
-          reject(new DOMException("Build Session is no longer active", "AbortError"));
-          return;
-        }
-        const packageStore = transaction.objectStore(ARTIFACT_PACKAGE_STORE);
-        const workspaceStore = transaction.objectStore(WORKSPACE_STORE);
-        let duplicateReceipt = false;
-        if (relayReceipt) {
-          const receiptStore = transaction.objectStore(RELAY_RECEIPT_STORE);
-          const receiptRequest = receiptStore.add(relayReceipt);
-          receiptRequest.onerror = () => {
-            duplicateReceipt = receiptRequest.error?.name === "ConstraintError";
-          };
-          const pruneRequest = receiptStore.getAll();
-          pruneRequest.onsuccess = () => {
-            const cutoff = Date.now() - RELAY_RECEIPT_RETENTION_MS;
-            for (const value of pruneRequest.result as RelayInstallReceipt[]) {
-              const installedAt = Date.parse(value.installedAt);
-              if (!Number.isFinite(installedAt) || installedAt < cutoff) receiptStore.delete(value.id);
-            }
-          };
-        }
-        const existingRequest = packageStore.getAll();
-        const workspaceRequest = workspaceStore.get(checked.templateId);
-        let packagesReady = false;
-        let workspaceReady = false;
-        let conflict: Error | null = null;
-
-        const commitWhenReady = () => {
-          if (!packagesReady || !workspaceReady) return;
-          if (readDeletedWorkspaceIds().has(checked.templateId)) {
-            conflict = new WorkspaceDeletedError(checked.templateId);
-            transaction.abort();
-            return;
-          }
-          const existingById = new Map(
-            (existingRequest.result as StoredArtifactPackage[]).map((entry) => [entry.artifactId, entry]),
-          );
-          for (const artifactPackage of artifactPackages) {
-            const existing = existingById.get(artifactPackage.artifactId);
-            if (existing && existing.moduleSource !== artifactPackage.moduleSource) {
-              conflict = new Error(
-                `Artifact id ${artifactPackage.artifactId} is already installed with different code; use a new artifactId`,
-              );
-              transaction.abort();
-              return;
-            }
-          }
-          const current = workspaceRecordSchema.safeParse(workspaceRequest.result);
-          if (!current.success) {
-            conflict = relayReceipt
-              ? new WorkspaceDeletedError(checked.templateId)
-              : new WorkspaceConflictError(checked.templateId);
-            transaction.abort();
-            return;
-          }
-          if (!relayReceipt && current.data.revision !== checked.revision) {
-            conflict = new WorkspaceConflictError(checked.templateId);
-            transaction.abort();
-            return;
-          }
-
-          const installedAt = new Date().toISOString();
-          for (const artifactPackage of artifactPackages) {
-            packageStore.put({ ...artifactPackage, installedAt });
-          }
-          if (relayReceipt) {
-            const deliveredNodeIds = new Set(relayReceipt.nodeIds);
-            const existingNodeIds = new Set(current.data.board.nodes.map((node) => node.id));
-            const deliveredNodes = checked.board.nodes.filter((node) =>
-              deliveredNodeIds.has(node.id) && !existingNodeIds.has(node.id));
-            committedWorkspace = {
-              ...current.data,
-              revision: current.data.revision + 1,
-              updatedAt: checked.updatedAt,
-              board: {
-                ...current.data.board,
-                nodes: [...current.data.board.nodes, ...deliveredNodes],
-                selectedNodeId: checked.board.selectedNodeId,
-              },
-            };
-          } else {
-            committedWorkspace = {
-              ...checked,
-              revision: current.data.revision + 1,
-            };
-          }
-          workspaceStore.put(committedWorkspace);
-        };
-
-        existingRequest.onsuccess = () => {
-          packagesReady = true;
-          commitWhenReady();
-        };
-        existingRequest.onerror = () => reject(existingRequest.error ?? new Error("Unable to inspect artifact package"));
-        workspaceRequest.onsuccess = () => {
-          workspaceReady = true;
-          commitWhenReady();
-        };
-        workspaceRequest.onerror = () => reject(workspaceRequest.error ?? new Error("Unable to inspect target workspace"));
-        transaction.oncomplete = () => {
-          finish();
-          resolve();
-        };
-        transaction.onerror = () => {
-          finish();
-          reject(
-            duplicateReceipt && relayReceipt
-              ? new RelayReceiptAlreadyExistsError(relayReceipt.id)
-              : conflict ?? transaction.error ?? new Error("Unable to install artifact"),
-          );
-        };
-        transaction.onabort = () => {
-          finish();
-          reject(
-            options.signal?.aborted
-              ? new DOMException("Build Session is no longer active", "AbortError")
-              : duplicateReceipt && relayReceipt
-                ? new RelayReceiptAlreadyExistsError(relayReceipt.id)
-                : conflict ?? transaction.error ?? new Error("Artifact installation was aborted"),
-          );
-        };
-      });
-    } finally {
-      database.close();
-    }
-    writeWorkspaceRecovery(committedWorkspace);
+      if (readDeletedWorkspaceIds().has(checked.templateId)) {
+        throw new WorkspaceDeletedError(checked.templateId);
+      }
+      return commitArtifactPackagesTransaction(
+        checked,
+        artifactPackages,
+        relayReceipt,
+        {
+          expectedIncarnationId,
+          expectedRevision,
+          isWorkspaceDeleted: () => readDeletedWorkspaceIds().has(checked.templateId),
+          signal: options.signal,
+        },
+      );
+    };
+    // Relay delivery and deletion share this cross-tab lock. A deletion that
+    // reaches the lock first leaves a tombstone before delivery can enter its
+    // IndexedDB transaction; a transaction that wins first commits before the
+    // deletion begins. Without Web Locks, relay delivery fails closed while
+    // ordinary offline package installation retains its single-tab behavior.
+    const committedWorkspace = relayReceipt
+      ? await withWorkspaceWriteLock(checked.templateId, commit, options.signal)
+      : await commit();
+    await writeWorkspaceRecovery(committedWorkspace);
     return { storage: "indexeddb" as const, workspace: committedWorkspace };
   });
 }

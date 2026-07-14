@@ -74,16 +74,26 @@ templates are immutable seeds. On first visit, the selected template is copied
 to the first browser-local view. Additional named views use unique ids while
 retaining the historical `templateId` field as their IndexedDB key. Navigation
 summaries retain only node geometry and artifact ids for page previews; they do
-not cache screenshots or mount artifact renderers a second time. IndexedDB is
-the primary store. Every workspace carries a monotonic revision.
+not cache screenshots or mount artifact renderers a second time. Each summary
+also carries the workspace incarnation so a storage event can distinguish a
+restored lifetime from the deleted View that reused its id. IndexedDB is the
+primary store. Every workspace carries a monotonic revision and a random commit
+identity, so a recovery journal can identify its own exact predecessor without
+depending on millisecond timestamps.
 Interaction-driven saves are debounced, single-flight per mounted view, and
 committed with an IndexedDB compare-and-swap so a stale tab cannot overwrite a
 newer board. A later edit made while a save is in flight is rebased onto that
 tab's returned revision; a genuinely external revision reports a conflict.
-`pagehide` synchronously writes a monotonic localStorage recovery mirror if a
-page closes before the next IndexedDB transaction; an older tab cannot replace
-a newer mirror, and a newer fallback revision is promoted when IndexedDB
-recovers. The persisted board
+If IndexedDB is unavailable, a versioned fallback save takes a same-origin,
+per-workspace exclusive Web Lock before it re-reads the localStorage mirror,
+checks the revision/incarnation, and writes. Browsers without Web Locks fail
+that fallback closed rather than silently accepting last-writer-wins behavior.
+`pagehide` synchronously writes a per-page localStorage recovery journal if a
+page closes before the next IndexedDB transaction. An in-flight journal records
+the random identity of the commit it follows; queued obsolete save generations
+cannot run after pagehide and erase the newer journal. Ambiguous legacy
+expectations fail closed, an older tab cannot replace a newer mirror, and a
+newer fallback revision is promoted when IndexedDB recovers. The persisted board
 includes nodes, viewport, selected node, theme mode, and the snap-to-grid
 preference. Node positions can be snapped to the 38px world-coordinate grid by
 the canvas shell. Resize remains aspect-locked and independent of grid snapping;
@@ -95,12 +105,21 @@ continuing to reference the same origin-wide artifact package ids. Deleting a
 view removes its workspace records but keeps packages; the UI retains the
 deleted workspace briefly so Undo can restore it at the previous list position.
 Active-view duplicate and delete operations receive the live in-memory snapshot
-so the 400 ms autosave window cannot discard a just-finished edit. Every delete
-writes a fresh per-View generation UUID, which remains the authoritative logical
-deletion when IndexedDB is temporarily unavailable. Restore is a conditional
-one-time write that requires both the current deletion generation and matching
-deleted revision before clearing it, so an older Undo cannot be mistaken for a
-later deletion after another tab restores, edits, and deletes the View again.
+so the 400 ms autosave window cannot discard a just-finished edit. Each logical
+workspace lifetime has a stable incarnation id. Every delete writes a separate,
+fresh per-View deletion UUID, which remains the authoritative logical deletion
+when IndexedDB is temporarily unavailable. Restore is a conditional one-time
+write that requires the current deletion generation, deleted revision, and old
+incarnation before clearing the tombstone; the restored workspace receives a
+new incarnation. An older Undo or Build Session therefore cannot be mistaken
+for the restored View after another tab restores, edits, or deletes it again.
+On cross-tab tombstone changes, the app compares both id and incarnation; an
+active View whose id survived a delete-plus-restore is reloaded and remounted.
+Relay commits and deletions additionally share the same abortable per-workspace
+Web Lock. A deletion that queues first leaves its tombstone before relay commit;
+a relay commit that queues first finishes atomically before deletion begins.
+Build Session creation therefore fails closed when Web Locks are unavailable,
+while file installation remains the offline fallback.
 
 Node editing uses a bounded in-memory document history. Discrete commands store
 one before-snapshot, while drag and resize open a transaction on pointer down and
@@ -161,13 +180,13 @@ sequenceDiagram
     B->>R: "Hibernating WebSocket with browser capability"
     A->>R: "AES-GCM ciphertext plus upload capability"
     R-->>B: "Pending delivery over WebSocket"
-    B->>B: "Decrypt and validate every bundle"
-    B->>B: "Atomic packages, workspace, and receipt commit"
+    B->>B: "Decrypt and prepare every trusted bundle while UI remains interactive"
+    B->>B: "Flush, place, and strict revision-plus-incarnation CAS commit"
     B->>R: "Installed or rejected ACK"
     R->>R: "Delete pending ciphertext"
 ```
 
-The version 1 transport lives under `relay/` and uses one SQLite-backed Durable
+The protocol-v2 transport lives under `relay/` and uses one SQLite-backed Durable
 Object per session. Access ends at the 30-minute expiry timestamp; its alarm
 then deletes the SQL tables and ciphertext. Hibernating
 WebSockets avoid polling and allow an idle session to release Worker memory.
@@ -183,29 +202,35 @@ the key or upload capability) in a private OS cache only while an outcome is
 ambiguous so a later process can make a byte-identical retry. Definitive results
 delete it; later runs opportunistically prune owned entries older than 24 hours.
 A changed payload, unauthenticated cache entry, or missing retry cache fails
-locally. The browser serializes processing. It validates the complete decrypted
-selection,
-then writes all packages, the target workspace, and a delivery receipt in one
-IndexedDB transaction. If the network drops after that commit but before ACK,
-the Durable Object replays the ciphertext and the browser uses the receipt to
-ACK without adding duplicate nodes. Rejected selections leave no package,
-workspace, or receipt fragment. The transaction reads the latest persisted
-workspace, merges delivered nodes, and returns that exact committed record to
-the live tab; the tab skips its otherwise redundant autosave so a same-view edit
-saved by another tab is not overwritten by a stale pre-delivery snapshot.
-Before a live delivery commits, the mounted view flushes any edit still inside
-the autosave window. From that flush through applying the atomic commit, the
-mounted editing surfaces are inert and any active drag is ended, so a new edit
-cannot enter between the chosen snapshot and the committed result. Build
-Session controls stay available so the user can end and abort the operation.
+locally. The browser serializes processing. It decrypts and prepares the complete
+trusted selection outside the UI mutation gate; module evaluation can take an
+unbounded amount of time, so navigation and editing remain available during
+that phase. Ending the session prevents any later commit even if an already
+evaluating module eventually resolves. The browser then writes all packages,
+the target workspace, and a delivery receipt in one IndexedDB transaction. If
+the network drops after that commit but before ACK, the Durable Object replays
+the ciphertext and the browser uses the receipt to ACK without adding duplicate
+nodes. Rejected selections leave no package, workspace, or receipt fragment.
+
+The short commit boundary flushes pending current-tab edits, reads the current
+workspace, lays out every delivered node against that exact board, and commits
+only when both its revision and incarnation still match. A concurrent revision
+change reloads the latest record, re-runs host placement against its nodes, and
+retries a bounded number of times; repeated conflicts reject the delivery
+instead of silently merging stale placement. From that flush through applying
+the committed record, mounted editing surfaces are inert and any active drag is
+ended. Build Session controls remain available. The live tab applies the exact
+committed record and skips a redundant autosave.
 The delivered node set is then recorded as one Undo step;
 external sibling-tab node changes are rebased through older history snapshots
 so undoing the delivery does not erase either the sibling change or earlier
 local Undo entries.
-The same serialized boundary checks browser-local deletion tombstones before
-and during the transaction. If the session's target view was deleted while a
-module was preparing, the browser sends a terminal rejected ACK and writes no
-package, workspace, or receipt; the relay path never clears the tombstone.
+The same serialized boundary checks browser-local deletion tombstones and the
+session's immutable target incarnation before and during the transaction. If
+the target was deleted, restored, or replaced while a module was preparing, the
+browser sends a terminal rejected ACK and writes no package, workspace, or
+receipt; the relay path never clears the tombstone or retargets to the new
+incarnation.
 When the target is not the mounted View, a successful commit also refreshes the
 mounted origin-wide artifact runtime so **Artifacts > Yours** and package-aware
 imports see the new package without navigation or reload.
@@ -214,16 +239,29 @@ Browser-only capability material stays in module-private page memory and is not
 written to Web Storage. Reloading therefore ends the browser side of a Build
 Session. The upload capability and encryption key appear only in the copied
 agent handoff, are visually masked in the dialog, and enter the uploader over
-stdin rather than process arguments.
+stdin rather than process arguments. That handoff pins the Skills CLI, fetches
+the project skill by full commit SHA, verifies `FETCH_HEAD`, installs from the
+detached local checkout, and provides an expected launcher digest. The launcher
+verifies itself and its dependency-free core before reading stdin.
+
+Wire protocol v2 binds the target workspace incarnation into session creation,
+ready/status metadata, uploader retry identity, and AES-GCM authenticated data.
+The relay and browser reject v1 messages, and pre-upgrade sessions without an
+incarnation fail closed. The executable artifact bundle schema remains version
+1; its version is independent of the relay wire protocol. The HTTP route prefix
+remains `/v1` as the deployed endpoint family and does not identify a wire
+message version.
 
 Placement stays host-owned. The session captures its target view and stage size;
 navigation never retargets it. Installation uses that view's current or last
 persisted viewport, snaps the candidate to the 38px grid, searches outward from
 the center for the nearest fully visible non-overlapping position, and assigns
 successively highest z-indices. If the viewport has no complete opening, the
-search expands into the neighboring world grid and chooses the nearest free
-position for each card, including cards already added by the same delivery as
-blockers; it never accepts an overlapping center fallback.
+host keeps the fallback at the viewport center on the top layer instead of
+hiding it elsewhere on the infinite canvas. Additional fallbacks in the same
+delivery use deterministic 38px offsets around that center so every card stays
+visible and distinguishable even though overlap is allowed in this full-view
+case.
 
 Session creation requires a strict allowed browser origin and Turnstile. The
 Worker applies an IP creation limit and a per-source upload limit. Only a

@@ -432,22 +432,31 @@
   }
 
   .topbar-actions .primary-action {
-    display: none;
+    width: 38px;
+    min-width: 38px;
+    grid-template-columns: 18px;
+    padding: 0;
+  }
+
+  .topbar-actions .primary-action span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .artifact-library-toggle {
-    width: 86px;
-    flex-basis: 86px;
+    width: 38px;
+    flex-basis: 38px;
     display: grid;
-    grid-template-columns: 18px auto;
-    gap: 6px;
-    padding: 0 10px;
+    grid-template-columns: 18px;
+    padding: 0;
   }
 
   .artifact-library-toggle span {
-    display: block;
-    font-size: 12px;
-    font-weight: 580;
+    display: none;
   }
 
 }

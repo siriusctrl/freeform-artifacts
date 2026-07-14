@@ -1,11 +1,8 @@
 import {
   ArtifactBundleValidationError,
-  loadInstalledArtifacts,
   prepareArtifactBundle,
-  type ArtifactBundle,
 } from "../artifacts/generated/bundles";
 import { validatePreparedArtifact } from "../artifacts/generated/preflight";
-import { artifactRegistry } from "../artifacts/registry";
 import type { RegisteredArtifact } from "../artifacts/registryTypes";
 import type { CanvasNode } from "../artifacts/types";
 import { CANVAS_GRID_SIZE, snapToGrid } from "../lib/geometry";
@@ -13,22 +10,17 @@ import {
   commitWorkspaceWithArtifactPackages,
   loadWorkspaceById,
   relayReceiptId,
+  WorkspaceConflictError,
   WorkspaceDeletedError,
 } from "../workspaces/storage";
 import type { WorkspaceRecord } from "../workspaces/types";
-import type { RelayDeliveryIdentity } from "./types";
+import type {
+  PreparedRelayDelivery,
+  RelayDeliveryIdentity,
+  RelayPlacementContext,
+  RelayPreparedArtifacts,
+} from "./types";
 import { createArtifactNode, moveNodeToNearestOpenPosition, nodesOverlap } from "../canvas/nodeFactory";
-
-export interface RelayPlacementContext {
-  stageSize: { width: number; height: number };
-}
-
-export interface PreparedRelayDelivery {
-  artifacts: RegisteredArtifact[];
-  bundles: ArtifactBundle[];
-  nodes: CanvasNode[];
-  workspace: WorkspaceRecord;
-}
 
 export class RelayDeliveryRejectedError extends Error {
   constructor(message: string) {
@@ -52,103 +44,66 @@ function nodeFitsCompletelyInBounds(node: CanvasNode, bounds: ReturnType<typeof 
     node.x + node.width <= bounds.right && node.y + node.height <= bounds.bottom;
 }
 
-function axisOverlaps(
-  candidateStart: number,
-  candidateSize: number,
-  existingStart: number,
-  existingSize: number,
-  gap: number,
-) {
-  return candidateStart < existingStart + existingSize + gap &&
-    candidateStart + candidateSize + gap > existingStart;
-}
-
-interface GridInterval {
-  start: number;
-  end: number;
-}
-
-function nearestUnblockedGridIndex(origin: number, intervals: GridInterval[]) {
-  if (!intervals.length) return origin;
-  const sorted = [...intervals].sort((first, second) => first.start - second.start || first.end - second.end);
-  const merged: GridInterval[] = [];
-  for (const interval of sorted) {
-    const previous = merged.at(-1);
-    if (!previous || interval.start > previous.end + 1) {
-      merged.push({ ...interval });
-    } else {
-      previous.end = Math.max(previous.end, interval.end);
-    }
+function fallbackGridOffset(index: number) {
+  if (index === 0) return { x: 0, y: 0 };
+  let remaining = index;
+  for (let radius = 1; ; radius += 1) {
+    const ring: Array<{ x: number; y: number }> = [];
+    for (let x = radius; x >= -radius; x -= 1) ring.push({ x, y: radius });
+    for (let y = radius - 1; y >= -radius; y -= 1) ring.push({ x: -radius, y });
+    for (let x = -radius + 1; x <= radius; x += 1) ring.push({ x, y: -radius });
+    for (let y = -radius + 1; y < radius; y += 1) ring.push({ x: radius, y });
+    if (remaining <= ring.length) return ring[remaining - 1];
+    remaining -= ring.length;
   }
-  const containing = merged.find((interval) => origin >= interval.start && origin <= interval.end);
-  if (!containing) return origin;
-  const before = containing.start - 1;
-  const after = containing.end + 1;
-  return origin - before <= after - origin ? before : after;
 }
 
-/**
- * Find the nearest free grid position in the unbounded canvas world.
- *
- * Each existing node creates a rectangular set of forbidden top-left positions.
- * The nearest free position must be either on the origin row or immediately
- * outside one of those rectangles, so only those rows need to be examined. For
- * each row, merging the forbidden column intervals gives the nearest free
- * column without an unbounded ring walk for unusually large artifacts.
- */
-function moveNodeToNearestOpenWorldPosition(
-  node: CanvasNode,
-  existingNodes: CanvasNode[],
+function visibleTopLeftRange(
+  minimum: number,
+  maximum: number,
+  itemSize: number,
   gridSize: number,
 ) {
-  const originX = Math.round(node.x / gridSize);
-  const originY = Math.round(node.y / gridSize);
-  const candidateRows = new Set<number>([originY]);
-  for (const existing of existingNodes) {
-    const forbiddenTop = existing.y - node.height - gridSize;
-    const forbiddenBottom = existing.y + existing.height + gridSize;
-    candidateRows.add(Math.floor(forbiddenTop / gridSize));
-    candidateRows.add(Math.ceil(forbiddenBottom / gridSize));
-  }
-
-  let best: { node: CanvasNode; radius: number; row: number; column: number } | undefined;
-  for (const row of candidateRows) {
-    const y = row * gridSize;
-    const forbiddenColumns: GridInterval[] = [];
-    for (const existing of existingNodes) {
-      if (!axisOverlaps(y, node.height, existing.y, existing.height, gridSize)) continue;
-      const forbiddenLeft = existing.x - node.width - gridSize;
-      const forbiddenRight = existing.x + existing.width + gridSize;
-      const start = Math.floor(forbiddenLeft / gridSize) + 1;
-      const end = Math.ceil(forbiddenRight / gridSize) - 1;
-      if (start <= end) forbiddenColumns.push({ start, end });
-    }
-    const column = nearestUnblockedGridIndex(originX, forbiddenColumns);
-    const candidate = { ...node, x: column * gridSize, y };
-    if (existingNodes.some((existing) => nodesOverlap(candidate, existing, gridSize))) continue;
-    const radius = Math.max(Math.abs(column - originX), Math.abs(row - originY));
-    if (!best || radius < best.radius || (
-      radius === best.radius && (row < best.row || (row === best.row && column < best.column))
-    )) {
-      best = { node: candidate, radius, row, column };
-    }
-  }
-
-  // The origin row is always examined, and a column beyond every finite
-  // blocker is always available, so valid artifact dimensions guarantee this.
-  if (!best) throw new RelayDeliveryRejectedError("Unable to find a safe canvas position");
-  return best.node;
+  const visibleSize = Math.min(gridSize, itemSize, Math.max(0, maximum - minimum));
+  return {
+    min: Math.ceil((minimum - itemSize + visibleSize) / gridSize) * gridSize,
+    max: Math.floor((maximum - visibleSize) / gridSize) * gridSize,
+  };
 }
 
-export async function prepareRelayDelivery(
+function moveNodeToViewportFallback(
+  node: CanvasNode,
+  fallbackIndex: number,
+  previousFallbacks: CanvasNode[],
+  bounds: ReturnType<typeof visibleBounds>,
+  gridSize: number,
+) {
+  const horizontal = visibleTopLeftRange(bounds.left, bounds.right, node.width, gridSize);
+  const vertical = visibleTopLeftRange(bounds.top, bounds.bottom, node.height, gridSize);
+  let firstCandidate: CanvasNode | undefined;
+  for (let index = fallbackIndex; index < fallbackIndex + 256; index += 1) {
+    const offset = fallbackGridOffset(index);
+    const candidate = {
+      ...node,
+      x: Math.min(horizontal.max, Math.max(horizontal.min, node.x + offset.x * gridSize)),
+      y: Math.min(vertical.max, Math.max(vertical.min, node.y + offset.y * gridSize)),
+    };
+    firstCandidate ??= candidate;
+    if (!previousFallbacks.some((previous) => previous.x === candidate.x && previous.y === candidate.y)) {
+      return candidate;
+    }
+  }
+  return firstCandidate ?? node;
+}
+
+export async function prepareRelayArtifacts(
   values: unknown[],
-  workspace: WorkspaceRecord,
   existingRegistry: Record<string, RegisteredArtifact>,
-  placement: RelayPlacementContext,
-): Promise<PreparedRelayDelivery> {
+): Promise<RelayPreparedArtifacts> {
   if (!values.length) throw new Error("A relay delivery must contain at least one artifact");
   const registry = { ...existingRegistry };
-  const prepared: Array<{ artifact: RegisteredArtifact; bundle: ArtifactBundle }> = [];
+  const prepared: RelayPreparedArtifacts = { artifacts: [], bundles: [] };
+  const selectionIds = new Set<string>();
   for (const value of values) {
     let entry;
     try {
@@ -159,14 +114,32 @@ export async function prepareRelayDelivery(
       }
       throw error;
     }
+    if (selectionIds.has(entry.artifact.id)) {
+      throw new RelayDeliveryRejectedError(
+        `Artifact id ${entry.artifact.id} appears more than once in this delivery`,
+      );
+    }
+    selectionIds.add(entry.artifact.id);
     registry[entry.artifact.id] = entry.artifact;
-    prepared.push(entry);
+    prepared.artifacts.push(entry.artifact);
+    prepared.bundles.push(entry.bundle);
   }
+  return prepared;
+}
 
+export function placePreparedRelayArtifacts(
+  prepared: RelayPreparedArtifacts,
+  workspace: WorkspaceRecord,
+  placement: RelayPlacementContext,
+): PreparedRelayDelivery {
   const targetNodes = [...workspace.board.nodes];
   const addedNodes: CanvasNode[] = [];
+  const fallbackNodes: CanvasNode[] = [];
   const bounds = visibleBounds(workspace, placement.stageSize);
-  for (const { artifact, bundle } of prepared) {
+  let fallbackCount = 0;
+  for (let index = 0; index < prepared.artifacts.length; index += 1) {
+    const artifact = prepared.artifacts[index];
+    const bundle = prepared.bundles[index];
     let node = createArtifactNode(
       bundle.node,
       artifact,
@@ -181,7 +154,9 @@ export async function prepareRelayDelivery(
     if (hasCompleteOpening) {
       node = openPosition;
     } else {
-      node = moveNodeToNearestOpenWorldPosition(node, targetNodes, CANVAS_GRID_SIZE);
+      node = moveNodeToViewportFallback(node, fallbackCount, fallbackNodes, bounds, CANVAS_GRID_SIZE);
+      fallbackCount += 1;
+      fallbackNodes.push(node);
     }
     try {
       validatePreparedArtifact(node, artifact);
@@ -196,8 +171,8 @@ export async function prepareRelayDelivery(
 
   const selectedNodeId = addedNodes.at(-1)?.id ?? workspace.board.selectedNodeId;
   return {
-    artifacts: prepared.map((entry) => entry.artifact),
-    bundles: prepared.map((entry) => entry.bundle),
+    artifacts: prepared.artifacts,
+    bundles: prepared.bundles,
     nodes: addedNodes,
     workspace: {
       ...workspace,
@@ -211,36 +186,55 @@ export async function prepareRelayDelivery(
   };
 }
 
-export async function installRelayDeliveryIntoStoredView(
+const MAX_STORED_INSTALL_ATTEMPTS = 3;
+
+export async function installPreparedRelayDeliveryIntoStoredView(
   targetViewId: string,
-  values: unknown[],
+  targetViewIncarnationId: string,
+  preparedArtifacts: RelayPreparedArtifacts,
   placement: RelayPlacementContext,
   identity: RelayDeliveryIdentity,
-) {
-  const target = await loadWorkspaceById(targetViewId);
-  if (!target) throw new RelayDeliveryRejectedError("Target canvas view no longer exists");
-  const installed = await loadInstalledArtifacts();
-  const prepared = await prepareRelayDelivery(
-    values,
-    target.workspace,
-    { ...artifactRegistry, ...installed.registry },
-    placement,
-  );
-  try {
-    await commitWorkspaceWithArtifactPackages(prepared.workspace, prepared.bundles, {
-      id: relayReceiptId(identity.sessionId, identity.deliveryId),
-      deliveryId: identity.deliveryId,
-      sessionId: identity.sessionId,
-      targetViewId,
-      artifactIds: prepared.artifacts.map((artifact) => artifact.id),
-      nodeIds: prepared.nodes.map((node) => node.id),
-      installedAt: new Date().toISOString(),
-    }, { signal: identity.signal });
-  } catch (error) {
-    if (error instanceof WorkspaceDeletedError) {
-      throw new RelayDeliveryRejectedError("Target canvas view no longer exists");
+) : Promise<PreparedRelayDelivery> {
+  for (let attempt = 0; attempt < MAX_STORED_INSTALL_ATTEMPTS; attempt += 1) {
+    if (identity.signal.aborted) {
+      throw new DOMException("Build Session is no longer active", "AbortError");
     }
-    throw error;
+    const target = await loadWorkspaceById(targetViewId);
+    if (!target) throw new RelayDeliveryRejectedError("Target canvas view no longer exists");
+    if (target.workspace.incarnationId !== targetViewIncarnationId) {
+      throw new RelayDeliveryRejectedError("Target canvas view was deleted or replaced after this Build Session opened");
+    }
+    const placed = placePreparedRelayArtifacts(preparedArtifacts, target.workspace, placement);
+    try {
+      const committed = await commitWorkspaceWithArtifactPackages(placed.workspace, placed.bundles, {
+        id: relayReceiptId(identity.sessionId, identity.deliveryId),
+        deliveryId: identity.deliveryId,
+        sessionId: identity.sessionId,
+        targetViewId,
+        targetViewIncarnationId,
+        artifactIds: placed.artifacts.map((artifact) => artifact.id),
+        nodeIds: placed.nodes.map((node) => node.id),
+        installedAt: new Date().toISOString(),
+      }, {
+        expectedIncarnationId: targetViewIncarnationId,
+        expectedRevision: target.workspace.revision,
+        signal: identity.signal,
+      });
+      return { ...placed, workspace: committed.workspace };
+    } catch (error) {
+      if (error instanceof WorkspaceDeletedError) {
+        throw new RelayDeliveryRejectedError("Target canvas view no longer exists");
+      }
+      if (error instanceof WorkspaceConflictError && attempt + 1 < MAX_STORED_INSTALL_ATTEMPTS) {
+        continue;
+      }
+      if (error instanceof WorkspaceConflictError) {
+        throw new RelayDeliveryRejectedError(
+          "Target canvas changed repeatedly during delivery; retry after edits settle",
+        );
+      }
+      throw error;
+    }
   }
-  return prepared;
+  throw new RelayDeliveryRejectedError("Unable to install this delivery safely");
 }

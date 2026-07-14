@@ -22,6 +22,7 @@ function parseRelayHandoff(handoff) {
     uploadToken: credentials.uploadToken,
     encryptionKey: credentials.encryptionKey,
     targetViewId: option("view-id"),
+    targetViewIncarnationId: option("view-incarnation-id"),
   };
 }
 
@@ -32,6 +33,7 @@ function runDelivery(session) {
     "--session-id", session.sessionId,
     "--credentials-stdin",
     "--view-id", session.targetViewId,
+    "--view-incarnation-id", session.targetViewIncarnationId,
     bundlePath,
   ];
   return new Promise((resolve, reject) => {
@@ -51,7 +53,7 @@ function runDelivery(session) {
 
 try {
   const health = await fetch(`${expectedRelay}/health`).then((response) => response.json());
-  if (!health.ok || health.version !== 1 || health.enabled !== true) {
+  if (!health.ok || health.version !== 2 || health.enabled !== true) {
     throw new Error(`Relay health check failed: ${JSON.stringify(health)}`);
   }
 
@@ -91,7 +93,12 @@ try {
   }
   await page.getByTestId("copy-agent-instruction").click();
   const session = parseRelayHandoff(await page.evaluate(() => navigator.clipboard.readText()));
-  if (!session || session.endpoint !== expectedRelay || session.targetViewId !== "market-overview") {
+  if (
+    !session ||
+    session.endpoint !== expectedRelay ||
+    session.targetViewId !== "market-overview" ||
+    !session.targetViewIncarnationId
+  ) {
     throw new Error("Production Build Session did not bind the expected relay and view");
   }
 

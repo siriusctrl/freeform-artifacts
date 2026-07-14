@@ -1,23 +1,38 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RelayDeliveryRejectedError } from "./installDelivery";
-import { decryptRelayDelivery, hashCapability, randomCapability, randomEncryptionKey } from "./crypto";
+import { hashCapability, randomCapability, randomEncryptionKey } from "./crypto";
 import { RELAY_URL } from "./config";
 import {
   RELAY_PROTOCOL_VERSION,
-  RELAY_WEBSOCKET_PROTOCOL,
-  relayServerMessageSchema,
+  relayCapabilitySchema,
+  relaySessionCreatedSchema,
 } from "./protocol";
+import { decryptRelayDelivery } from "./crypto";
+import { RelayConnection, type RelayConnectionRuntime } from "./relayConnection";
 import type {
   ActiveRelaySession,
   RelayConnectionStatus,
   RelayDeliveryIdentity,
+  RelayDeliveryOutcome,
   RelayInstallResult,
   RelaySessionRequest,
 } from "./types";
 
-const RelayWebSocket = window.WebSocket;
 const relayFetch = window.fetch.bind(window);
+const relayWebSocket = window.WebSocket;
+const relayConnectionRuntime: RelayConnectionRuntime = {
+  WebSocket: relayWebSocket,
+  clearTimeout: window.clearTimeout.bind(window),
+  decrypt: decryptRelayDelivery,
+  now: Date.now,
+  setTimeout: window.setTimeout.bind(window),
+};
 const browserCapabilities = new WeakMap<ActiveRelaySession, string>();
+const WEB_LOCKS_REQUIRED_MESSAGE =
+  "Build Sessions need this browser's cross-tab locking support. Use file install as the offline fallback.";
+
+function relayStorageSafetyAvailable() {
+  return Boolean(navigator.locks?.request);
+}
 
 function sessionCreationFailureMessage(code?: string) {
   if (code === "rate_limited") {
@@ -38,10 +53,10 @@ function sessionCreationFailureMessage(code?: string) {
   return "Build Sessions are temporarily unavailable. Try again shortly.";
 }
 
-function webSocketUrl(session: ActiveRelaySession) {
-  const url = new URL(`${session.endpoint}/v1/sessions/${session.sessionId}/connect`);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  return url.toString();
+function relayErrorCode(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const error = (value as { error?: unknown }).error;
+  return typeof error === "string" ? error : undefined;
 }
 
 export interface ArtifactRelayController {
@@ -55,12 +70,6 @@ export interface ArtifactRelayController {
   session: ActiveRelaySession | null;
   status: RelayConnectionStatus;
   stopSession: () => Promise<void>;
-}
-
-export interface RelayDeliveryOutcome {
-  detail?: string;
-  kind: "installed" | "rejected";
-  summary: string;
 }
 
 export function useArtifactRelaySession(
@@ -78,19 +87,18 @@ export function useArtifactRelaySession(
   const [deliveryOutcome, setDeliveryOutcome] = useState<RelayDeliveryOutcome | null>(null);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
-  const processingQueue = useRef<Promise<void>>(Promise.resolve());
+  const connectionRef = useRef<RelayConnection | null>(null);
   const creationGeneration = useRef(0);
   const creatingGeneration = useRef<number | null>(null);
   const creationAbortControllers = useRef(new Set<AbortController>());
   const activeSessionRef = useRef<ActiveRelaySession | null>(null);
   const sessionAbortRef = useRef<AbortController | null>(null);
-  const sessionGeneration = useRef(0);
 
   const invalidateSessionWork = useCallback(() => {
-    sessionGeneration.current += 1;
     sessionAbortRef.current?.abort();
     sessionAbortRef.current = null;
-    processingQueue.current = Promise.resolve();
+    connectionRef.current?.stop(1000, "Build Session closed");
+    connectionRef.current = null;
   }, []);
 
   const invalidateCreation = useCallback((abort = true) => {
@@ -144,193 +152,48 @@ export function useArtifactRelaySession(
 
   useEffect(() => {
     if (!session || Date.parse(session.expiresAt) <= Date.now()) return;
-    const generation = sessionGeneration.current;
     const abortController = sessionAbortRef.current;
     const browserToken = browserCapabilities.get(session);
     if (!abortController || !browserToken) return;
-    const connectionAbortController = new AbortController();
-    const abortConnection = () => connectionAbortController.abort();
-    abortController.signal.addEventListener("abort", abortConnection, { once: true });
-    let cancelled = false;
-    let reconnectTimer: number | undefined;
-    const socket = new RelayWebSocket(
-      webSocketUrl(session),
-      [RELAY_WEBSOCKET_PROTOCOL, `browser.${browserToken}`],
-    );
-    socketRef.current = socket;
-    setStatus(connectionAttempt ? "reconnecting" : "connecting");
-
-    const sessionIsActive = () => !cancelled && !abortController.signal.aborted &&
-      generation === sessionGeneration.current &&
-      activeSessionRef.current?.sessionId === session.sessionId &&
-      Date.parse(session.expiresAt) > Date.now();
-    const connectionIsActive = () => sessionIsActive() && !connectionAbortController.signal.aborted;
-
-    const sendAck = (deliveryId: string, outcome: "installed" | "rejected") => {
-      if (!connectionIsActive() || socket.readyState !== RelayWebSocket.OPEN) return false;
-      try {
-        socket.send(JSON.stringify({
-          version: RELAY_PROTOCOL_VERSION,
-          type: "ack",
-          deliveryId,
-          outcome,
-        }));
-        return true;
-      } catch {
-        setStatus("reconnecting");
-        setLastMessage("Relay acknowledgement was interrupted; reconnecting safely");
-        try {
-          socket.close(1011, "Retry acknowledgement after reconnect");
-        } catch {
-          // The close event or session alarm remains the retry boundary.
-        }
-        return false;
-      }
-    };
-
-    socket.addEventListener("message", (event) => {
-      if (!connectionIsActive()) return;
-      let parsed;
-      try {
-        parsed = relayServerMessageSchema.parse(JSON.parse(String(event.data)));
-      } catch {
-        setStatus("error");
-        setLastMessage("Relay sent an invalid protocol message");
-        socket.close(1002, "Invalid relay message");
-        return;
-      }
-      if (parsed.type === "ready") {
-        if (parsed.sessionId !== session.sessionId || parsed.targetViewId !== session.targetViewId) {
-          setStatus("error");
-          setLastMessage("Relay session target changed unexpectedly");
-          socket.close(1008, "Session target mismatch");
-          return;
-        }
-        setStatus("connected");
-        setLastMessage("Ready for encrypted deliveries");
-        return;
-      }
-      if (parsed.type === "expired") {
-        expireLocalSession();
-        return;
-      }
-      if (parsed.type === "error") {
-        setLastMessage(`Relay error: ${parsed.code}`);
-        return;
-      }
-
-      const queued = processingQueue.current.catch(() => undefined).then(async () => {
-        if (!connectionIsActive()) return;
-        let decrypted;
-        try {
-          decrypted = await decryptRelayDelivery(
-            parsed.delivery,
-            session.encryptionKey,
-            session.sessionId,
-            session.targetViewId,
-          );
-        } catch (error) {
-          if (!connectionIsActive()) return;
-          setDeliveryOutcome({
-            kind: "rejected",
-            summary: "Delivery rejected. Nothing was installed.",
-            detail: error instanceof Error ? error.message : undefined,
-          });
-          sendAck(parsed.delivery.deliveryId, "rejected");
-          return;
-        }
-        if (!connectionIsActive()) return;
-
-        let result: RelayInstallResult;
-        try {
-          result = await onDelivery(session.targetViewId, decrypted.bundles, {
-            targetViewId: session.targetViewId,
-            targetViewTitle: session.targetViewTitle,
-            stageSize: session.stageSize,
-          }, {
-            deliveryId: decrypted.deliveryId,
-            sessionId: session.sessionId,
-            signal: connectionAbortController.signal,
-          });
-        } catch (error) {
-          if (!connectionIsActive()) return;
-          if (error instanceof RelayDeliveryRejectedError) {
-            setDeliveryOutcome({
-              kind: "rejected",
-              summary: "Delivery rejected. Nothing was installed.",
-              detail: error.message,
-            });
-            sendAck(parsed.delivery.deliveryId, "rejected");
-            return;
-          }
-          setStatus("reconnecting");
-          setLastMessage(error instanceof Error
-            ? `Relay interrupted during local install: ${error.message}. Reconnecting safely.`
-            : "Relay interrupted during local install. Reconnecting safely.");
-          try {
-            socket.close(1011, "Retry delivery after reconnect");
-          } catch {
-            // A closed socket leaves the delivery pending for the next connection.
-          }
-          return;
-        }
-        if (!connectionIsActive()) return;
-        setDeliveryOutcome({
-          kind: "installed",
-          summary: `Installed ${result.artifactIds.length} artifact${result.artifactIds.length === 1 ? "" : "s"} into ${session.targetViewTitle}`,
-        });
-        sendAck(parsed.delivery.deliveryId, "installed");
-      });
-      processingQueue.current = queued.catch((error) => {
-        if (!connectionIsActive()) return;
-        setStatus("reconnecting");
-        setLastMessage(error instanceof Error
-          ? `Relay interrupted during delivery processing: ${error.message}. Reconnecting safely.`
-          : "Relay interrupted during delivery processing. Reconnecting safely.");
-        try {
-          socket.close(1011, "Reset delivery queue");
-        } catch {
-          // A later connection replays every unacknowledged delivery.
-        }
-      });
+    const connection = new RelayConnection({
+      attempt: connectionAttempt,
+      browserToken,
+      onDelivery,
+      parentSignal: abortController.signal,
+      runtime: relayConnectionRuntime,
+      session,
+      events: {
+        onDeliveryOutcome: setDeliveryOutcome,
+        onExpire: expireLocalSession,
+        onMessage: setLastMessage,
+        onReconnect: () => setConnectionAttempt((current) => current + 1),
+        onSocket: (socket) => {
+          socketRef.current = socket;
+        },
+        onStatus: setStatus,
+      },
     });
-
-    socket.addEventListener("close", (event) => {
-      if (!sessionIsActive()) return;
-      connectionAbortController.abort();
-      processingQueue.current = Promise.resolve();
-      if (event.code === 4000) {
-        expireLocalSession();
-        return;
-      }
-      if (event.code === 4001) {
-        setStatus("error");
-        setLastMessage("This Build Session is active in another browser tab");
-        return;
-      }
-      setStatus("reconnecting");
-      setLastMessage("Relay connection interrupted; reconnecting safely");
-      const delay = Math.min(10_000, 500 * 2 ** Math.min(connectionAttempt, 5));
-      reconnectTimer = window.setTimeout(() => setConnectionAttempt((current) => current + 1), delay);
-    });
-    socket.addEventListener("error", () => {
-      if (connectionIsActive()) setLastMessage("Relay connection interrupted; reconnecting");
-    });
-
+    connectionRef.current = connection;
+    connection.start();
     return () => {
-      cancelled = true;
-      connectionAbortController.abort();
-      processingQueue.current = Promise.resolve();
-      abortController.signal.removeEventListener("abort", abortConnection);
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      if (socketRef.current === socket) socketRef.current = null;
-      try {
-        socket.close(1000, "Client state changed");
-      } catch {
-        // The socket was already closed.
-      }
+      connection.stop();
+      if (connectionRef.current === connection) connectionRef.current = null;
     };
   }, [connectionAttempt, expireLocalSession, onDelivery, session]);
+
+  const restartActiveConnection = useCallback((active: ActiveRelaySession) => {
+    if (activeSessionRef.current !== active || Date.parse(active.expiresAt) <= Date.now()) return false;
+    connectionRef.current?.stop(1000, "User requested reconnect");
+    connectionRef.current = null;
+    socketRef.current = null;
+    if (!sessionAbortRef.current || sessionAbortRef.current.signal.aborted) {
+      sessionAbortRef.current = new AbortController();
+    }
+    setStatus("reconnecting");
+    setLastMessage("Reconnecting this browser to the Build Session");
+    setConnectionAttempt((current) => current + 1);
+    return true;
+  }, []);
 
   const stopSession = useCallback(async () => {
     const active = activeSessionRef.current;
@@ -342,7 +205,6 @@ export function useArtifactRelaySession(
     setStatus("idle");
     setLastMessage("");
     setDeliveryOutcome(null);
-    socketRef.current?.close(1000, "Build Session closed");
     if (!active) return;
     const browserToken = browserCapabilities.get(active);
     if (!browserToken) return;
@@ -358,20 +220,31 @@ export function useArtifactRelaySession(
 
   const requestSession = useCallback((nextRequest: RelaySessionRequest) => {
     setRequest(nextRequest);
+    if (!relayStorageSafetyAvailable()) {
+      invalidateCreation();
+      setDeliveryOutcome(null);
+      setStatus("error");
+      setLastMessage(WEB_LOCKS_REQUIRED_MESSAGE);
+      return;
+    }
     if (
       session &&
       session.targetViewId === nextRequest.targetViewId &&
+      session.targetViewIncarnationId === nextRequest.targetViewIncarnationId &&
       Date.parse(session.expiresAt) > Date.now()
     ) {
-      setStatus(socketRef.current?.readyState === RelayWebSocket.OPEN ? "connected" : "reconnecting");
-      setLastMessage("Reusing this view's active Build Session");
+      if (status === "error" || !connectionRef.current) {
+        restartActiveConnection(session);
+      } else if (status === "connected" && socketRef.current?.readyState === relayWebSocket.OPEN) {
+        setLastMessage("Reusing this view's active Build Session");
+      }
       return;
     }
     invalidateCreation(false);
     setDeliveryOutcome(null);
     setStatus("verifying");
     setLastMessage("Verifying this Build Session");
-  }, [invalidateCreation, session]);
+  }, [invalidateCreation, restartActiveConnection, session, status]);
 
   const completeVerification = useCallback(async (turnstileToken: string) => {
     if (!request) return;
@@ -392,7 +265,18 @@ export function useArtifactRelaySession(
     const uploadToken = randomCapability();
     const encryptionKey = randomEncryptionKey();
     try {
-      if (previous && previous.targetViewId !== requested.targetViewId) {
+      if (!relayStorageSafetyAvailable()) throw new Error(WEB_LOCKS_REQUIRED_MESSAGE);
+      if (
+        !relayCapabilitySchema.safeParse(browserToken).success ||
+        !relayCapabilitySchema.safeParse(uploadToken).success ||
+        !relayCapabilitySchema.safeParse(encryptionKey).success
+      ) {
+        throw new Error("Browser generated invalid Build Session credentials");
+      }
+      if (previous && (
+        previous.targetViewId !== requested.targetViewId ||
+        previous.targetViewIncarnationId !== requested.targetViewIncarnationId
+      )) {
         const previousBrowserToken = browserCapabilities.get(previous);
         invalidateSessionWork();
         activeSessionRef.current = null;
@@ -401,6 +285,7 @@ export function useArtifactRelaySession(
           await relayFetch(`${previous.endpoint}/v1/sessions/${previous.sessionId}`, {
             method: "DELETE",
             headers: { Authorization: `Bearer ${previousBrowserToken}` },
+            signal: creationAbort.signal,
           }).catch(() => undefined);
         }
       }
@@ -412,21 +297,28 @@ export function useArtifactRelaySession(
         body: JSON.stringify({
           version: RELAY_PROTOCOL_VERSION,
           targetViewId: requested.targetViewId,
+          targetViewIncarnationId: requested.targetViewIncarnationId,
           browserTokenHash: await hashCapability(browserToken),
           uploadTokenHash: await hashCapability(uploadToken),
           turnstileToken,
         }),
       });
-      const body = await response.json() as {
-        sessionId?: string;
-        targetViewId?: string;
-        expiresAt?: string;
-        error?: string;
-      };
-      if (!response.ok || !body.sessionId || !body.expiresAt) {
-        throw new Error(sessionCreationFailureMessage(body.error));
+      let value: unknown;
+      try {
+        value = await response.json();
+      } catch {
+        throw new Error(response.ok
+          ? "Relay returned an invalid Build Session response"
+          : sessionCreationFailureMessage());
       }
+      if (!response.ok) throw new Error(sessionCreationFailureMessage(relayErrorCode(value)));
+      const parsedBody = relaySessionCreatedSchema.safeParse(value);
+      if (!parsedBody.success) throw new Error("Relay returned an invalid Build Session response");
+      const body = parsedBody.data;
       if (body.targetViewId !== requested.targetViewId) throw new Error("Relay returned a different target view");
+      if (body.targetViewIncarnationId !== requested.targetViewIncarnationId) {
+        throw new Error("Relay returned a different target view incarnation");
+      }
       if (!creationIsCurrent()) {
         await relayFetch(`${RELAY_URL}/v1/sessions/${body.sessionId}`, {
           method: "DELETE",
@@ -470,17 +362,19 @@ export function useArtifactRelaySession(
   }, []);
 
   const retrySession = useCallback(() => {
+    if (!relayStorageSafetyAvailable()) {
+      setStatus("error");
+      setLastMessage(WEB_LOCKS_REQUIRED_MESSAGE);
+      return;
+    }
     if (session && Date.parse(session.expiresAt) > Date.now()) {
-      socketRef.current?.close(1012, "User requested reconnect");
-      setStatus("reconnecting");
-      setLastMessage("Reconnecting this browser to the Build Session");
-      setConnectionAttempt((current) => current + 1);
+      restartActiveConnection(session);
       return;
     }
     if (!request) return;
     setStatus("verifying");
     setLastMessage("Verifying this Build Session");
-  }, [request, session]);
+  }, [request, restartActiveConnection, session]);
 
   return {
     completeVerification,

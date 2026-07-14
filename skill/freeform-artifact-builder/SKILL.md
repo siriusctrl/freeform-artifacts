@@ -15,8 +15,9 @@ Do not write code until the delivery mode is known.
 ### Browser Relay
 
 Use this mode when the instruction contains `Delivery mode: BROWSER_RELAY` and
-provides a relay URL, session id, upload token, encryption key, and target view
-id from an explicit in-product **Build with AI** session.
+provides a relay URL, session id, upload token, encryption key, target view id,
+and target view incarnation id from an explicit in-product **Build with AI**
+session.
 
 - Final deliverable: one or more self-contained `.freeform-artifact.json`
   bundles delivered with `scripts/deliver.mjs` into the named browser-local
@@ -28,11 +29,15 @@ id from an explicit in-product **Build with AI** session.
   prefer the harness's pipe-backed process API, while the script provides
   hidden raw input when only a PTY is available. Never put them in process
   arguments, a shell pipeline, logs, the final report, commits, or a bundle.
+- Run the handoff's exact commit-pinned checkout and `npx skills@1.5.17`
+  install block, then run its SHA-256 check. Do not substitute `latest`, `main`,
+  or another ref, and do not continue if launcher or core integrity
+  verification fails.
 - One command may deliver up to 12 bundles atomically. The session-scoped upload
   capability may be reused for later delivery commands until the displayed
   expiry; every command creates a new idempotency id.
-- Do not change `--view-id` after the user navigates. The session remains bound
-  to the view named in the handoff.
+- Do not change `--view-id` or `--view-incarnation-id` after the user navigates.
+  The session remains bound to the exact view incarnation named in the handoff.
 - Follow [references/browser-relay.md](references/browser-relay.md) and
   [references/artifact-bundle.md](references/artifact-bundle.md).
 

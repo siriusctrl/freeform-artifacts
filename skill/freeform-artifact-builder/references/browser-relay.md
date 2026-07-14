@@ -8,7 +8,11 @@ persists the delivery.
 ## Deliver
 
 First generate and inspect one or more `.freeform-artifact.json` files outside
-the application repository. Then use the exact values from the copied handoff:
+the application repository. Run the copied handoff's exact commit-pinned
+checkout, version-pinned skill install, and launcher SHA-256 verification
+commands first. Do not replace its immutable source ref with `main` or continue
+after an integrity failure.
+Then use the exact session values from the handoff:
 
 ```sh
 node <skill-directory>/scripts/deliver.mjs \
@@ -16,6 +20,7 @@ node <skill-directory>/scripts/deliver.mjs \
   --session-id <session-id> \
   --credentials-stdin \
   --view-id <target-view-id> \
+  --view-incarnation-id <target-view-incarnation-id> \
   first.freeform-artifact.json second.freeform-artifact.json
 ```
 
@@ -29,11 +34,13 @@ pipeline, command arguments, or a file.
 
 The script:
 
+- verifies every dependency-free uploader module against the digest manifest
+  in the externally verified launcher before reading credentials;
 - checks the local bundle envelope and immutable artifact ids;
 - creates a fresh UUID delivery id unless `--delivery-id` is supplied for an
   intentional retry;
-- encrypts the complete selection with AES-256-GCM and target/session-bound
-  additional authenticated data;
+- encrypts the complete selection with the v2 AES-256-GCM protocol and
+  session/view/view-incarnation/delivery-bound additional authenticated data;
 - stages only the authenticated encrypted envelope and its payload digest in a
   private, mode-0600 OS retry cache. It never caches either capability or the
   plaintext bundles, and removes the entry after a definitive response;
@@ -70,8 +77,9 @@ wording “relay accepted” and do not overstate it as browser-confirmed.
 - One delivery can contain 1–12 artifacts. The browser validates every bundle
   before a single package/workspace transaction; one failure rejects the whole
   selection.
-- The target view is immutable for the session. Browser navigation does not
-  retarget a delivery.
+- The target view and its incarnation are immutable for the session. Browser
+  navigation does not retarget a delivery, and deleting then recreating the
+  same view id does not make an old session valid for the replacement.
 - A repeated `--delivery-id` is a retry, not a new placement. Never reuse one id
   for different plaintext.
 - Never put credentials in artifact source, filenames, screenshots, logs,
