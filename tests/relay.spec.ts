@@ -320,6 +320,8 @@ test("a stale tab cannot resurrect a deleted target view", async ({ page }) => {
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.getByTestId("sidebar-toggle").click();
   await page.getByTestId("create-view").click();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId))
+    .not.toBe("market-overview");
   const safeViewId = await page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId);
   expect(safeViewId).not.toBe("market-overview");
   await page.getByTestId("view-market-overview").click();
@@ -637,6 +639,8 @@ test("deleting the target during delivery rejects it without resurrecting the vi
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.getByTestId("sidebar-toggle").click();
   await page.getByTestId("create-view").click();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId))
+    .not.toBe("market-overview");
   const safeViewId = await page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId);
   await page.getByTestId("view-market-overview").click();
 
