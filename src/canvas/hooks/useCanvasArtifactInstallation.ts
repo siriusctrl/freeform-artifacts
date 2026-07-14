@@ -14,11 +14,13 @@ import {
 } from "../../artifacts/generated/bundles";
 import { validatePreparedArtifact } from "../../artifacts/generated/preflight";
 import { CHART_KIT_CAPABILITIES } from "../../artifacts/chartKit";
+import { formatArtifactValidationMessage } from "../../artifacts/validationMessage";
 import type { RegisteredArtifact } from "../../artifacts/registryTypes";
 import type { CanvasNode, CanvasViewport } from "../../artifacts/types";
 import type { RelayLiveInstaller } from "../../relay/types";
 import {
   commitWorkspaceWithArtifactPackage,
+  commitWorkspaceWithArtifactPackages,
   listWorkspaces,
   loadWorkspaceById,
 } from "../../workspaces/storage";
@@ -67,7 +69,7 @@ interface UseCanvasArtifactInstallationOptions {
     incarnationId: string;
   };
   canvas: CanvasDocumentBindings;
-  onBundleFileInstalled: () => void;
+  onBundleFileInstalled: (result: InstallArtifactResult) => void;
   onRegisterRelayInstaller: (installer: RelayLiveInstaller | null) => void;
   persistence: PersistenceBindings;
   runtime: ArtifactRuntimeBindings;
@@ -78,6 +80,11 @@ interface InstallArtifactResult {
   artifactId: string;
   nodeId: string;
   viewId: string;
+}
+
+interface InstallArtifactOptions {
+  viewId?: string;
+  viewIncarnationId?: string;
 }
 
 function stageSizeFor(stageRef: RefObject<HTMLDivElement | null>) {
@@ -131,17 +138,26 @@ export function useCanvasArtifactInstallation({
 
   const installBundle = useCallback(async (
     value: unknown,
-    options: { viewId?: string } = {},
+    options: InstallArtifactOptions = {},
   ): Promise<InstallArtifactResult> => {
     if (!beginInstallation()) throw new Error("Another artifact installation is already in progress");
     try {
+      if (options.viewId && !options.viewIncarnationId) {
+        throw new Error("viewIncarnationId is required when viewId is provided");
+      }
       const { artifact, bundle } = await prepareArtifactBundle(value, runtime.registry);
       const targetViewId = options.viewId ?? activeView.id;
       const stageSize = stageSizeFor(canvas.stageRef);
 
       if (targetViewId === activeView.id) {
+        if (options.viewIncarnationId && options.viewIncarnationId !== activeView.incarnationId) {
+          throw new Error("Target canvas view was deleted or replaced after this build brief opened");
+        }
         await persistence.flushPendingSave();
         const currentWorkspace = canvas.workspaceRef.current;
+        if (options.viewIncarnationId && currentWorkspace.incarnationId !== options.viewIncarnationId) {
+          throw new Error("Target canvas view was deleted or replaced after this build brief opened");
+        }
         const node = createBundleNode(
           bundle,
           artifact,
@@ -184,6 +200,9 @@ export function useCanvasArtifactInstallation({
 
       const target = await loadWorkspaceById(targetViewId);
       if (!target) throw new Error(`Unknown canvas view: ${targetViewId}`);
+      if (options.viewIncarnationId && target.workspace.incarnationId !== options.viewIncarnationId) {
+        throw new Error("Target canvas view was deleted or replaced after this build brief opened");
+      }
       const node = createBundleNode(
         bundle,
         artifact,
@@ -201,19 +220,24 @@ export function useCanvasArtifactInstallation({
           selectedNodeId: node.id,
         },
       };
-      await commitWorkspaceWithArtifactPackage(workspace, bundle);
+      await commitWorkspaceWithArtifactPackages(workspace, [bundle], undefined, {
+        expectedIncarnationId: target.workspace.incarnationId,
+        expectedRevision: target.workspace.revision,
+      });
       registryRef.current = { ...registryRef.current, [artifact.id]: artifact };
       runtime.setRegistry((current) => ({ ...current, [artifact.id]: artifact }));
       runtime.setPersonalBundles((current) => [
         ...current.filter((entry) => entry.artifactId !== bundle.artifactId),
         bundle,
       ]);
+      state.setStatus(`Installed ${artifact.title} into ${target.workspace.title}`);
       return { artifactId: artifact.id, nodeId: node.id, viewId: targetViewId };
     } finally {
       finishInstallation();
     }
   }, [
     activeView.id,
+    activeView.incarnationId,
     beginInstallation,
     canvas.commitDocument,
     canvas.stageRef,
@@ -235,13 +259,15 @@ export function useCanvasArtifactInstallation({
     state.setWorkspaceRevision,
   ]);
 
-  const installBundleFile = useCallback(async (file: File) => {
+  const installBundleFile = useCallback(async (file: File, options: InstallArtifactOptions = {}) => {
     try {
-      await installBundle(parseArtifactBundle(await file.text()));
-      onBundleFileInstalled();
+      const result = await installBundle(parseArtifactBundle(await file.text()), options);
+      onBundleFileInstalled(result);
       return null;
     } catch (error) {
-      const message = error instanceof Error ? `Install failed: ${error.message}` : "Artifact install failed";
+      const message = error instanceof Error
+        ? `Install failed: ${formatArtifactValidationMessage(error.message)}`
+        : "Artifact install failed";
       state.setStatus(message);
       return message;
     }
@@ -356,7 +382,7 @@ declare global {
         renderChecks: number;
         persisted: false;
       }>;
-      installArtifact: (bundle: unknown, options?: { viewId?: string }) => Promise<InstallArtifactResult>;
+      installArtifact: (bundle: unknown, options?: InstallArtifactOptions) => Promise<InstallArtifactResult>;
     };
   }
 }

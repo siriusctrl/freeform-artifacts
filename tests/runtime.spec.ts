@@ -127,7 +127,10 @@ test("runtime artifacts isolate failures, reject code collisions, and commit onl
   const rejected = agentArtifactBundle("unknown-view-card");
   const targetMessage = await page.evaluate(async (value) => {
     try {
-      await window.__FREEFORM_AGENT__!.installArtifact(value, { viewId: "missing-view" });
+      await window.__FREEFORM_AGENT__!.installArtifact(value, {
+        viewId: "missing-view",
+        viewIncarnationId: "missing-incarnation",
+      });
       return "";
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
@@ -136,6 +139,62 @@ test("runtime artifacts isolate failures, reject code collisions, and commit onl
   expect(targetMessage).toContain("Unknown canvas view");
   const leakedPackage = await readArtifactPackage(page, rejected.artifactId);
   expect(leakedPackage).toBeUndefined();
+
+  const unbound = agentArtifactBundle("unbound-view-card");
+  const incarnationMessage = await page.evaluate(async (value) => {
+    try {
+      await window.__FREEFORM_AGENT__!.installArtifact(value, { viewId: "market-overview" });
+      return "";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }, unbound);
+  expect(incarnationMessage).toContain("viewIncarnationId is required");
+  expect(await readArtifactPackage(page, unbound.artifactId)).toBeUndefined();
+});
+
+test("direct agent installs reject a restored view's stale incarnation", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("sidebar-toggle").click();
+  await page.getByTestId("create-view").click();
+  const staleTarget = await expect.poll(async () => {
+    const activeViewId = await page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId);
+    const views = await page.evaluate(() => window.__FREEFORM_AGENT__!.listViews());
+    return views.find((view) => view.id === activeViewId) ?? null;
+  }).not.toBeNull().then(async () => {
+    const activeViewId = await page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId);
+    const views = await page.evaluate(() => window.__FREEFORM_AGENT__!.listViews());
+    return views.find((view) => view.id === activeViewId)!;
+  });
+
+  await page.getByTestId(`view-menu-${staleTarget.id}`).click();
+  await page.getByTestId(`delete-view-${staleTarget.id}`).click();
+  await expect(page.getByTestId("view-undo-toast")).toBeVisible();
+  await page.getByTestId("view-undo-toast").getByRole("button", { name: "Undo" }).click();
+  const restoredTarget = await expect.poll(async () => {
+    const views = await page.evaluate(() => window.__FREEFORM_AGENT__!.listViews());
+    return views.find((view) => view.id === staleTarget.id) ?? null;
+  }).not.toBeNull().then(async () => {
+    const views = await page.evaluate(() => window.__FREEFORM_AGENT__!.listViews());
+    return views.find((view) => view.id === staleTarget.id)!;
+  });
+  expect(restoredTarget.incarnationId).not.toBe(staleTarget.incarnationId);
+
+  const bundle = agentArtifactBundle("stale-direct-target-card");
+  const message = await page.evaluate(async ({ value, target }) => {
+    try {
+      await window.__FREEFORM_AGENT__!.installArtifact(value, {
+        viewId: target.id,
+        viewIncarnationId: target.incarnationId,
+      });
+      return "";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }, { value: bundle, target: staleTarget });
+  expect(message).toContain("deleted or replaced");
+  expect(await readArtifactPackage(page, bundle.artifactId)).toBeUndefined();
 });
 
 test("one corrupt installed package does not suppress healthy runtime artifacts", async ({ page }) => {

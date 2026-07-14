@@ -218,10 +218,19 @@ try {
   );
 
   if (securitySmokeOnly) {
-    const copyDisabled = await page.getByTestId("copy-agent-instruction").isDisabled();
+    const copyEnabled = await page.getByTestId("copy-agent-instruction").isEnabled();
     const status = await page.getByTestId("relay-session-status").innerText();
-    if (!copyDisabled || sessionCreationRequests !== 0 || !status.includes("Verifying this Build Session")) {
-      throw new Error("The production client did not remain fail-closed before human verification");
+    const instruction = await page.getByTestId("agent-instruction").textContent() ?? "";
+    if (
+      !copyEnabled ||
+      sessionCreationRequests !== 0 ||
+      !status.includes("Checking this browser") ||
+      !instruction.includes("Delivery mode: BROWSER_VIEW_BUNDLE") ||
+      instruction.includes("--credentials-stdin") ||
+      instruction.includes('"uploadToken"') ||
+      instruction.includes('"encryptionKey"')
+    ) {
+      throw new Error("The production client did not keep authoring available and upload capabilities fail-closed before human verification");
     }
     console.log(JSON.stringify({
       ok: true,
@@ -234,7 +243,7 @@ try {
     }, null, 2));
   } else {
     try {
-      await page.getByTestId("relay-session-status").getByText("Relay connected", { exact: true }).waitFor({
+      await page.getByTestId("relay-session-status").getByText("Live delivery ready", { exact: true }).waitFor({
         state: "visible",
         timeout: 180_000,
       });

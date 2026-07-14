@@ -422,7 +422,7 @@ test("thin launcher verifies every uploader module before loading the core", asy
 });
 
 test("handoff pins the CLI and publishes the launcher's exact SHA-256", async () => {
-  const handoffSource = await readFile(new URL("../src/canvas/components/AgentHandoffDialog.tsx", import.meta.url), "utf8");
+  const handoffSource = await readFile(new URL("../src/relay/handoff.ts", import.meta.url), "utf8");
   const launcher = await readFile(new URL("../skill/freeform-artifact-builder/scripts/deliver.mjs", import.meta.url));
   const digest = createHash("sha256").update(launcher).digest("hex");
   assert.match(handoffSource, /SKILLS_CLI_VERSION = "1\.5\.17"/);

@@ -113,6 +113,7 @@ export function CanvasWorkspace({
   const [storageMode, setStorageMode] = useState<WorkspaceLoadResult["storage"]>(initialStorage);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const agentDialogReturnFocusRef = useRef<HTMLElement | null>(null);
+  const agentDialogFallbackFocusRef = useRef<"artifact-library-toggle" | "relay-session-reopen" | null>(null);
   const [artifactLibraryOpen, setArtifactLibraryOpen] = useState(false);
   const [compactOverlay, setCompactOverlay] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   const [draggingCatalogItemId, setDraggingCatalogItemId] = useState("");
@@ -249,7 +250,9 @@ export function CanvasWorkspace({
       viewport,
       workspaceRef: workspaceSnapshotRef,
     },
-    onBundleFileInstalled: closeAgentDialog,
+    onBundleFileInstalled: (result) => {
+      if (result.viewId === initialWorkspace.templateId) closeAgentDialog();
+    },
     onRegisterRelayInstaller,
     persistence: {
       cancelPendingSave,
@@ -527,9 +530,15 @@ export function CanvasWorkspace({
   }
 
   function openAgentDialog() {
-    agentDialogReturnFocusRef.current = document.activeElement instanceof HTMLElement
+    const activeElement = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
+    agentDialogReturnFocusRef.current = activeElement;
+    agentDialogFallbackFocusRef.current = activeElement?.closest(".artifact-library-slot")
+      ? "artifact-library-toggle"
+      : activeElement?.matches('[data-testid="relay-session-reopen"]')
+        ? "relay-session-reopen"
+        : null;
     setAgentDialogOpen(true);
   }
 
@@ -541,9 +550,17 @@ export function CanvasWorkspace({
         !returnTarget.closest("[inert]") &&
         returnTarget.getClientRects().length > 0;
       if (targetIsUsable) returnTarget.focus({ preventScroll: true });
-      else document.querySelector<HTMLButtonElement>('[data-testid="artifact-library-toggle"]')
-        ?.focus({ preventScroll: true });
+      else {
+        const preferredFallback = agentDialogFallbackFocusRef.current;
+        const fallback = (preferredFallback
+          ? document.querySelector<HTMLButtonElement>(`[data-testid="${preferredFallback}"]`)
+          : null) ??
+          document.querySelector<HTMLButtonElement>('[data-testid="relay-session-reopen"]') ??
+          document.querySelector<HTMLButtonElement>('[data-testid="artifact-library-toggle"]');
+        fallback?.focus({ preventScroll: true });
+      }
       agentDialogReturnFocusRef.current = null;
+      agentDialogFallbackFocusRef.current = null;
     });
   }
 
@@ -694,10 +711,14 @@ export function CanvasWorkspace({
       <AgentHandoffDialog
         installBusy={uiMutationBusy}
         open={agentDialogOpen}
+        themeMode={themeMode}
         viewId={initialWorkspace.templateId}
+        viewIncarnationId={initialWorkspace.incarnationId}
+        viewTitle={viewTitle}
         relay={relay}
         onClose={closeAgentDialog}
         onOpen={openAgentDialog}
+        onOpenView={onSelectView}
         onInstallBundle={installBundleFile}
       />
     </main>

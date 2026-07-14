@@ -17,7 +17,8 @@ management, presentation, responsive drawer/exit paths, shortcuts, the shared
 artifact library, drag, resize, pan, zoom, data, theme, Build Session creation,
 deletion, re-addition, and close/reopen persistence. A verification-only
 cursor and step label make each gesture legible in the recording. It launches a
-local relay emulator, opens a real Build Session, delivers two encrypted bundles
+  local relay emulator, copies a capability-free brief while verification is
+  pending, upgrades it to live delivery in the same conversation, delivers two encrypted bundles
 with the skill script, checks the pinned skill and launcher-integrity handoff,
 and visibly rejects a mixed invalid selection without a partial install. The
 handoff parser and delivery invocation include the protocol-v2 target View
@@ -75,12 +76,18 @@ as supplementary checks. Look for:
 - top toolbar zoom controls not changing scale;
 - snap-to-grid toggle not returning to the intended on/off state;
 - light/dark mode leaving illegible cards or panels;
-- Build Session status failing to become connected, omitting the skill/delivery
-  command, silently changing its target view, or changing board state before a
-  delivery;
+- Build Session verification blocking the initial build brief, exposing a relay
+  capability before session creation, failing to upgrade existing work when live
+  delivery becomes ready, omitting the skill/delivery command, silently changing
+  its target view, or changing board state before a delivery;
+- Turnstile using the wrong theme or fixed width, visually dominating the modal,
+  overlapping the build brief at short landscape heights, or trapping keyboard
+  focus away from build, file-install, retry, and close actions;
 - a closed but active Build Session losing its visible target/Open/End strip,
   transport state contradicting the delivery outcome, or rejection detail being
   clipped;
+- an offline bundle installed after navigation silently changing the current
+  View, omitting its original destination, or lacking an explicit **Open** path;
 - trusted module preparation making the canvas inert, a deliberately delayed
   atomic commit making it inert without a visible **Installing delivery…**
   progress state, or closing Build with AI from a phone-width Artifact drawer

@@ -12,6 +12,8 @@ on navigation, invariants, verification, and handoff rules.
 - `src/canvas/components/`: canvas UI pieces.
 - `src/canvas/components/AgentHandoffDialog.tsx`: the copyable agent-neutral
   artifact handoff; it must not mutate the board.
+- `src/canvas/components/BuildSessionStatus.tsx`: transport, verification, and
+  delivery outcome UI; it must not own handoff capabilities.
 - `src/canvas/components/CanvasSidebar.tsx`: named view navigation and
   data-derived board previews; it must not execute artifact renderers.
 - `src/canvas/components/ArtifactLibrary.tsx`: right-side Built-in/Yours catalog
@@ -39,6 +41,8 @@ on navigation, invariants, verification, and handoff rules.
 - `src/relay/`: browser Build Session lifecycle, AES-GCM protocol helpers,
   hibernating WebSocket client, atomic multi-bundle install, receipts, and
   host-owned placement.
+- `src/relay/handoff.ts`: capability-free and live prompt serialization,
+  supply-chain pins, metadata escaping, and on-screen capability redaction.
 - `relay/`: independently deployed Cloudflare Worker, SQLite Durable Object,
   Wrangler config, generated bindings, and emulator tests.
 - `src/workspaces/useWorkspaceAutosave.ts`: debounced saves, close-time recovery,
@@ -98,9 +102,11 @@ on navigation, invariants, verification, and handoff rules.
 - Build with AI is a roughly 30-minute, explicit-consent session. Trusted
   packages install into IndexedDB and the session's immutable target local view
   without a repository change; do not add a confirmation per delivery.
-- Artifact delivery mode must stay explicit: in-product Build with AI produces a
-  Browser Relay handoff; offline file transfer uses Browser View Bundle;
-  self-deployed work belongs in `src/artifacts/generated/*.artifact.tsx`.
+- Artifact delivery mode must stay explicit: in-product Build with AI first
+  exposes a capability-free Browser View Bundle brief so authoring never waits
+  on transport, then upgrades to a Browser Relay handoff only after a matching
+  live session exists. Self-deployed work belongs in
+  `src/artifacts/generated/*.artifact.tsx`.
 - Prefer Chart Kit for ordinary bar, line, and combo charts. Raw ECharts is a
   registered-capability escape hatch, not the default generated interface.
 - Runtime package ids are immutable across the browser origin; package and view
@@ -123,6 +129,17 @@ on navigation, invariants, verification, and handoff rules.
   catalog placement remains ordinary view-scoped node state.
 - Keep Build with AI agent-neutral. Its copied prompt installs the skill first,
   then asks the agent to question the user about the requested artifact.
+- Relay status must never gate artifact authoring. Before session creation,
+  copied handoffs contain no session id, upload capability, encryption key, or
+  delivery command. Every later live handoff must conditionally reuse matching
+  bundles already in the conversation instead of restarting work, including
+  after modal reopen or manual copy.
+- The dialog's **Install from agent** path stays bound to the Build request's
+  View id and incarnation after navigation; never silently install its file into
+  whichever View happens to be mounted later.
+- A same-browser Agent API call that names a target View must also pass the
+  incarnation returned by `listViews()`; reject id-only or stale-incarnation
+  calls before artifact preparation.
 - View thumbnails are geometry summaries, not cached screenshots or a second
   artifact rendering runtime.
 - View ordering is browser-local navigation metadata. Duplicated views reuse

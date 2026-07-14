@@ -910,7 +910,8 @@ The static GitHub Pages deployment also cannot accept server-side uploads.
 - Define a versioned bundle with `artifactId`, self-contained `moduleSource`,
   and serializable initial node data/config.
 - Expose `window.__FREEFORM_AGENT__.listViews()` and `installArtifact()` for an
-  agent controlling the same browser page.
+  agent controlling the same browser page. Explicit target installs require
+  both the view id and its current incarnation from `listViews()`.
 - Provide file installation as the fallback when the agent cannot control the
   user's browser profile.
 - Keep repo-compiled and deployed external modules as maintainer paths, not the
@@ -1237,6 +1238,19 @@ must remain in the user's browser.
   copied instruction. “One-time” means a credential exists only for one
   short-lived Build Session, not one upload: it may submit several deliveries
   until expiry, while every delivery has a unique idempotency UUID.
+- Decouple authoring readiness from relay readiness. The explicit click first
+  yields a capability-free `BROWSER_VIEW_BUNDLE` preparation brief bound to the
+  requested View incarnation. Turnstile and relay setup continue separately.
+  Only a matching created session can yield a capability-bearing
+  `BROWSER_RELAY` handoff. Every live handoff is continuation-safe: it tells the
+  same conversation to reuse exact bundles already in progress and asks for
+  discovery only when no work has started, including after reopen or manual
+  copy. Closing before session creation dismisses immediately, cancels local
+  setup, and runs bounded best-effort server cleanup in the background; closing
+  an active session keeps its target/Open/End strip visible.
+  Bind the dialog's file fallback to that same requested View incarnation so
+  navigation cannot silently redirect a returned bundle; reject a replaced or
+  deleted target.
 - Keep the relay transport-only. Refuse all access at the 30-minute expiry,
   delete acknowledged payloads immediately, and use the expiry alarm to delete
   every SQL table and remaining ciphertext. Never store canvas workspaces or
@@ -1262,15 +1276,26 @@ must remain in the user's browser.
   trusted modules outside the UI mutation gate because module evaluation can be
   unbounded; ending the session still prevents a later commit.
 - Place delivered artifacts using host-owned layout knowledge. Search the
-  current target-view viewport for a complete non-overlapping position nearest
-  its center, snap it to the grid, and append it at the highest z-index. If the
+  current target-view viewport for complete non-overlapping positions nearest
+  its center, snap them to the grid, and append them at the highest z-index.
+  When a multi-card selection fits as a compact grid, center that complete grid
+  before searching around existing nodes so a greedy first card cannot force a
+  readable selection into fallback. If the
   viewport has no complete opening, keep the fallback centered and visible on
   the top layer instead of moving it outside the viewport. Stagger multiple
   fallbacks from one delivery around that center in deterministic grid-sized
   offsets; overlap with existing nodes is intentional in this full-view case.
 - Keep the existing file installer as the offline fallback. Do not require an
   npm-published delivery CLI initially; the project skill may invoke a bundled
-  script or the relay HTTP contract directly.
+  script or the relay HTTP contract directly. The file picker installs one
+  returned bundle at a time and remains explicitly distinct from an atomic
+  multi-bundle relay delivery.
+- Render Turnstile only through its supported interaction-only execution,
+  flexible size, and explicit application theme inside a dedicated delivery
+  panel. Do not imitate or style inside the cross-origin challenge iframe, and
+  keep its native focus path inside the modal's sentinel boundary. Put the full
+  status panel and authoring content in one bounded scroll region so a native
+  challenge cannot overlap the brief at short landscape heights.
 - Persist a successful browser delivery receipt in the same IndexedDB
   transaction as its packages and target workspace. If an ACK is lost, replay
   returns the receipt and sends another ACK without placing duplicate nodes.
@@ -1302,6 +1327,9 @@ must remain in the user's browser.
   per-page emergency journal. Stale pagehide and stale Undo paths therefore
   cannot resurrect or overwrite a newer View, including after restore, edit,
   and a later deletion; legacy timestamp-only in-flight journals fail closed.
+- Require same-browser Agent API calls that name a target View to pass both the
+  id and incarnation returned by `listViews()`. Reject id-only and stale-
+  incarnation calls before preparing trusted module code.
 - Bind each idempotency UUID to a digest of its complete encrypted envelope.
   Reject the same id with changed ciphertext. Let the uploader retain only that
   envelope and a payload digest in a private, mode-0600 OS cache only while an
@@ -1332,6 +1360,13 @@ must remain in the user's browser.
 - Fully automatic remote delivery introduces a small hosted service and an
   external availability dependency even though durable user state remains
   browser-local.
+- The fast path remains one copy. If verification is slow and the user starts
+  from the preparation brief, enabling live delivery costs one additional paste
+  into the same conversation; this is preferable to blocking authoring or
+  putting upload capabilities into an unverified pre-session prompt.
+- Offline file install deliberately treats each selected file as its own local
+  install. Multi-card all-or-nothing selection semantics belong to Browser Relay;
+  when it is unavailable, the UI and handoff say to install each returned file.
 - Capability tokens authorize delivery of executable trusted code. Short
   lifetimes, narrow session scope, capability separation, local encryption, and
   complete browser validation are necessary boundaries. The Build Session click

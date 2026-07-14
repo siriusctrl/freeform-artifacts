@@ -6,7 +6,7 @@ import process from "node:process";
 export function proofArtifactBundle(
   artifactId = "agent-capacity-card",
   nodeTitle = "Agent Capacity",
-  chartTitle = "Installed directly into this view",
+  chartTitle = "Regional agent capacity",
   artifactTitle = "Agent Capacity",
 ) {
   return {

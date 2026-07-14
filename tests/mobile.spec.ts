@@ -69,8 +69,8 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   const nodeCount = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length;
   await page.getByTestId("library-build-artifact").click();
   await expect(page.getByTestId("agent-request")).toHaveCount(0);
-  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
-  await expect(page.getByTestId("agent-instruction")).toContainText("Ask the user what they want to build");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
+  await expect(page.getByTestId("agent-instruction")).toContainText("ask the user what they want to build");
   await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_RELAY");
   await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
   const dialogDimensions = await page.evaluate(() => ({
@@ -140,7 +140,7 @@ test("short landscape keeps every Build Session action reachable", async ({ page
   await page.getByTestId("artifact-library-toggle").click();
   await page.getByTestId("artifact-tab-personal").click();
   await page.getByTestId("library-build-artifact").click();
-  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
   await expect(page.getByTestId("relay-session-status").locator("time")).toBeVisible();
   const metrics = await page.locator(".agent-dialog-actions button").evaluateAll((buttons) => ({
     viewportHeight: window.innerHeight,
@@ -168,12 +168,12 @@ test("phone overlays trap focus and restore it after view and presentation chang
   await expect(page.getByTestId("artifact-library-toggle")).toBeFocused();
   await page.getByTestId("artifact-library-toggle").click();
   await page.getByTestId("library-build-artifact").click();
-  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
   await expect(page.getByTitle("Close", { exact: true })).toBeFocused();
   expect(await page.locator(".workspace").evaluate((element) => (element as HTMLElement).inert)).toBe(true);
   expect(await page.locator(".canvas-sidebar-slot").evaluate((element) => (element as HTMLElement).inert)).toBe(true);
   expect(await page.locator(".artifact-library-slot").evaluate((element) => (element as HTMLElement).inert)).toBe(true);
-  await expect(page.getByText("Send the session to your agent", { exact: true })).toBeVisible();
+  await expect(page.getByText("Start with your agent", { exact: true })).toBeVisible();
   await expect(page.getByText("Copy the instruction", { exact: true })).toBeVisible();
   await expect(page.locator(".agent-handoff-details")).not.toHaveAttribute("open", "");
   await page.keyboard.press("Shift+Tab");

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 
 function mediaDuration(mediaPath) {
   const probe = spawnSync(
@@ -79,28 +79,56 @@ export function createProofMedia({
   frameCheckPath,
   proofTrimStartSeconds,
 }) {
-  renameSync(proofVideoPath, webmPath);
+  if (proofVideoPath !== webmPath) renameSync(proofVideoPath, webmPath);
+
+  const palettePath = `${gifPath}.palette.png`;
+  const commonInputs = [
+    "-ss",
+    proofTrimStartSeconds,
+    "-i",
+    webmPath,
+    "-loop",
+    "1",
+    "-t",
+    "1.8",
+    "-i",
+    screenshotPath,
+  ];
+  const normalizedVideo =
+    "[0:v]fps=10,scale=960:-1:flags=lanczos[v0];[1:v]fps=10,scale=960:-1:flags=lanczos[v1];[v0][v1]concat=n=2:v=1:a=0";
+  const palette = spawnSync(
+    "ffmpeg",
+    [
+      "-y",
+      ...commonInputs,
+      "-filter_complex",
+      `${normalizedVideo},palettegen=max_colors=160:stats_mode=diff`,
+      "-frames:v",
+      "1",
+      "-update",
+      "1",
+      palettePath,
+    ],
+    { stdio: "pipe", maxBuffer: 50 * 1024 * 1024 },
+  );
+  if (palette.status !== 0 || !existsSync(palettePath)) {
+    throw new Error(`ffmpeg failed to create GIF palette: ${palette.stderr.toString()}`);
+  }
 
   const ffmpeg = spawnSync(
     "ffmpeg",
     [
       "-y",
-      "-ss",
-      proofTrimStartSeconds,
+      ...commonInputs,
       "-i",
-      webmPath,
-      "-loop",
-      "1",
-      "-t",
-      "1.8",
-      "-i",
-      screenshotPath,
+      palettePath,
       "-filter_complex",
-      "[0:v]fps=12,scale=960:-1:flags=lanczos[v0];[1:v]fps=12,scale=960:-1:flags=lanczos[v1];[v0][v1]concat=n=2:v=1:a=0,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+      `${normalizedVideo}[video];[video][2:v]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`,
       gifPath,
     ],
-    { stdio: "pipe" },
+    { stdio: "pipe", maxBuffer: 50 * 1024 * 1024 },
   );
+  unlinkSync(palettePath);
 
   if (ffmpeg.status !== 0 || !existsSync(gifPath)) {
     throw new Error(`ffmpeg failed to create GIF: ${ffmpeg.stderr.toString()}`);

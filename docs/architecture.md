@@ -143,7 +143,9 @@ initial node payload. The runtime Blob-imports installed sources, merges them
 into the registry, and stores only node references/data in each view. The
 `window.__FREEFORM_AGENT__` bridge lets a browser-controlling agent list views
 and inspect renderer capabilities, validate a bundle without persistence, and
-install it into a target view without rebuilding the app.
+install it into a target view without rebuilding the app. Explicit targets must
+include the `id` and `incarnationId` returned by `listViews()`; the host rejects
+id-only targeting so a delete/restore generation cannot receive stale work.
 Package ids are browser-origin-wide immutable identities, while nodes remain
 view-scoped. Package and target workspace writes share one IndexedDB transaction;
 invalid targets and payloads are rejected before persistence. Loader failures
@@ -159,7 +161,24 @@ the agent handoff. The Worker therefore sees routing metadata, artifact count,
 ciphertext size, and encrypted payloads, but never bundle source, node data, or
 the decryption key.
 
-The modal keeps transport health separate from the most recent delivery
+Artifact authoring is independent from that transport lifecycle. The first
+dialog frame serializes a capability-free `BROWSER_VIEW_BUNDLE` brief from the
+explicit target View request, so verification, session creation, WebSocket
+connection, browser feature gaps, and relay outages cannot block the agent from
+generating and validating bundle files. Only a matching created session can
+produce the `BROWSER_RELAY` handoff. If the user already copied the preparation
+brief, every live handoff remains continuation-safe and reuses matching bundle
+files already present in the conversation, even after reopen or manual copy.
+Closing before session creation dismisses immediately, cancels the unfinished verification, and
+runs bounded server cleanup without blocking the dialog;
+closing after creation preserves the visible active-session strip and consent.
+The dialog's file fallback uses the same requested View id and incarnation even
+after navigation, and fails closed if that View was deleted or replaced. A
+successful off-view install keeps the dialog open, names the fixed destination,
+and offers an explicit **Open** action instead of making a silent background
+change.
+
+The modal keeps transport health separate from both authoring readiness and the most recent delivery
 outcome, so reconnecting cannot be presented as a successful install and a
 rejection can state that nothing was installed without truncation. Closing the
 modal does not revoke session-level consent: a compact active-session strip
@@ -170,6 +189,11 @@ separate. On phone-width overlays, the canvas background is inert, focus is
 contained inside Views or Artifacts, and closing Build with AI, switching,
 deleting, or exiting presentation restores focus to a visible control; if its
 drawer opener became inert, focus returns to the visible Artifacts toggle.
+Turnstile remains an official interaction-only widget: its supported flexible
+size and explicit light/dark theme sit in a dedicated automatic-delivery panel;
+the application does not restyle or imitate the challenge iframe. Status and
+authoring content share one scroll boundary at short heights, so the native
+challenge cannot cover the build brief or fixed actions.
 
 ```mermaid
 sequenceDiagram
@@ -503,8 +527,10 @@ artifact creation is bundle-first: a remote agent delivers encrypted bundles
 through `src/relay/`, a same-browser agent uses `window.__FREEFORM_AGENT__`, or
 the user imports the same bundle file. None requires an application commit or
 deploy. The copyable handoff is agent-neutral: it installs the project skill,
-then asks the agent to question the user before authoring and delivering one or
-more bundles.
+then asks the agent to question the user before authoring one or more bundles.
+`src/relay/handoff.ts` keeps capability-free preparation serialization separate
+from capability-bearing live delivery serialization; the dialog only selects
+the instruction that the current request/session state authorizes.
 
 Canvas runtime behavior lives under `src/canvas/`:
 

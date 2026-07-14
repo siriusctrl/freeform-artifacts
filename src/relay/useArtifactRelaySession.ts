@@ -29,6 +29,29 @@ const relayConnectionRuntime: RelayConnectionRuntime = {
 const browserCapabilities = new WeakMap<ActiveRelaySession, string>();
 const WEB_LOCKS_REQUIRED_MESSAGE =
   "Build Sessions need this browser's cross-tab locking support. Use file install as the offline fallback.";
+const SESSION_REVOCATION_TIMEOUT_MS = 3_000;
+
+async function revokeSessionBestEffort(
+  active: ActiveRelaySession,
+  browserToken: string,
+) {
+  const revokeAbort = new AbortController();
+  const revokeTimeout = window.setTimeout(
+    () => revokeAbort.abort(),
+    SESSION_REVOCATION_TIMEOUT_MS,
+  );
+  try {
+    await relayFetch(`${active.endpoint}/v1/sessions/${active.sessionId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${browserToken}` },
+      signal: revokeAbort.signal,
+    });
+  } catch {
+    // The server alarm remains the final cleanup boundary.
+  } finally {
+    window.clearTimeout(revokeTimeout);
+  }
+}
 
 function relayStorageSafetyAvailable() {
   return Boolean(navigator.locks?.request);
@@ -208,14 +231,7 @@ export function useArtifactRelaySession(
     if (!active) return;
     const browserToken = browserCapabilities.get(active);
     if (!browserToken) return;
-    try {
-      await relayFetch(`${active.endpoint}/v1/sessions/${active.sessionId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${browserToken}` },
-      });
-    } catch {
-      // The server alarm remains the final cleanup boundary.
-    }
+    await revokeSessionBestEffort(active, browserToken);
   }, [invalidateCreation, invalidateSessionWork]);
 
   const requestSession = useCallback((nextRequest: RelaySessionRequest) => {
@@ -282,11 +298,7 @@ export function useArtifactRelaySession(
         activeSessionRef.current = null;
         setSession(null);
         if (previousBrowserToken) {
-          await relayFetch(`${previous.endpoint}/v1/sessions/${previous.sessionId}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${previousBrowserToken}` },
-            signal: creationAbort.signal,
-          }).catch(() => undefined);
+          void revokeSessionBestEffort(previous, previousBrowserToken);
         }
       }
       if (!creationIsCurrent()) return;
@@ -319,14 +331,6 @@ export function useArtifactRelaySession(
       if (body.targetViewIncarnationId !== requested.targetViewIncarnationId) {
         throw new Error("Relay returned a different target view incarnation");
       }
-      if (!creationIsCurrent()) {
-        await relayFetch(`${RELAY_URL}/v1/sessions/${body.sessionId}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${browserToken}` },
-          keepalive: true,
-        }).catch(() => undefined);
-        return;
-      }
       const active: ActiveRelaySession = {
         ...requested,
         endpoint: RELAY_URL,
@@ -335,6 +339,10 @@ export function useArtifactRelaySession(
         encryptionKey,
         expiresAt: body.expiresAt,
       };
+      if (!creationIsCurrent()) {
+        void revokeSessionBestEffort(active, browserToken);
+        return;
+      }
       invalidateSessionWork();
       browserCapabilities.set(active, browserToken);
       sessionAbortRef.current = new AbortController();

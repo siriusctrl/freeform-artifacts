@@ -370,23 +370,23 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   const beforeHandoffCount = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length;
   await page.getByTestId("build-artifact").click();
   await expect(page.getByRole("heading", { name: "Build with AI" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Send the session to your agent" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start with your agent" })).toBeVisible();
   await expect(page.getByText("Paste it into Codex or Claude.")).toBeVisible();
   await expect(page.locator(".agent-handoff-details")).not.toHaveAttribute("open", "");
   await page.getByText("Review full agent handoff", { exact: true }).click();
   await expect(page.getByTestId("agent-instruction")).toBeVisible();
   await expect(page.getByTestId("agent-request")).toHaveCount(0);
   await expect(page.getByTestId("agent-instruction")).toContainText(
-    "Install the project artifact skill for your agent:",
+    "Otherwise install it now:",
   );
-  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
   await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_RELAY");
   await expect(page.getByTestId("agent-instruction")).toContainText("Browser Relay workflow");
   await expect(page.getByTestId("agent-instruction")).toContainText(
     "git -C \"$skill_checkout\" fetch --quiet --depth 1 https://github.com/siriusctrl/freeform-artifacts.git",
   );
   await expect(page.getByTestId("agent-instruction")).toContainText("npx --yes skills@1.5.17 add");
-  await expect(page.getByTestId("agent-instruction")).toContainText("Ask the user what they want to build");
+  await expect(page.getByTestId("agent-instruction")).toContainText("ask the user what they want to build");
   await expect(page.getByTestId("agent-instruction")).not.toContainText("Claude Code");
   await expect(page.getByTestId("agent-instruction")).toContainText("scripts/deliver.mjs");
   await expect(page.getByTestId("agent-instruction")).toContainText("atomic package-and-view commit");
@@ -415,6 +415,220 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.storageMode)).toBe("indexeddb");
 });
 
+test("Build with AI starts before relay verification and upgrades the same agent conversation", async ({ page }) => {
+  let releaseSessionCreation!: () => void;
+  const sessionCreationGate = new Promise<void>((resolve) => { releaseSessionCreation = resolve; });
+  await stubTurnstile(page, {
+    autoComplete: false,
+    focusableChallenge: true,
+    sessionCreationGate,
+  });
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(page.url()).origin,
+  });
+
+  await page.getByTestId("build-artifact").click();
+  await expect(page.getByTestId("relay-session-status")).toContainText("Checking this browser");
+  await expect(page.getByTestId("relay-verification-panel")).toContainText("Only delivery waits for it");
+  await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
+  await expect(page.getByTestId("copy-agent-instruction")).toContainText("Copy build brief");
+  await expect(page.getByTestId("install-bundle")).toContainText("Choose bundle file");
+  const dialogAccessibility = await page.getByRole("dialog", { name: "Build with AI" }).ariaSnapshot();
+  expect(dialogAccessibility).not.toContain('button "Choose File"');
+  expect(dialogAccessibility.match(/button "Choose bundle file"/g)).toHaveLength(1);
+  await expect.poll(async () => page.evaluate(() =>
+    (window as typeof window & { __turnstileRenderOptions?: unknown }).__turnstileRenderOptions,
+  )).toEqual({ size: "flexible", theme: "light" });
+
+  await page.getByTestId("copy-agent-instruction").click();
+  const buildBrief = await page.evaluate(() => navigator.clipboard.readText());
+  expect(buildBrief).toContain("Delivery mode: BROWSER_VIEW_BUNDLE");
+  expect(buildBrief).toContain("Start building immediately");
+  expect(buildBrief).toContain("reuse and deliver these bundles instead of regenerating them");
+  expect(buildBrief).not.toContain("--relay-url");
+  expect(buildBrief).not.toContain("--session-id");
+  expect(buildBrief).not.toContain("--credentials-stdin");
+  expect(buildBrief).not.toContain('"uploadToken"');
+  expect(buildBrief).not.toContain('"encryptionKey"');
+  await expect(page.getByTestId("copy-agent-instruction")).toContainText("Copied");
+
+  await page.getByTitle("Close", { exact: true }).focus();
+  await page.keyboard.press("Tab");
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("data-testid"))).toBe("turnstile-challenge-frame");
+
+  await page.evaluate(() => {
+    (window as typeof window & { __completeTestTurnstile?: () => void }).__completeTestTurnstile?.();
+  });
+  await expect(page.getByTestId("relay-session-status")).toContainText("Opening private delivery");
+  await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
+  await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_VIEW_BUNDLE");
+  await page.getByTestId("copy-agent-instruction").click();
+  await expect.poll(async () => page.evaluate(() => navigator.clipboard.readText())).toContain(
+    "Delivery mode: BROWSER_VIEW_BUNDLE",
+  );
+  releaseSessionCreation();
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
+  await expect(page.getByTestId("copy-agent-instruction")).toContainText("Copy live delivery");
+  await expect(page.locator(".agent-dialog-feedback [role='status']")).toContainText("Live delivery is ready");
+  await expect(page.getByTestId("agent-instruction")).toContainText("Reuse any completed or in-progress bundles");
+
+  await page.getByTestId("copy-agent-instruction").click();
+  const deliveryStep = await page.evaluate(() => navigator.clipboard.readText());
+  expect(deliveryStep).toContain("Delivery mode: BROWSER_RELAY");
+  expect(deliveryStep).toContain("Reuse any completed or in-progress bundles");
+  expect(deliveryStep).toContain("--credentials-stdin");
+  expect(deliveryStep).toContain("atomic package-and-view commit");
+
+  await page.getByTitle("Close", { exact: true }).click();
+  await page.getByTestId("relay-session-reopen").click();
+  await page.getByTitle("Close", { exact: true }).click();
+  await expect(page.getByTestId("relay-session-reopen")).toBeFocused();
+});
+
+test("the pending delivery check follows dark mode and closes without hidden setup", async ({ page }) => {
+  await stubTurnstile(page, { autoComplete: false, focusableChallenge: true });
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("theme-toggle").click();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
+
+  await page.getByTestId("build-artifact").click();
+  await expect(page.getByTestId("relay-session-status")).toContainText("Checking this browser");
+  await expect.poll(async () => page.evaluate(() =>
+    (window as typeof window & { __turnstileRenderOptions?: unknown }).__turnstileRenderOptions,
+  )).toEqual({ size: "flexible", theme: "dark" });
+  const layout = await page.getByTestId("relay-verification-panel").evaluate((panel) => {
+    const panelRect = panel.getBoundingClientRect();
+    const dialogRect = panel.closest(".agent-dialog")!.getBoundingClientRect();
+    return {
+      withinDialog: panelRect.left >= dialogRect.left && panelRect.right <= dialogRect.right,
+      viewportOverflow: panelRect.right > window.innerWidth || panelRect.left < 0,
+    };
+  });
+  expect(layout).toEqual({ withinDialog: true, viewportOverflow: false });
+
+  await page.getByTitle("Close", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Build with AI" })).toHaveCount(0);
+  await expect(page.getByTestId("relay-session-indicator")).toHaveCount(0);
+  await page.evaluate(() => {
+    (window as typeof window & { __completeTestTurnstile?: () => void }).__completeTestTurnstile?.();
+  });
+  await page.waitForTimeout(100);
+  await expect(page.getByTestId("relay-session-indicator")).toHaveCount(0);
+});
+
+test("a replacement Build Session opens and closes without waiting for old relay cleanup", async ({ page }) => {
+  let deleteStarted = false;
+  let releaseDelete!: () => void;
+  const deleteGate = new Promise<void>((resolve) => { releaseDelete = resolve; });
+  await page.route(/\/v1\/sessions\/[^/]+$/, async (route) => {
+    if (route.request().method() !== "DELETE") {
+      await route.continue();
+      return;
+    }
+    deleteStarted = true;
+    await deleteGate;
+    await route.abort().catch(() => undefined);
+  });
+  await stubTurnstile(page);
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("build-artifact").click();
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
+  await page.getByTitle("Close", { exact: true }).click();
+
+  await page.getByTestId("sidebar-toggle").click();
+  await page.getByTestId("create-view").click();
+  await page.getByTestId("build-artifact").click();
+  await expect.poll(() => deleteStarted).toBe(true);
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
+  await page.getByTitle("Close", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Build with AI" })).toHaveCount(0, { timeout: 1_000 });
+  releaseDelete();
+});
+
+test("a delayed clipboard completion cannot mark a newer handoff as copied", async ({ page }) => {
+  await page.addInitScript(() => {
+    const probe = window as typeof window & {
+      __resolveFirstHandoffCopy?: () => void;
+      __copiedHandoff?: string;
+    };
+    let first = true;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        readText: async () => probe.__copiedHandoff ?? "",
+        writeText: async (value: string) => {
+          probe.__copiedHandoff = value;
+          if (!first) return;
+          first = false;
+          await new Promise<void>((resolve) => { probe.__resolveFirstHandoffCopy = resolve; });
+        },
+      },
+    });
+  });
+  await stubTurnstile(page, { autoComplete: false });
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("build-artifact").click();
+  await page.getByTestId("copy-agent-instruction").click();
+  await expect(page.getByTestId("copy-agent-instruction")).toBeDisabled();
+  await expect(page.getByTestId("copy-agent-instruction")).toContainText("Copying");
+
+  await page.evaluate(() => {
+    (window as typeof window & { __completeTestTurnstile?: () => void }).__completeTestTurnstile?.();
+  });
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
+  await page.evaluate(() => {
+    (window as typeof window & { __resolveFirstHandoffCopy?: () => void }).__resolveFirstHandoffCopy?.();
+  });
+  await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
+  await expect(page.getByTestId("copy-agent-instruction")).toContainText("Copy instruction");
+  await expect(page.locator(".agent-dialog-feedback [role='status']")).toContainText("handoff changed while copying");
+
+  await page.getByTestId("copy-agent-instruction").click();
+  await expect(page.getByTestId("copy-agent-instruction")).toContainText("Copied");
+  expect(await page.evaluate(() => (
+    window as typeof window & { __copiedHandoff?: string }
+  ).__copiedHandoff)).toContain("Delivery mode: BROWSER_RELAY");
+});
+
+test("interactive verification scrolls without covering the build brief in short landscape", async ({ page }) => {
+  await page.setViewportSize({ width: 667, height: 375 });
+  await stubTurnstile(page, { autoComplete: false, focusableChallenge: true });
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("build-artifact").click();
+  await expect(page.getByTestId("turnstile-challenge-frame")).toBeVisible();
+
+  const layout = await page.evaluate(() => {
+    const region = document.querySelector<HTMLElement>("[data-testid='agent-dialog-scroll-region']")!;
+    const status = document.querySelector<HTMLElement>("[data-testid='relay-session-status']")!;
+    const handoff = document.querySelector<HTMLElement>(".agent-handoff-content")!;
+    const frame = document.querySelector<HTMLIFrameElement>("[data-testid='turnstile-challenge-frame']")!;
+    const regionRect = region.getBoundingClientRect();
+    const statusRect = status.getBoundingClientRect();
+    const handoffRect = handoff.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+    return {
+      contentOverlap: statusRect.bottom > handoffRect.top,
+      frameInsideStatus: frameRect.top >= statusRect.top && frameRect.bottom <= statusRect.bottom,
+      regionContained: regionRect.top >= 0 && regionRect.bottom <= window.innerHeight,
+      regionScrollable: region.scrollHeight > region.clientHeight,
+    };
+  });
+  expect(layout).toEqual({
+    contentOverlap: false,
+    frameInsideStatus: true,
+    regionContained: true,
+    regionScrollable: true,
+  });
+  await expect(page.getByTestId("copy-agent-instruction")).toBeVisible();
+  await expect(page.getByTestId("copy-agent-instruction")).toContainText("Copy build brief");
+});
+
 test("Turnstile timeout callbacks become retryable verification errors", async ({ page }) => {
   await page.addInitScript(() => {
     const probe = window as typeof window & { __turnstileExecuteCount?: number };
@@ -436,14 +650,14 @@ test("Turnstile timeout callbacks become retryable verification errors", async (
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.getByTestId("build-artifact").click();
   const sessionStatus = page.getByTestId("relay-session-status");
-  await expect(sessionStatus).toContainText("Needs attention");
+  await expect(sessionStatus).toContainText("Live delivery unavailable");
   await expect(sessionStatus).toContainText("Secure session verification timed out; retry verification");
   await expect.poll(async () => page.evaluate(() =>
     (window as typeof window & { __turnstileExecuteCount?: number }).__turnstileExecuteCount)).toBe(1);
-  await page.getByRole("button", { name: "Retry verification" }).click();
+  await page.getByRole("button", { name: "Retry live delivery" }).click();
   await expect.poll(async () => page.evaluate(() =>
     (window as typeof window & { __turnstileExecuteCount?: number }).__turnstileExecuteCount)).toBe(2);
-  await expect(sessionStatus).toContainText("Needs attention");
+  await expect(sessionStatus).toContainText("Live delivery unavailable");
 });
 
 test("silent Turnstile widgets fall back to a retryable verification timeout", async ({ page }) => {
@@ -463,14 +677,14 @@ test("silent Turnstile widgets fall back to a retryable verification timeout", a
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.getByTestId("build-artifact").click();
   const sessionStatus = page.getByTestId("relay-session-status");
-  await expect(sessionStatus).toContainText("Needs attention");
+  await expect(sessionStatus).toContainText("Live delivery unavailable");
   await expect(sessionStatus).toContainText("Secure session verification timed out; retry verification");
   await expect.poll(async () => page.evaluate(() =>
     (window as typeof window & { __turnstileExecuteCount?: number }).__turnstileExecuteCount)).toBe(1);
-  await page.getByRole("button", { name: "Retry verification" }).click();
+  await page.getByRole("button", { name: "Retry live delivery" }).click();
   await expect.poll(async () => page.evaluate(() =>
     (window as typeof window & { __turnstileExecuteCount?: number }).__turnstileExecuteCount)).toBe(2);
-  await expect(sessionStatus).toContainText("Needs attention");
+  await expect(sessionStatus).toContainText("Live delivery unavailable");
 });
 
 test("managed charts keep essential labels inside default and minimum card sizes", async ({ page }, testInfo) => {

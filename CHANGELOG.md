@@ -95,11 +95,29 @@ All notable user-facing changes to this project should be documented here.
   transport/delivery status, and phone-width focus containment for Views and
   Artifacts.
 - Worktree-safe Playwright port selection through `FREEFORM_TEST_PORT`.
+- Progressive Build with AI handoff: a capability-free bundle brief is usable
+  immediately, then upgrades to a live-delivery step without rebuilding work.
+- Theme-matched, responsive Turnstile verification in a dedicated automatic
+  delivery panel, plus an always-visible **Install from agent** fallback.
 
 ### Fixed
 
-- Prevented delivered cards from overlapping existing or same-delivery cards
-  when the visible viewport has no complete opening.
+- Removed the dead period while Turnstile, session creation, or WebSocket setup
+  was pending; relay failures and expiry now leave artifact authoring available.
+- Kept real Turnstile iframe focus inside the Build with AI dialog and cancel
+  unfinished verification explicitly when the dialog closes.
+- Prevented a native Turnstile challenge from covering the build brief in short
+  landscape layouts, removed its duplicate hidden file control from the
+  accessibility tree, and raised dark-theme error contrast.
+- Made every live handoff continuation-safe after reopen or manual copy,
+  prevented delayed clipboard completions from marking a newer handoff copied,
+  and made dialog close independent of slow server cleanup.
+- Bound direct same-browser target installs to a View incarnation and rejected
+  stale calls after deletion and restoration.
+- Centered a complete multi-card delivery as a readable non-overlapping grid
+  whenever it fits, and kept true no-opening fallbacks at distinct snapped,
+  visible top-layer positions; overlap with an already full viewport remains
+  intentional.
 - Preserved autosave-window edits, cross-tab revisions, prior Undo history, and
   the latest deletion-generation snapshot across relay installation and
   repeated delete/restore races.
@@ -110,6 +128,8 @@ All notable user-facing changes to this project should be documented here.
   mobile dialog close now returns focus to a visible opener.
 - Refreshed **Artifacts > Yours** immediately after a delivery to a background
   View and returned strict CORS on allowlisted browser uploads.
+- Kept off-view file fallback installs bound to their original View and showed
+  the destination plus an explicit **Open** action after success.
 - Canonicalized equivalent IPv6 rate-limit sources without collapsing NAT64
   addresses into bare IPv4 buckets.
 - Restricted the development Turnstile bypass to loopback browser origins and
