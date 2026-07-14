@@ -1,4 +1,6 @@
 const SAFE_RELAY_ERROR_PATTERN = /^[a-z0-9_]{1,64}$/;
+const PROTOCOL_VERSION = 2;
+const SUCCESS_RESPONSE_KEYS = Object.freeze(["accepted", "deliveryId", "duplicate", "version"]);
 
 export class RelayUploadError extends Error {
   constructor(message, outcome) {
@@ -16,6 +18,27 @@ function safeRelayErrorCode(body, status) {
   return typeof body?.error === "string" && SAFE_RELAY_ERROR_PATTERN.test(body.error)
     ? body.error
     : `HTTP ${status}`;
+}
+
+export function parseUploadAcknowledgement(value, expectedDeliveryId) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const keys = Object.keys(value).sort();
+  if (
+    keys.length !== SUCCESS_RESPONSE_KEYS.length ||
+    keys.some((key, index) => key !== SUCCESS_RESPONSE_KEYS[index]) ||
+    value.version !== PROTOCOL_VERSION ||
+    typeof value.accepted !== "boolean" ||
+    value.deliveryId !== expectedDeliveryId ||
+    typeof value.duplicate !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    version: PROTOCOL_VERSION,
+    accepted: value.accepted,
+    deliveryId: value.deliveryId,
+    duplicate: value.duplicate,
+  };
 }
 
 export async function uploadDelivery(url, token, delivery, {
@@ -43,7 +66,10 @@ export async function uploadDelivery(url, token, delivery, {
       } catch {
         // Preserve the status-based error without reflecting an untrusted body.
       }
-      if (response.ok && body.accepted === true && body.deliveryId === delivery.deliveryId) return body;
+      const acknowledgement = response.ok
+        ? parseUploadAcknowledgement(body, delivery.deliveryId)
+        : null;
+      if (acknowledgement?.accepted === true) return acknowledgement;
       const code = safeRelayErrorCode(body, response.status);
       if (!response.ok && response.status < 500 && response.status !== 408 && response.status !== 429) {
         throw new RelayUploadError(

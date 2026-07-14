@@ -8,7 +8,7 @@ const VERIFIED_MODULE_SHA256 = Object.freeze({
   "delivery-cache.mjs": "fad422dcf7c5f8fa04cb5313de7552a034d3d90ed7a89c9f2fbe339824ed4f8a",
   "delivery-input.mjs": "14895a719dc82522f92b0d12ae66c6861eb9cbb2e505849b5932aba12689a050",
   "delivery-protocol.mjs": "cc3ee37c2a90a30bd62f5e42892ce23cb1f93cdc37528b5515028fdcb4638887",
-  "delivery-upload.mjs": "615bb2e626512f5238411c2e9af88d9aef2b40cf186d98668ce6656f06851cbd",
+  "delivery-upload.mjs": "ca87ed156684f10cb624031a12746eb227b0f01ba39c4b0a4167d4acfa50bb5d",
 });
 
 async function loadVerifiedCore() {
