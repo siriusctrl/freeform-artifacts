@@ -6,7 +6,8 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   await page.goto("/");
   await expect(page.getByTestId("canvas-stage")).toBeVisible();
   await expect(page.getByTestId("artifact-library-toggle")).toBeVisible();
-  await expect(page.getByTestId("build-artifact")).not.toBeVisible();
+  await expect(page.getByTestId("build-artifact")).toBeVisible();
+  await expect(page.getByTestId("build-artifact")).toHaveAccessibleName("Build with AI");
   await expect(page.getByTestId("theme-toggle")).toBeVisible();
   await expect(page.getByTestId("workspace-menu")).toBeVisible();
   const topbarMetrics = await page.evaluate(() => ({
@@ -88,6 +89,19 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   expect(indicatorBounds.left).toBeGreaterThanOrEqual(0);
   expect(indicatorBounds.right).toBeLessThanOrEqual(indicatorBounds.viewport);
 
+  await page.getByTestId("artifact-library-toggle").click();
+  await expect(page.getByTestId("artifact-library")).toBeVisible();
+  await expect(sessionIndicator).toBeVisible();
+  await expect(sessionIndicator.getByRole("button", { name: "Open" })).toBeVisible();
+  await expect(sessionIndicator.getByRole("button", { name: "End" })).toBeVisible();
+  const libraryOverlap = await page.evaluate(() => {
+    const indicator = document.querySelector<HTMLElement>('[data-testid="relay-session-indicator"]')!.getBoundingClientRect();
+    const footer = document.querySelector<HTMLElement>(".artifact-library-footer")!.getBoundingClientRect();
+    return indicator.left < footer.right && indicator.right > footer.left && indicator.top < footer.bottom && indicator.bottom > footer.top;
+  });
+  expect(libraryOverlap).toBe(false);
+  await page.getByTitle("Close artifacts").click();
+
   await page.getByTestId("workspace-menu").click();
   await expect(page.getByTestId("snap-toggle")).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("menuitem", { name: "Load sample data" })).toBeVisible();
@@ -105,6 +119,14 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   await page.getByTestId("workspace-menu").click();
   await page.getByTestId("enter-presentation").click();
   await expect(page.getByTestId("presentation-controls")).toBeVisible();
+  await expect(sessionIndicator).toBeVisible();
+  await expect(sessionIndicator.getByRole("button", { name: "Open" })).toBeVisible();
+  const presentationOverlap = await page.evaluate(() => {
+    const indicator = document.querySelector<HTMLElement>('[data-testid="relay-session-indicator"]')!.getBoundingClientRect();
+    const controls = document.querySelector<HTMLElement>('[data-testid="presentation-controls"]')!.getBoundingClientRect();
+    return indicator.left < controls.right && indicator.right > controls.left && indicator.top < controls.bottom && indicator.bottom > controls.top;
+  });
+  expect(presentationOverlap).toBe(false);
   await page.getByTestId("exit-presentation").click();
   await expect(page.getByTestId("canvas-stage")).toBeVisible();
   await expect(page.getByTestId("workspace-menu")).toBeVisible();
@@ -147,6 +169,17 @@ test("phone overlays trap focus and restore it after view and presentation chang
   await page.getByTestId("artifact-library-toggle").click();
   await page.getByTestId("library-build-artifact").click();
   await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTitle("Close", { exact: true })).toBeFocused();
+  expect(await page.locator(".workspace").evaluate((element) => (element as HTMLElement).inert)).toBe(true);
+  expect(await page.locator(".canvas-sidebar-slot").evaluate((element) => (element as HTMLElement).inert)).toBe(true);
+  expect(await page.locator(".artifact-library-slot").evaluate((element) => (element as HTMLElement).inert)).toBe(true);
+  await expect(page.getByText("Send the session to your agent", { exact: true })).toBeVisible();
+  await expect(page.getByText("Copy the instruction", { exact: true })).toBeVisible();
+  await expect(page.locator(".agent-handoff-details")).not.toHaveAttribute("open", "");
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByTestId("copy-agent-instruction")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTitle("Close", { exact: true })).toBeFocused();
   await page.getByTitle("Close", { exact: true }).click();
   await expect(page.getByTestId("artifact-library-toggle")).toBeFocused();
 

@@ -1,7 +1,12 @@
 import { createBoardState } from "../canvas/board";
 import { INITIAL_VIEWPORT } from "../canvas/constants";
 import { initialNodes } from "../canvas/seeds/demoBoard";
-import type { WorkspaceRecord, WorkspaceTemplate } from "./types";
+import {
+  createWorkspaceCommitId,
+  createWorkspaceIncarnationId,
+  type WorkspaceRecord,
+  type WorkspaceTemplate,
+} from "./types";
 
 export const DEFAULT_TEMPLATE_ID = "market-overview";
 const REFRESHED_EXAMPLE_NODE_IDS = new Set(["node-probability", "node-flow", "node-sankey"]);
@@ -43,6 +48,8 @@ export function createWorkspaceFromTemplate(
   return {
     version: 1 as const,
     revision: 0,
+    incarnationId: createWorkspaceIncarnationId(),
+    commitId: createWorkspaceCommitId(),
     templateId: options.id ?? template.id,
     title: options.title ?? template.title,
     templateVersion: template.version,

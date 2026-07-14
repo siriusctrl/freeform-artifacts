@@ -10,6 +10,7 @@ const reuseDefaultServers = !process.env.CI &&
 
 export default defineConfig({
   testDir: "./tests",
+  testMatch: "**/*.spec.ts",
   timeout: 45_000,
   expect: {
     timeout: 5_000,

@@ -153,7 +153,9 @@ Current controls:
   included delivery script to upload encrypted ciphertext. The browser receives
   it over its own WebSocket, validates the entire selection, and installs it in
   one local transaction. The session can accept later deliveries from the same
-  conversation. **Install offline bundle** remains the offline fallback.
+  conversation. Build Sessions require browser Web Locks so delivery and
+  cross-tab deletion share one safe commit boundary; unsupported browsers fail
+  before session creation. **Install offline bundle** remains the offline fallback.
   Build Session capabilities stay in page memory only; reloading or closing the
   page ends the browser side of that session and requires a new click.
 
@@ -186,16 +188,17 @@ There are separate trusted-code delivery modes. Runtime bundles are the default
 for personal browser views; repo-compiled TSX is for users who own and deploy the
 application. The skill requires this choice before files are created.
 
-The product's **Build with AI** dialog creates an agent-neutral handoff. It
-installs the public project skill with an interactive agent choice:
-
-```sh
-npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder
-```
+The product's **Build with AI** dialog creates an agent-neutral handoff. Copy
+the generated install command rather than reconstructing it: the handoff pins
+the Skills CLI version, fetches the project skill at a full commit SHA, verifies
+`FETCH_HEAD` equals that SHA, and installs from the detached local checkout. It
+then supplies a launcher-digest verification command that must pass before the
+delivery process reads credentials.
 
 The generated instruction includes `Delivery mode: BROWSER_RELAY`, a fixed
-target view id, short-lived upload capability, browser-generated AES-GCM key,
-and the exact `scripts/deliver.mjs` command. After skill installation, it tells
+target view id and incarnation, short-lived upload capability,
+browser-generated AES-GCM key, and the exact `scripts/deliver.mjs` command.
+After skill installation, it tells
 the agent to ask what the user wants to build and clarify its data, visual form,
 and layout. One delivery may contain several self-contained trusted bundles
 with `artifactId`, ESM `moduleSource`, and initial node data, while explicitly
@@ -213,22 +216,36 @@ Use the in-product handoff for normal remote agent work. The relay is transport
 only: it stores capability hashes and bounded pending ciphertext in one
 short-lived SQLite Durable Object. It cannot decrypt bundles and never stores
 canvas or package state. The browser owns full-selection validation, grid-aware
-placement, atomic persistence, and acknowledgement.
+placement, atomic persistence, and acknowledgement. Placement searches the
+target view's persisted viewport for complete empty space; when it is full, the
+browser keeps a top-layer fallback at the viewport center and grid-staggers
+additional cards from the same delivery instead of hiding them off-screen.
 
-The session remains bound to the view selected at creation even if the user
-navigates elsewhere. Each delivery has an idempotency UUID; an IndexedDB receipt
-prevents duplicate nodes when a post-commit acknowledgement is lost. During an
+The session remains bound to the exact view incarnation selected at creation
+even if the user navigates elsewhere. Deleting and restoring that view creates
+a new incarnation, so the old handoff cannot target the restored board. Each
+delivery has an idempotency UUID; an IndexedDB receipt prevents duplicate nodes
+when a post-commit acknowledgement is lost. During an
 ambiguous upload, the agent uploader privately retains only the authenticated
 encrypted envelope so a later `--delivery-id` retry is byte-identical; it
 deletes the entry on a definitive result and never caches tokens, keys, or
 plaintext bundles.
 
-Browser-local Views use revision-checked saves and a unique generation for each
-View deletion. A stale tab cannot overwrite a delivered dashboard, revive a
-deleted View, or apply an older Undo to a later deletion; edits still waiting in the autosave window are flushed
-before a live install. Editing surfaces are briefly inert through the atomic
-commit so no new mutation can be lost in that boundary, and the complete
+Browser-local Views use revision-checked saves, a stable incarnation for each
+logical lifetime, and a unique generation for each deletion. A stale tab cannot
+overwrite a delivered dashboard, revive a deleted View, or apply an older Undo
+to a later deletion. Trusted module preparation runs before the short UI
+mutation boundary, so navigation and editing remain available while code loads.
+At commit time, pending edits are flushed and the browser requires the expected
+revision and incarnation; a concurrent edit reloads the newest workspace,
+re-runs host placement, and retries a bounded number of times. Editing surfaces
+are inert only through that atomic commit/application boundary, and the complete
 delivery remains one Undo step.
+
+Browser Relay wire messages use protocol v2, including the target View
+incarnation in session metadata and AES-GCM authenticated data. Protocol-v1
+sessions fail closed after the upgrade. This is separate from the artifact
+bundle schema: `.freeform-artifact.json` bundles remain version 1.
 
 ### Runtime Artifact Bundle (offline/direct fallback)
 

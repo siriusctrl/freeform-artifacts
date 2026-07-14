@@ -31,9 +31,14 @@ export function randomEncryptionKey() {
   return bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-function additionalData(sessionId: string, targetViewId: string, deliveryId: string) {
+function additionalData(
+  sessionId: string,
+  targetViewId: string,
+  targetViewIncarnationId: string,
+  deliveryId: string,
+) {
   return new TextEncoder().encode(
-    `${RELAY_PROTOCOL_VERSION}\0${sessionId}\0${targetViewId}\0${deliveryId}`,
+    `${RELAY_PROTOCOL_VERSION}\0${sessionId}\0${targetViewId}\0${targetViewIncarnationId}\0${deliveryId}`,
   );
 }
 
@@ -46,11 +51,17 @@ export async function decryptRelayDelivery(
   key: string,
   sessionId: string,
   targetViewId: string,
+  targetViewIncarnationId: string,
 ): Promise<DecryptedRelayDelivery> {
   const plaintext = await crypto.subtle.decrypt({
     name: "AES-GCM",
     iv: base64UrlToBytes(delivery.iv),
-    additionalData: additionalData(sessionId, targetViewId, delivery.deliveryId),
+    additionalData: additionalData(
+      sessionId,
+      targetViewId,
+      targetViewIncarnationId,
+      delivery.deliveryId,
+    ),
   }, await importEncryptionKey(key), base64UrlToBytes(delivery.ciphertext));
   const parsed = decryptedDeliverySchema.parse(JSON.parse(new TextDecoder().decode(plaintext)));
   if (parsed.deliveryId !== delivery.deliveryId) throw new Error("Encrypted delivery id does not match its envelope");
@@ -63,13 +74,19 @@ export async function encryptRelayDelivery(
   key: string,
   sessionId: string,
   targetViewId: string,
+  targetViewIncarnationId: string,
 ) {
   const checked = decryptedDeliverySchema.parse(value);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt({
     name: "AES-GCM",
     iv,
-    additionalData: additionalData(sessionId, targetViewId, checked.deliveryId),
+    additionalData: additionalData(
+      sessionId,
+      targetViewId,
+      targetViewIncarnationId,
+      checked.deliveryId,
+    ),
   }, await importEncryptionKey(key), new TextEncoder().encode(JSON.stringify(checked)));
   return {
     version: RELAY_PROTOCOL_VERSION,

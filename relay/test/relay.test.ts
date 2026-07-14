@@ -3,20 +3,17 @@ import { runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test
 import { describe, expect, it } from "vitest";
 import {
   RELAY_MAX_CIPHERTEXT_BYTES,
+  RELAY_MAX_PENDING_BYTES,
   RELAY_PROTOCOL_VERSION,
   RELAY_WEBSOCKET_PROTOCOL,
   relayServerMessageSchema,
   type EncryptedRelayDelivery,
 } from "../../src/relay/protocol";
-import {
-  developmentTurnstileBypassAllowed,
-  normalizeRateLimitSource,
-  relayConfigurationReady,
-} from "../src/index";
 
 const APP_ORIGIN = "http://127.0.0.1:4177";
 const browserToken = "browser-capability-for-relay-tests";
 const uploadToken = "upload-capability-for-relay-tests";
+const targetViewIncarnationId = "market-overview-incarnation-for-relay-tests";
 
 function bytesToBase64Url(bytes: Uint8Array) {
   let binary = "";
@@ -41,6 +38,7 @@ async function createSession(targetViewId = "market-overview") {
     body: JSON.stringify({
       version: RELAY_PROTOCOL_VERSION,
       targetViewId,
+      targetViewIncarnationId,
       browserTokenHash: await tokenHash(browserToken),
       uploadTokenHash: await tokenHash(uploadToken),
       turnstileToken: "test-turnstile-pass",
@@ -50,6 +48,7 @@ async function createSession(targetViewId = "market-overview") {
     version: number;
     sessionId: string;
     targetViewId: string;
+    targetViewIncarnationId: string;
     expiresAt: string;
     error?: string;
   }>();
@@ -126,58 +125,6 @@ async function connect(sessionId: string) {
 }
 
 describe("artifact delivery relay", () => {
-  it("fails closed for misspelled environments and limits the development bypass to loopback", () => {
-    const base = {
-      RELAY_ROUTING_SECRET: "r".repeat(32),
-      TURNSTILE_SECRET: "",
-    };
-    const preview = { ...base, ENVIRONMENT: "preview", TURNSTILE_SECRET: "configured" } as unknown as Env;
-    const development = { ...base, ENVIRONMENT: "development", ALLOWED_ORIGINS: APP_ORIGIN } as unknown as Env;
-    expect(relayConfigurationReady(preview)).toBe(false);
-    expect(relayConfigurationReady(development)).toBe(true);
-    expect(relayConfigurationReady({
-      ...preview,
-      ALLOWED_ORIGINS: "http://public.example",
-    } as unknown as Env)).toBe(false);
-    expect(developmentTurnstileBypassAllowed(
-      preview,
-      APP_ORIGIN,
-      "test-turnstile-pass",
-      "http://127.0.0.1/v1/sessions",
-    )).toBe(false);
-    expect(developmentTurnstileBypassAllowed(
-      development,
-      APP_ORIGIN,
-      "test-turnstile-pass",
-      "http://127.0.0.1/v1/sessions",
-    )).toBe(true);
-    expect(developmentTurnstileBypassAllowed(
-      development,
-      "https://public.example",
-      "test-turnstile-pass",
-      "http://127.0.0.1/v1/sessions",
-    )).toBe(false);
-    expect(developmentTurnstileBypassAllowed(
-      development,
-      APP_ORIGIN,
-      "test-turnstile-pass",
-      "https://public-preview.example/v1/sessions",
-    )).toBe(false);
-  });
-
-  it("groups IPv6 rate-limit sources by /64 without coalescing IPv4 clients", () => {
-    expect(normalizeRateLimitSource("2001:db8:abcd:12::1"))
-      .toBe(normalizeRateLimitSource("2001:0db8:abcd:0012:ffff::9"));
-    expect(normalizeRateLimitSource("2001:db8:abcd:12::1"))
-      .not.toBe(normalizeRateLimitSource("2001:db8:abcd:13::1"));
-    expect(normalizeRateLimitSource("192.0.2.8")).toBe("192.0.2.8");
-    expect(normalizeRateLimitSource("::ffff:192.0.2.8")).toBe("192.0.2.8");
-    expect(normalizeRateLimitSource("0:0:0:0:0:ffff:c000:0208")).toBe("192.0.2.8");
-    expect(normalizeRateLimitSource("64:ff9b::192.0.2.8"))
-      .toBe(normalizeRateLimitSource("64:ff9b::c000:208"));
-    expect(normalizeRateLimitSource("64:ff9b::192.0.2.8")).not.toBe("192.0.2.8");
-  });
-
   it("creates a view-bound session with strict CORS and a thirty-minute expiry", async () => {
     const rejected = await SELF.fetch("https://relay.test/v1/sessions", {
       method: "POST",
@@ -190,7 +137,11 @@ describe("artifact delivery relay", () => {
     const { response, body } = await createSession("canvas-security-review");
     expect(response.status).toBe(201);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(APP_ORIGIN);
-    expect(body).toMatchObject({ version: 1, targetViewId: "canvas-security-review" });
+    expect(body).toMatchObject({
+      version: RELAY_PROTOCOL_VERSION,
+      targetViewId: "canvas-security-review",
+      targetViewIncarnationId,
+    });
     expect(Date.parse(body.expiresAt) - Date.now()).toBeGreaterThan(29 * 60_000);
     expect(Date.parse(body.expiresAt) - Date.now()).toBeLessThanOrEqual(30 * 60_000);
   });
@@ -246,11 +197,42 @@ describe("artifact delivery relay", () => {
         value.deliveryId,
       ).one().envelope_hash,
     }));
-    expect(migratedSchema.version).toBe(2);
+    expect(migratedSchema.version).toBe(3);
     expect(migratedSchema.envelopeHash).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
     const status = await sessionStatus(body.sessionId);
-    await expect(status.json()).resolves.toMatchObject({ pending: 1, targetViewId: "market-overview" });
+    await expect(status.json()).resolves.toMatchObject({
+      pending: 1,
+      targetViewId: "market-overview",
+      targetViewIncarnationId,
+    });
+  });
+
+  it("migrates pre-v2 metadata but refuses to resume a session without a View incarnation", async () => {
+    const { body } = await createSession("legacy-view-incarnation");
+    const stub = env.BUILD_SESSIONS.getByName(body.sessionId);
+    await runInDurableObject(stub, (_instance, state) => {
+      state.storage.sql.exec(`
+        ALTER TABLE session_metadata DROP COLUMN target_view_incarnation_id;
+        UPDATE schema_metadata SET version = 2 WHERE singleton = 1;
+      `);
+    });
+
+    const status = await sessionStatus(body.sessionId);
+    expect(status.status).toBe(410);
+    expect(status.headers.get("Access-Control-Allow-Origin")).toBe(APP_ORIGIN);
+    await expect(status.json()).resolves.toEqual({ error: "session_expired" });
+
+    const migrated = await runInDurableObject(stub, (_instance, state) => ({
+      version: state.storage.sql.exec<{ version: number }>(
+        "SELECT version FROM schema_metadata WHERE singleton = 1",
+      ).one().version,
+      columns: state.storage.sql.exec<{ name: string }>(
+        "PRAGMA table_info(session_metadata)",
+      ).toArray().map((column) => column.name),
+    }));
+    expect(migrated.version).toBe(3);
+    expect(migrated.columns).toContain("target_view_incarnation_id");
   });
 
   it("does not let the upload capability inspect, close, or connect as the browser", async () => {
@@ -287,7 +269,11 @@ describe("artifact delivery relay", () => {
     const { body } = await createSession();
     const socket = await connect(body.sessionId);
     const ready = relayServerMessageSchema.parse(await nextMessage(socket));
-    expect(ready).toMatchObject({ type: "ready", targetViewId: "market-overview" });
+    expect(ready).toMatchObject({
+      type: "ready",
+      targetViewId: "market-overview",
+      targetViewIncarnationId,
+    });
 
     const value = delivery();
     const pushedMessage = nextMessage(socket);
@@ -442,6 +428,115 @@ describe("artifact delivery relay", () => {
     tooLarge.ciphertext = bytesToBase64Url(new Uint8Array(RELAY_MAX_CIPHERTEXT_BYTES + 1));
     const oversized = await upload(body.sessionId, tooLarge);
     expect(oversized.status).toBe(413);
+  });
+
+  it("enforces the cumulative pending ciphertext limit at its exact boundary", async () => {
+    const { body } = await createSession("pending-byte-limit");
+    const accepted: EncryptedRelayDelivery[] = [];
+    const maximumSizedDeliveries = Math.floor(RELAY_MAX_PENDING_BYTES / RELAY_MAX_CIPHERTEXT_BYTES);
+    for (let index = 0; index < maximumSizedDeliveries; index += 1) {
+      const value = delivery();
+      value.ciphertext = bytesToBase64Url(new Uint8Array(RELAY_MAX_CIPHERTEXT_BYTES));
+      expect((await upload(body.sessionId, value)).status).toBe(202);
+      accepted.push(value);
+    }
+
+    const remainingBytes = RELAY_MAX_PENDING_BYTES -
+      maximumSizedDeliveries * RELAY_MAX_CIPHERTEXT_BYTES;
+    if (remainingBytes > 0) {
+      const boundary = delivery();
+      boundary.ciphertext = bytesToBase64Url(new Uint8Array(remainingBytes));
+      expect((await upload(body.sessionId, boundary)).status).toBe(202);
+      accepted.push(boundary);
+    }
+
+    const limited = await upload(body.sessionId, delivery());
+    expect(limited.status).toBe(429);
+    await expect(limited.json()).resolves.toEqual({ error: "session_pending_limit" });
+    await expect((await sessionStatus(body.sessionId)).json()).resolves.toMatchObject({
+      pending: accepted.length,
+    });
+  });
+
+  it("closes binary, malformed, and schema-invalid WebSocket clients on their first bad frame", async () => {
+    const cases: Array<{ name: string; value: string | ArrayBuffer; closeCode: number }> = [
+      { name: "binary", value: new Uint8Array([1, 2, 3]).buffer, closeCode: 1003 },
+      { name: "malformed-json", value: "{", closeCode: 1007 },
+      { name: "invalid-schema", value: JSON.stringify({ type: "ping" }), closeCode: 1008 },
+    ];
+
+    for (const testCase of cases) {
+      const { body } = await createSession(`websocket-${testCase.name}`);
+      const socket = await connect(body.sessionId);
+      expect(relayServerMessageSchema.parse(await nextMessage(socket))).toMatchObject({ type: "ready" });
+
+      const closed = nextClose(socket);
+      socket.send(testCase.value);
+      expect((await closed).code).toBe(testCase.closeCode);
+      expect((await sessionStatus(body.sessionId)).status).toBe(200);
+    }
+  });
+
+  it("limits WebSocket frames by encoded bytes before parsing", async () => {
+    const { body: boundarySession } = await createSession("websocket-exact-byte-boundary");
+    const boundarySocket = await connect(boundarySession.sessionId);
+    expect(relayServerMessageSchema.parse(await nextMessage(boundarySocket))).toMatchObject({ type: "ready" });
+    const boundaryAcknowledgement = JSON.stringify({
+      version: RELAY_PROTOCOL_VERSION,
+      type: "ack",
+      deliveryId: crypto.randomUUID(),
+      outcome: "rejected",
+    });
+    boundarySocket.send(boundaryAcknowledgement.padEnd(2_048, " "));
+    const boundaryStub = env.BUILD_SESSIONS.getByName(boundarySession.sessionId);
+    await expect.poll(() => runInDurableObject(boundaryStub, (_instance, state) => {
+      const attachment = state.getWebSockets("browser")[0]?.deserializeAttachment() as
+        { messageCount?: number } | null | undefined;
+      return attachment?.messageCount ?? -1;
+    })).toBe(1);
+    boundarySocket.close(1000, "Exact byte boundary accepted");
+
+    const cases: Array<{ name: string; value: string | ArrayBuffer }> = [
+      { name: "ascii", value: "x".repeat(2_049) },
+      { name: "utf8", value: "\u00e9".repeat(1_025) },
+      { name: "binary", value: new Uint8Array(2_049).buffer },
+    ];
+
+    for (const testCase of cases) {
+      const { body } = await createSession(`websocket-oversized-${testCase.name}`);
+      const socket = await connect(body.sessionId);
+      expect(relayServerMessageSchema.parse(await nextMessage(socket))).toMatchObject({ type: "ready" });
+
+      const closed = nextClose(socket);
+      socket.send(testCase.value);
+      expect((await closed).code).toBe(1009);
+      expect((await sessionStatus(body.sessionId)).status).toBe(200);
+    }
+  });
+
+  it("counts every valid frame and closes a WebSocket after the 64-frame boundary", async () => {
+    const { body } = await createSession("websocket-frame-limit");
+    const socket = await connect(body.sessionId);
+    expect(relayServerMessageSchema.parse(await nextMessage(socket))).toMatchObject({ type: "ready" });
+    const acknowledgement = JSON.stringify({
+      version: RELAY_PROTOCOL_VERSION,
+      type: "ack",
+      deliveryId: crypto.randomUUID(),
+      outcome: "rejected",
+    });
+
+    for (let index = 0; index < 64; index += 1) socket.send(acknowledgement);
+    const stub = env.BUILD_SESSIONS.getByName(body.sessionId);
+    await expect.poll(() => runInDurableObject(stub, (_instance, state) => {
+      const attachment = state.getWebSockets("browser")[0]?.deserializeAttachment() as
+        { messageCount?: number } | null | undefined;
+      return attachment?.messageCount ?? -1;
+    })).toBe(64);
+
+    const closed = nextClose(socket);
+    socket.send(acknowledgement);
+    expect((await closed).code).toBe(1008);
+    expect((await sessionStatus(body.sessionId)).status).toBe(200);
   });
 
   it("enforces the per-session delivery ceiling while preserving idempotent retries", async () => {

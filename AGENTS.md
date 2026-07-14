@@ -112,8 +112,10 @@ on navigation, invariants, verification, and handoff rules.
   View deletion is rejected and must never clear the tombstone or resurrect the
   target View.
 - Keep browser and uploader capabilities separate, store only hashes in the
-  relay, keep the AES-GCM key out of the Worker, bind the session to its original
-  view, and never put capabilities in URLs, logs, or persisted bundle source.
+  relay, keep the AES-GCM key out of the Worker, bind protocol-v2 sessions and
+  authenticated ciphertext to the original view incarnation, and never put
+  capabilities in URLs, logs, or persisted bundle source. Protocol-v1 sessions
+  and restored/replaced incarnations fail closed.
 - The relay remains ephemeral transport: no canvas/package state and no D1, KV,
   or R2 without a new accepted architecture decision.
 - Deleting a canvas node must not delete its reusable personal package. The
@@ -129,15 +131,22 @@ on navigation, invariants, verification, and handoff rules.
   not a potentially stale debounced save. Deleted-view tombstones must keep a
   failed IndexedDB deletion from resurfacing later.
 - Workspace revisions are compare-and-swap tokens. Keep autosaves single-flight,
-  recovery mirrors monotonic, deletion tombstones unique per deletion, and
-  restores conditional on that generation; never turn a conflict into a blind
-  localStorage overwrite.
+  recovery mirrors monotonic, workspace incarnations stable for one logical
+  lifetime, deletion tombstones unique per deletion, and restores conditional
+  on that generation while creating a new incarnation; never turn a conflict
+  into a blind localStorage overwrite.
 - Flush current-tab dirty state before a live relay or offline package commit.
-  Relay merges against the transaction's latest persisted revision and must
-  remain one reversible history entry without undoing sibling-tab changes.
-- Keep mounted editing surfaces inert from the pre-install flush through
-  applying its atomic commit, and cancel an active drag at that boundary; relay
-  session controls must remain available to abort the operation.
+  Relay commits against the exact expected revision and incarnation; on a
+  concurrent revision, reload the latest workspace, re-run host placement, and
+  retry only a bounded number of times. The delivery must remain one reversible
+  history entry without undoing sibling-tab changes.
+- Keep trusted module preparation outside the short UI mutation gate. Make
+  mounted editing surfaces inert only from the pre-commit flush through applying
+  the atomic commit, and cancel an active drag at that boundary; relay session
+  controls must remain available to abort the operation.
+- Build handoffs must pin the Skills CLI, fetch the project skill by full commit
+  SHA, verify the fetched commit, install from that local checkout, and verify
+  the delivery launcher before it can read credentials.
 - The fixed development Turnstile token is emulator-only: both the browser
   origin and the Worker's actual request URL must be loopback.
 - Responsive drawers and presentation mode must retain a pointer-accessible

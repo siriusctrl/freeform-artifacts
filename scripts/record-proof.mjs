@@ -1,9 +1,31 @@
 import { chromium } from "@playwright/test";
-import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { stopProcessGroup, waitForServer } from "./lib/browser-server.mjs";
+import {
+  artifactPreviewGeometry,
+  chartLabelLayout,
+  configureProofBrowserContext,
+  createUxVerifier,
+  dispatchPinch,
+  findBlankStagePoint,
+  installProofOverlay,
+  pipelineConnectorGeometry,
+  pointDistance,
+  probabilityNoteLayout,
+  sankeyNodeColors,
+  showProofStep,
+  worldPoint,
+} from "./proof/browser-helpers.mjs";
+import { createProofMedia, writeProofReport } from "./proof/media.mjs";
+import {
+  brokenProofArtifactBundle,
+  createRelayDeliveryHelpers,
+  parseRelayHandoff,
+  proofArtifactBundle,
+  startProofServers,
+} from "./proof/relay-fixtures.mjs";
 
 const root = process.cwd();
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -26,422 +48,9 @@ const proofTrimStartSeconds = process.env.FREEFORM_PROOF_TRIM_START ?? "6.8";
 
 mkdirSync(videoDir, { recursive: true });
 
-const uxChecks = [];
-
-function verifyUx(name, condition, details = {}) {
-  const check = { name, passed: Boolean(condition), details };
-  uxChecks.push(check);
-  writeFileSync(uxChecksPath, `${JSON.stringify(uxChecks, null, 2)}\n`);
-  if (!check.passed) {
-    throw new Error(`UX check failed: ${name}\n${JSON.stringify(details, null, 2)}`);
-  }
-}
-
-function worldPoint(viewport, screenPoint) {
-  return {
-    x: (screenPoint.x - viewport.x) / viewport.scale,
-    y: (screenPoint.y - viewport.y) / viewport.scale,
-  };
-}
-
-function pointDistance(first, second) {
-  return Math.hypot(first.x - second.x, first.y - second.y);
-}
-
-function mediaDuration(mediaPath) {
-  const probe = spawnSync(
-    "ffprobe",
-    ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", mediaPath],
-    { encoding: "utf8" },
-  );
-  const duration = Number.parseFloat(probe.stdout.trim());
-  if (probe.status !== 0 || !Number.isFinite(duration) || duration <= 0) {
-    throw new Error(`ffprobe failed to read media duration: ${probe.stderr}`);
-  }
-  return duration;
-}
-
-async function installProofOverlay(page) {
-  await page.evaluate(() => {
-    document.querySelector("[data-proof-overlay]")?.remove();
-    const overlay = document.createElement("div");
-    overlay.dataset.proofOverlay = "true";
-    overlay.innerHTML = '<div class="proof-step"></div><div class="proof-cursor"></div>';
-    const style = document.createElement("style");
-    style.textContent = `
-      [data-proof-overlay] { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; }
-      .proof-step { position: absolute; left: 24px; top: 72px; padding: 9px 13px; color: #fff;
-        background: rgba(17, 20, 24, .9); border: 1px solid rgba(255,255,255,.18); border-radius: 6px;
-        font: 600 13px/1.2 "Instrument Sans Variable", system-ui, sans-serif; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
-      .proof-cursor { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px;
-        border: 2px solid #111418; border-radius: 50%; background: rgba(255,255,255,.72);
-        box-shadow: 0 0 0 3px rgba(82,196,218,.55); transform: translate(-30px,-30px); }
-      @media (max-width: 700px) {
-        .proof-step { left: 12px; top: 8px; max-width: calc(100vw - 24px); padding: 6px 9px; font-size: 11px; }
-      }
-    `;
-    overlay.append(style);
-    document.body.append(overlay);
-    window.addEventListener("pointermove", (event) => {
-      const cursor = overlay.querySelector(".proof-cursor");
-      if (cursor instanceof HTMLElement) {
-        cursor.style.transform = `translate(${event.clientX}px, ${event.clientY}px)`;
-      }
-    });
-  });
-}
-
-async function showProofStep(page, label, pause = 500) {
-  await page.evaluate((nextLabel) => {
-    const step = document.querySelector("[data-proof-overlay] .proof-step");
-    if (step) step.textContent = nextLabel;
-  }, label);
-  await page.waitForTimeout(pause);
-}
-
-async function dispatchPinch(page, stage, point, deltaY, count) {
-  await stage.evaluate(async (element, gesture) => {
-    for (let index = 0; index < gesture.count; index += 1) {
-      element.dispatchEvent(
-        new WheelEvent("wheel", {
-          bubbles: true,
-          cancelable: true,
-          clientX: gesture.point.x,
-          clientY: gesture.point.y,
-          ctrlKey: true,
-          deltaY: gesture.deltaY,
-        }),
-      );
-      await new Promise((resolve) => window.setTimeout(resolve, 32));
-    }
-  }, { point, deltaY, count });
-  await page.waitForTimeout(250);
-}
-
-async function findBlankStagePoint(page, stageBox) {
-  const candidates = [];
-  for (let y = stageBox.y + 100; y < stageBox.y + stageBox.height - 80; y += 80) {
-    for (let x = stageBox.x + 80; x < stageBox.x + stageBox.width - 80; x += 100) {
-      candidates.push({ x, y });
-    }
-  }
-
-  return page.evaluate((points) => {
-    return points.find(({ x, y }) => {
-      const target = document.elementFromPoint(x, y);
-      return Boolean(
-        target?.closest('[data-testid="canvas-stage"]') &&
-        !target.closest(".canvas-node, button, a, input, textarea, select"),
-      );
-    });
-  }, candidates);
-}
-
-async function chartLabelLayout(page, hostTestId, labels) {
-  return page.getByTestId(hostTestId).evaluate((host, expectedLabels) => {
-    const hostRect = host.getBoundingClientRect();
-    const textElements = Array.from(host.querySelectorAll("svg text"));
-    const matches = expectedLabels.map((label) => ({
-      label,
-      element: textElements.find((element) => element.textContent?.includes(label)),
-    }));
-
-    return {
-      missing: matches.filter(({ element }) => !element).map(({ label }) => label),
-      overflow: matches.flatMap(({ label, element }) => {
-        if (!element) return [];
-        const rect = element.getBoundingClientRect();
-        const outside =
-          rect.left < hostRect.left - 1 ||
-          rect.right > hostRect.right + 1 ||
-          rect.top < hostRect.top - 1 ||
-          rect.bottom > hostRect.bottom + 1;
-        return outside ? [{ label, hostRight: hostRect.right, textRight: rect.right }] : [];
-      }),
-    };
-  }, labels);
-}
-
-async function artifactPreviewGeometry(page, artifactId) {
-  const preview = page.getByTestId(`artifact-preview-${artifactId}`);
-  await preview.scrollIntoViewIfNeeded();
-  await preview.waitFor({ state: "visible" });
-  await page.waitForFunction(
-    (id) => document.querySelector(`[data-testid="artifact-preview-${id}"]`)?.getAttribute("data-preview-ready") === "true",
-    artifactId,
-  );
-  return preview.evaluate((frame) => {
-    const node = frame.querySelector(".artifact-preview-node");
-    if (!(node instanceof HTMLElement)) return null;
-    const frameRect = frame.getBoundingClientRect();
-    const nodeRect = node.getBoundingClientRect();
-    return {
-      artifactId: frame.dataset.testid,
-      scale: Number(frame.getAttribute("data-preview-scale")),
-      frame: { width: frameRect.width, height: frameRect.height },
-      node: { width: nodeRect.width, height: nodeRect.height },
-      contained:
-        nodeRect.left >= frameRect.left - 1 &&
-        nodeRect.right <= frameRect.right + 1 &&
-        nodeRect.top >= frameRect.top - 1 &&
-        nodeRect.bottom <= frameRect.bottom + 1,
-    };
-  });
-}
-
-async function probabilityNoteLayout(page) {
-  return page.getByTestId("echarts-inflection-probability").evaluate((host) => {
-    const hostRect = host.getBoundingClientRect();
-    const objectScale = hostRect.width / host.clientWidth;
-    const compact = host.clientWidth < 640 || host.clientHeight < 400;
-    const horizontalPadding = compact ? 18 : 24;
-    const noteTop = compact ? 52 : 62;
-    const noteHeight = compact ? 90 : 76;
-    const panel = {
-      left: hostRect.left + horizontalPadding * objectScale,
-      right: hostRect.right - horizontalPadding * objectScale,
-      top: hostRect.top + noteTop * objectScale,
-      bottom: hostRect.top + (noteTop + noteHeight) * objectScale,
-    };
-    const labels = ["What:", "Read:", "Logic:"];
-    const textElements = Array.from(host.querySelectorAll("svg text"));
-    const matches = labels.map((label) => ({
-      label,
-      element: textElements.find((element) => element.textContent?.includes(label)),
-    }));
-
-    return {
-      missing: matches.filter(({ element }) => !element).map(({ label }) => label),
-      tops: matches.flatMap(({ element }) => element ? [Math.round(element.getBoundingClientRect().top)] : []),
-      overflow: matches.flatMap(({ label, element }) => {
-        if (!element) return [];
-        const rect = element.getBoundingClientRect();
-        const outside = rect.left < panel.left - 1 || rect.right > panel.right + 1 || rect.top < panel.top - 1 || rect.bottom > panel.bottom + 1;
-        return outside ? [{ label, panel, rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom } }] : [];
-      }),
-    };
-  });
-}
-
-async function sankeyNodeColors(page) {
-  return page.getByTestId("echarts-sankey-flow").locator("svg").evaluate((svg) =>
-    [...svg.querySelectorAll("path")]
-      .map((path) => path.getAttribute("fill"))
-      .filter((fill) => fill && fill !== "none" && !fill.startsWith("url") && fill !== "rgb(0,0,0)"),
-  );
-}
-
-async function pipelineConnectorGeometry(page) {
-  return page.locator(".flow-grid").evaluate((grid) => {
-    const connector = grid.querySelector(".flow-connector").getBoundingClientRect();
-    const markers = [...grid.querySelectorAll(".flow-step-node")].map((marker) => marker.getBoundingClientRect());
-    return {
-      connectorLeft: connector.left,
-      connectorRight: connector.right,
-      firstCenter: markers[0].left + markers[0].width / 2,
-      lastCenter: markers.at(-1).left + markers.at(-1).width / 2,
-    };
-  });
-}
-
-function checkSampledFrames(gifFile) {
-  const width = 64;
-  const height = 40;
-  const channels = 3;
-  const frameSize = width * height * channels;
-  const sample = spawnSync(
-    "ffmpeg",
-    ["-i", gifFile, "-vf", `fps=1,scale=${width}:${height}:flags=bilinear`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-    { encoding: "buffer", maxBuffer: 20 * 1024 * 1024 },
-  );
-
-  if (sample.status !== 0) {
-    throw new Error(`ffmpeg failed to sample GIF frames: ${sample.stderr.toString()}`);
-  }
-
-  const frames = [];
-  for (let offset = 0; offset + frameSize <= sample.stdout.length; offset += frameSize) {
-    let sum = 0;
-    let sumSq = 0;
-    for (let index = offset; index < offset + frameSize; index += channels) {
-      const r = sample.stdout[index];
-      const g = sample.stdout[index + 1];
-      const b = sample.stdout[index + 2];
-      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      sum += luma;
-      sumSq += luma * luma;
-    }
-    const count = width * height;
-    const mean = sum / count;
-    const variance = Math.max(0, sumSq / count - mean * mean);
-    frames.push({
-      index: frames.length,
-      mean: Number(mean.toFixed(2)),
-      deviation: Number(Math.sqrt(variance).toFixed(2)),
-      blankLike: Math.sqrt(variance) < 2.8,
-    });
-  }
-
-  const blankFrames = frames.filter((frame) => frame.blankLike);
-  const report = {
-    frameCount: frames.length,
-    blankFrameCount: blankFrames.length,
-    frames,
-  };
-
-  if (frames.length < 12) {
-    throw new Error("GIF frame check found too few sampled frames");
-  }
-
-  if (blankFrames.length > 0) {
-    throw new Error(`GIF frame check found blank-like frames: ${blankFrames.map((frame) => frame.index).join(", ")}`);
-  }
-
-  return report;
-}
-
-function proofArtifactBundle(
-  artifactId = "agent-capacity-card",
-  nodeTitle = "Agent Capacity",
-  chartTitle = "Installed directly into this view",
-  artifactTitle = "Agent Capacity",
-) {
-  return {
-    version: 1,
-    artifactId,
-    moduleSource: `export const artifact = {
-      id: ${JSON.stringify(artifactId)}, renderer: "chart-kit",
-      title: ${JSON.stringify(artifactTitle)}, version: "1.0.0", defaultSize: { width: 480, height: 300 },
-      buildChart: ({ data }) => ({
-        kind: "cartesian", title: data.title,
-        categories: data.points.map((point) => point.label),
-        series: [{ id: "capacity", name: "Capacity", type: "bar", values: data.points.map((point) => point.value) }],
-      }),
-    };`,
-    node: {
-      title: nodeTitle,
-      data: { title: chartTitle, points: [{ label: "North", value: 34 }, { label: "South", value: 47 }] },
-      config: {},
-    },
-  };
-}
-
-function brokenProofArtifactBundle() {
-  return {
-    version: 1,
-    artifactId: "broken-proof-card",
-    moduleSource: `export const artifact = {
-      id: "broken-proof-card", renderer: "chart-kit", title: "Broken proof card",
-      version: "1.0.0", defaultSize: { width: 420, height: 260 },
-      buildChart: () => ({ kind: "cartesian", categories: ["North", "South"],
-        series: [{ id: "capacity", name: "Capacity", type: "bar", values: [34] }] }),
-    };`,
-    node: { title: "Broken proof card", data: {}, config: {} },
-  };
-}
-
-function parseRelayHandoff(handoff) {
-  const option = (name) => handoff.match(new RegExp(`--${name}\\s+"([^"]+)"`))?.[1];
-  const credentialsLine = handoff.split("\n").find((line) => line.startsWith('{"uploadToken"'));
-  const credentials = credentialsLine ? JSON.parse(credentialsLine) : {};
-  return {
-    endpoint: option("relay-url"),
-    sessionId: option("session-id"),
-    uploadToken: credentials.uploadToken,
-    encryptionKey: credentials.encryptionKey,
-    targetViewId: option("view-id"),
-  };
-}
-
-function deliverProofBundles(session, bundles, label) {
-  const bundlePaths = bundles.map((bundle, index) => {
-    const bundlePath = path.join(outputDir, `${label}-${index}.freeform-artifact.json`);
-    writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
-    return bundlePath;
-  });
-  const delivery = spawnSync(process.execPath, [
-    path.join(root, "skill/freeform-artifact-builder/scripts/deliver.mjs"),
-    "--relay-url", session.endpoint,
-    "--session-id", session.sessionId,
-    "--credentials-stdin",
-    "--view-id", session.targetViewId,
-    ...bundlePaths,
-  ], {
-    cwd: root,
-    encoding: "utf8",
-    input: `${JSON.stringify({ uploadToken: session.uploadToken, encryptionKey: session.encryptionKey })}\n`,
-    env: { ...process.env, FREEFORM_RELAY_CACHE_DIR: path.join(outputDir, "relay-cache") },
-  });
-  if (delivery.status !== 0) {
-    throw new Error(`Relay delivery script failed: ${delivery.stderr || "unknown error"}`);
-  }
-  return JSON.parse(delivery.stdout);
-}
-
-function deliverProofBundlesAsync(session, bundles, label) {
-  const bundlePaths = bundles.map((bundle, index) => {
-    const bundlePath = path.join(outputDir, `${label}-${index}.freeform-artifact.json`);
-    writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
-    return bundlePath;
-  });
-  return new Promise((resolve, reject) => {
-    const delivery = spawn(process.execPath, [
-      path.join(root, "skill/freeform-artifact-builder/scripts/deliver.mjs"),
-      "--relay-url", session.endpoint,
-      "--session-id", session.sessionId,
-      "--credentials-stdin",
-      "--view-id", session.targetViewId,
-      ...bundlePaths,
-    ], {
-      cwd: root,
-      env: { ...process.env, FREEFORM_RELAY_CACHE_DIR: path.join(outputDir, "relay-cache") },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    delivery.stdout.setEncoding("utf8");
-    delivery.stderr.setEncoding("utf8");
-    delivery.stdout.on("data", (chunk) => { stdout += chunk; });
-    delivery.stderr.on("data", (chunk) => { stderr += chunk; });
-    delivery.on("error", reject);
-    delivery.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`Relay delivery script failed: ${stderr || `exit ${code}`}`));
-        return;
-      }
-      try {
-        resolve(JSON.parse(stdout));
-      } catch (error) {
-        reject(error);
-      }
-    });
-    delivery.stdin.end(`${JSON.stringify({ uploadToken: session.uploadToken, encryptionKey: session.encryptionKey })}\n`);
-  });
-}
-
-const relayServer = spawn("npx", [
-  "wrangler", "dev", "--config", "relay/wrangler.jsonc", "--local",
-  "--ip", host, "--port", String(relayPort), "--var", "ENVIRONMENT:development",
-  "--var", "RELAY_ROUTING_SECRET:development-only-relay-routing-secret-0001",
-  "--var", `ALLOWED_ORIGINS:${url}`,
-], {
-  cwd: root,
-  detached: true,
-  stdio: "ignore",
-  env: { ...process.env, BROWSER: "none" },
-});
-
-const server = spawn("npm", ["run", "dev", "--", "--host", host, "--port", String(port), "--strictPort"], {
-  cwd: root,
-  detached: true,
-  stdio: "ignore",
-  env: {
-    ...process.env,
-    BROWSER: "none",
-    VITE_RELAY_URL: relayUrl,
-    VITE_RELAY_TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
-  },
-});
+const { uxChecks, verifyUx } = createUxVerifier(uxChecksPath);
+const { deliverProofBundles, deliverProofBundlesAsync } = createRelayDeliveryHelpers({ root, outputDir });
+const { appServer, relayServer } = startProofServers({ root, host, port, relayPort, appUrl: url, relayUrl });
 
 let browser;
 
@@ -458,50 +67,7 @@ try {
       size: { width: 1440, height: 900 },
     },
   });
-  let sessionCreationAttempts = 0;
-  await context.route(`${relayUrl}/v1/sessions`, async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.continue();
-      return;
-    }
-    sessionCreationAttempts += 1;
-    if (sessionCreationAttempts > 1) {
-      await route.continue();
-      return;
-    }
-    await route.fulfill({
-      status: 503,
-      contentType: "application/json",
-      headers: {
-        "Access-Control-Allow-Origin": url,
-        "Vary": "Origin",
-      },
-      body: JSON.stringify({ error: "temporarily_unavailable" }),
-    });
-  });
-  const routedSockets = [];
-  let delayNextRelaySocket = false;
-  await context.routeWebSocket(/\/v1\/sessions\/[^/]+\/connect(?:\?|$)/, async (browserSocket) => {
-    if (delayNextRelaySocket) {
-      delayNextRelaySocket = false;
-      await new Promise((resolve) => setTimeout(resolve, 900));
-    }
-    const serverSocket = browserSocket.connectToServer();
-    routedSockets.push({ browserSocket, serverSocket });
-  });
-  await context.addInitScript(() => {
-    let callback;
-    window.turnstile = {
-      render: (_container, options) => {
-        callback = options.callback;
-        return "proof-turnstile";
-      },
-      execute: () => window.setTimeout(() => callback?.("test-turnstile-pass"), 850),
-      remove: () => {
-        callback = undefined;
-      },
-    };
-  });
+  const relayRoutes = await configureProofBrowserContext(context, { relayUrl, appUrl: url });
   let page = await context.newPage();
 
   await page.goto(url);
@@ -1167,9 +733,10 @@ try {
   await showProofStep(page, "Retry verification • capabilities remain hidden", 550);
   await page.getByTestId("relay-session-status").getByText("Relay connected", { exact: true }).waitFor({ state: "visible" });
   await page.waitForTimeout(700);
-  const instruction = await page.getByTestId("agent-instruction").innerText();
+  const instruction = await page.getByTestId("agent-instruction").textContent() ?? "";
   verifyUx("AI handoff is agent-neutral and asks the agent to discover the request", instruction.includes("Install the project artifact skill for your agent:") && instruction.includes("Ask the user what they want to build") && !instruction.includes("Claude Code"));
   verifyUx("AI handoff explicitly selects encrypted Browser Relay delivery", instruction.includes("Delivery mode: BROWSER_RELAY") && instruction.includes("scripts/deliver.mjs") && instruction.includes("Do not create src/artifacts/generated files"));
+  verifyUx("AI handoff pins the skill checkout and verifies the launcher before credentials", instruction.includes("fetch --quiet --depth 1") && instruction.includes("rev-parse FETCH_HEAD") && instruction.includes("npx --yes skills@1.5.17") && instruction.includes("Verify the installed delivery launcher") && instruction.includes("integrity verification failed"));
   verifyUx("sensitive relay capabilities stay hidden on screen", instruction.includes("<hidden-upload-capability>") && instruction.includes("<hidden-encryption-key>"));
   verifyUx("AI handoff promises complete browser validation and one atomic commit", instruction.includes('renderer: "chart-kit"') && instruction.includes("atomic package-and-view commit"));
   verifyUx("Build Session is visibly connected and bound to this view", (await page.getByTestId("relay-session-status").innerText()).includes("Relay connected") && instruction.includes("Market canvas"));
@@ -1177,21 +744,22 @@ try {
   await page.getByTestId("copy-agent-instruction").getByText("Copied").waitFor({ state: "visible" });
   verifyUx("AI handoff can be copied", await page.getByTestId("copy-agent-instruction").getByText("Copied").isVisible());
   const relaySession = parseRelayHandoff(await page.evaluate(() => navigator.clipboard.readText()));
+  verifyUx("copied relay handoff binds the immutable target View incarnation", Boolean(relaySession.targetViewIncarnationId));
   const afterHandoff = await page.evaluate(() => window.__FREEFORM_STATE__);
   verifyUx("AI handoff does not insert a fake template card", afterHandoff.nodes.length === beforeHandoff.nodes.length, {
     beforeCount: beforeHandoff.nodes.length,
     afterCount: afterHandoff.nodes.length,
   });
-  const activeSocket = routedSockets.at(-1);
+  const activeSocket = relayRoutes.routedSockets.at(-1);
   if (!activeSocket) throw new Error("Relay proof could not observe the browser WebSocket");
-  delayNextRelaySocket = true;
+  relayRoutes.delayNextSocket();
   await activeSocket.browserSocket.close({ code: 1012, reason: "Proof reconnect" });
   await page.getByTestId("relay-session-status").getByText("Reconnecting", { exact: true }).waitFor({ state: "visible" });
   await showProofStep(page, "Connection interrupted • pending delivery channel reconnects", 750);
   await page.getByTestId("relay-session-status").getByText("Relay connected", { exact: true }).waitFor({ state: "visible" });
-  verifyUx("hibernating WebSocket reconnects without creating a new Build Session", sessionCreationAttempts === 2 && routedSockets.length >= 2, {
-    sessionCreationAttempts,
-    socketConnections: routedSockets.length,
+  verifyUx("hibernating WebSocket reconnects without creating a new Build Session", relayRoutes.sessionCreationAttempts === 2 && relayRoutes.routedSockets.length >= 2, {
+    sessionCreationAttempts: relayRoutes.sessionCreationAttempts,
+    socketConnections: relayRoutes.routedSockets.length,
   });
   const proofBundle = proofArtifactBundle();
   const outlookBundle = proofArtifactBundle("agent-outlook-card", "Agent Outlook", "Delivered together in one encrypted selection", "Agent Outlook");
@@ -1236,19 +804,36 @@ try {
   const afterInstall = await page.evaluate(() => window.__FREEFORM_STATE__);
   verifyUx("one encrypted delivery installs both artifacts without a deploy", deliveryResponse.accepted === true && deliveryResponse.artifactIds.length === 2 && afterInstall.nodes.length === beforeHandoff.nodes.length + 2 && afterInstall.artifactIds.includes("agent-capacity-card") && afterInstall.artifactIds.includes("agent-outlook-card"), { deliveryId: deliveryResponse.deliveryId, artifactIds: deliveryResponse.artifactIds });
   const relayPlacement = await page.evaluate((artifactIds) => {
-    const nodes = window.__FREEFORM_STATE__.nodes;
+    const state = window.__FREEFORM_STATE__;
+    const nodes = state.nodes;
     const delivered = nodes.filter((node) => artifactIds.includes(node.artifactId));
-    const overlaps = (left, right, gap = 38) =>
-      left.x < right.x + right.width + gap && left.x + left.width + gap > right.x &&
-      left.y < right.y + right.height + gap && left.y + left.height + gap > right.y;
+    const stage = document.querySelector('[data-testid="canvas-stage"]').getBoundingClientRect();
+    const bounds = {
+      left: -state.viewport.x / state.viewport.scale,
+      right: (stage.width - state.viewport.x) / state.viewport.scale,
+      top: -state.viewport.y / state.viewport.scale,
+      bottom: (stage.height - state.viewport.y) / state.viewport.scale,
+    };
+    const otherHighestZ = Math.max(-1, ...nodes
+      .filter((node) => !artifactIds.includes(node.artifactId))
+      .map((node) => node.zIndex));
     return {
       delivered: delivered.length,
-      overlap: delivered.some((node, index) =>
-        nodes.some((other) => other.id !== node.id &&
-          (!artifactIds.includes(other.artifactId) || delivered.indexOf(other) > index) && overlaps(node, other))),
+      fullyVisible: delivered.every((node) =>
+        node.x >= bounds.left && node.x + node.width <= bounds.right &&
+        node.y >= bounds.top && node.y + node.height <= bounds.bottom),
+      snapped: delivered.every((node) => node.x % 38 === 0 && node.y % 38 === 0),
+      staggered: new Set(delivered.map((node) => `${node.x}:${node.y}`)).size === delivered.length,
+      onTop: delivered.every((node) => node.zIndex > otherHighestZ) &&
+        delivered.every((node, index) => index === 0 || node.zIndex > delivered[index - 1].zIndex),
     };
   }, deliveryResponse.artifactIds);
-  verifyUx("relay host placement keeps the complete delivery clear of existing and sibling cards", relayPlacement.delivered === 2 && !relayPlacement.overlap, relayPlacement);
+  verifyUx(
+    "relay host placement keeps fallback cards visible, staggered, snapped, and on top",
+    relayPlacement.delivered === 2 && relayPlacement.fullyVisible &&
+      relayPlacement.snapped && relayPlacement.staggered && relayPlacement.onTop,
+    relayPlacement,
+  );
 
   await page.getByTitle("Close", { exact: true }).click();
   await page.getByTestId("relay-session-indicator").waitFor({ state: "visible" });
@@ -1302,11 +887,17 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(450);
 
-  const latestSocket = routedSockets.at(-1);
+  const latestSocket = relayRoutes.routedSockets.at(-1);
   if (!latestSocket) throw new Error("Relay proof lost the active browser WebSocket");
-  await latestSocket.browserSocket.send(JSON.stringify({ version: 1, type: "expired" }));
+  await latestSocket.browserSocket.send(JSON.stringify({ version: 2, type: "expired" }));
   await page.getByTestId("relay-session-status").getByText("Expired", { exact: true }).waitFor({ state: "visible" });
-  verifyUx("expired session removes capabilities and offers a new session", await page.getByText("Start new session", { exact: true }).isVisible() && !(await page.getByTestId("agent-instruction").innerText()).includes("<hidden-upload-capability>"));
+  const expiredInstruction = await page.getByTestId("agent-instruction").textContent() ?? "";
+  verifyUx(
+    "expired session removes capabilities and offers a new session",
+    await page.getByText("Start new session", { exact: true }).isVisible() &&
+      expiredInstruction.includes("This Build Session expired") &&
+      !expiredInstruction.includes("<hidden-upload-capability>"),
+  );
   await page.getByTestId("copy-agent-instruction").getByText("Copy instruction", { exact: true }).waitFor({ state: "visible" });
   verifyUx("expired session clears stale copy confirmation", !(await page.getByTestId("copy-agent-instruction").innerText()).includes("Copied"));
   await showProofStep(page, "Session expired • capabilities disappear and restart stays explicit", 900);
@@ -1438,9 +1029,9 @@ try {
         (!library || stage.left + x < library.left),
     };
   }, capacityNode);
-  if (!personalDropTarget) throw new Error("Personal artifact's original open slot is unavailable");
+  if (!personalDropTarget) throw new Error("Personal artifact's prior placement is unavailable");
   verifyUx(
-    "the personal artifact's prior open slot remains reachable while the library is open",
+    "the personal artifact's prior placement remains reachable while the library is open",
     personalDropTarget.accessible,
     { personalDropTarget, capacityNode },
   );
@@ -1454,21 +1045,35 @@ try {
   verifyUx("personal artifact can be dragged back after node deletion", await page.getByTestId(`node-${restoredPersonalNode.id}`).isVisible(), { restoredPersonalNode });
   verifyUx("re-added personal artifact keeps its generated content", await page.getByText("Installed directly into this view").isVisible());
   const restoredPersonalPlacement = await page.evaluate(({ nodeId, original }) => {
-    const node = window.__FREEFORM_STATE__.nodes.find((candidate) => candidate.id === nodeId);
+    const state = window.__FREEFORM_STATE__;
+    const node = state.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return null;
-    const overlaps = window.__FREEFORM_STATE__.nodes.some((candidate) => candidate.id !== node.id &&
-      node.x < candidate.x + candidate.width + 38 && node.x + node.width + 38 > candidate.x &&
-      node.y < candidate.y + candidate.height + 38 && node.y + node.height + 38 > candidate.y);
+    const stage = document.querySelector('[data-testid="canvas-stage"]').getBoundingClientRect();
+    const bounds = {
+      left: -state.viewport.x / state.viewport.scale,
+      right: (stage.width - state.viewport.x) / state.viewport.scale,
+      top: -state.viewport.y / state.viewport.scale,
+      bottom: (stage.height - state.viewport.y) / state.viewport.scale,
+    };
+    const otherHighestZ = Math.max(-1, ...state.nodes
+      .filter((candidate) => candidate.id !== node.id)
+      .map((candidate) => candidate.zIndex));
     return {
       x: node.x,
       y: node.y,
-      returnedToOpenSlot: node.x === original.x && node.y === original.y,
-      overlaps,
+      returnedToRequestedPlacement: node.x === original.x && node.y === original.y,
+      fullyVisible: node.x >= bounds.left && node.x + node.width <= bounds.right &&
+        node.y >= bounds.top && node.y + node.height <= bounds.bottom,
+      snapped: node.x % 38 === 0 && node.y % 38 === 0,
+      selected: state.selectedNodeId === node.id,
+      onTop: node.zIndex > otherHighestZ,
     };
   }, { nodeId: restoredPersonalNode.id, original: capacityNode });
   verifyUx(
-    "dragging the personal artifact back restores its original open, non-overlapping slot",
-    Boolean(restoredPersonalPlacement?.returnedToOpenSlot && !restoredPersonalPlacement.overlaps),
+    "dragging the personal artifact back restores its requested visible, snapped, top-layer placement",
+    Boolean(restoredPersonalPlacement?.returnedToRequestedPlacement &&
+      restoredPersonalPlacement.fullyVisible && restoredPersonalPlacement.snapped &&
+      restoredPersonalPlacement.selected && restoredPersonalPlacement.onTop),
     restoredPersonalPlacement ?? {},
   );
 
@@ -1571,131 +1176,32 @@ try {
   await browser.close();
   browser = undefined;
 
-  renameSync(proofVideoPath, webmPath);
-
-  const ffmpeg = spawnSync(
-    "ffmpeg",
-    [
-      "-y",
-      "-ss",
-      proofTrimStartSeconds,
-      "-i",
-      webmPath,
-      "-loop",
-      "1",
-      "-t",
-      "1.8",
-      "-i",
-      screenshotPath,
-      "-filter_complex",
-      "[0:v]fps=12,scale=960:-1:flags=lanczos[v0];[1:v]fps=12,scale=960:-1:flags=lanczos[v1];[v0][v1]concat=n=2:v=1:a=0,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
-      gifPath,
-    ],
-    { stdio: "pipe" },
-  );
-
-  if (ffmpeg.status !== 0 || !existsSync(gifPath)) {
-    throw new Error(`ffmpeg failed to create GIF: ${ffmpeg.stderr.toString()}`);
-  }
-
-  const proofDuration = mediaDuration(gifPath);
-  const contactSheetFps = 30 / proofDuration;
-
-  const contactSheet = spawnSync(
-    "ffmpeg",
-    [
-      "-y",
-      "-i",
-      gifPath,
-      "-vf",
-      `fps=${contactSheetFps.toFixed(6)},scale=280:-1:flags=lanczos,tile=5x6:padding=8:margin=8:color=white`,
-      "-frames:v",
-      "1",
-      "-update",
-      "1",
-      contactSheetPath,
-    ],
-    { stdio: "pipe" },
-  );
-
-  if (contactSheet.status !== 0 || !existsSync(contactSheetPath)) {
-    throw new Error(`ffmpeg failed to create contact sheet: ${contactSheet.stderr.toString()}`);
-  }
-
-  const frameCheck = checkSampledFrames(gifPath);
-  writeFileSync(frameCheckPath, `${JSON.stringify(frameCheck, null, 2)}\n`);
-
-  const manifest = {
+  const { proofDuration, frameCheck } = createProofMedia({
+    proofVideoPath,
+    webmPath,
+    screenshotPath,
+    gifPath,
+    contactSheetPath,
+    frameCheckPath,
+    proofTrimStartSeconds,
+  });
+  writeProofReport({
+    manifestPath,
+    inspectionPath,
     url,
     relayUrl,
-    createdAt: new Date().toISOString(),
     proofTrimStartSeconds,
     proofDuration,
-    actions: [
-      "inspect initial layout and controls",
-      "rename the centered canvas title",
-      "toggle Views with Cmd+B",
-      "open the sidebar, create and rename a second view, and switch back",
-      "duplicate, reorder, delete, and restore a View",
-      "reorder a View downward and restore an unsaved deleted View snapshot",
-      "enter Fit All presentation and navigate between Views",
-      "marquee-select and distribute multiple artifacts",
-      "group-drag with transactional Undo and Redo",
-      "duplicate, copy, paste, and delete a selection",
-      "drag node",
-      "visibly resize the complete chart object",
-      "visibly resize Sankey to its proportional minimum",
-      "drag-pan canvas",
-      "wheel pan",
-      "pinch zoom in and out around a stable pointer anchor",
-      "toolbar zoom and viewport reset",
-      "import query result",
-      "toggle dark mode",
-      "show Turnstile verification, an actionable creation failure, and retry",
-      "open and copy a capability-redacted, view-bound encrypted Build Session handoff",
-      "reconnect the hibernating WebSocket without retargeting the session",
-      "show visible install progress while atomically delivering two artifacts through the relay script",
-      "reject a bad multi-artifact relay selection without partial persistence",
-      "reject an invalid offline bundle with inline feedback",
-      "verify the complete dialog at a 667x375 short-landscape viewport",
-      "expire the session and remove its browser-visible handoff capabilities",
-      "delete and drag a personal artifact back from the shared library",
-      "delete and restore a built-in artifact from the library",
-      "close responsive Views and exit responsive presentation without a keyboard",
-      "close, reopen, and restore the browser-local workspace",
-      "capture screenshot",
-    ],
-    files: {
-      gif: gifPath,
-      webm: webmPath,
-      screenshot: screenshotPath,
-      contactSheet: contactSheetPath,
-      frameCheck: frameCheckPath,
-      uxChecks: uxChecksPath,
-    },
+    gifPath,
+    webmPath,
+    screenshotPath,
+    contactSheetPath,
+    frameCheckPath,
+    uxChecksPath,
     uxChecks,
+    frameCheck,
     finalState: state,
-  };
-
-  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  writeFileSync(
-    inspectionPath,
-    [
-      "Browser proof inspection",
-      "",
-      ...uxChecks.map((check) => `- PASS: ${check.name}`),
-      `- PASS: ${frameCheck.frameCount} sampled GIF frames contained no blank-like frames.`,
-      "- A dense 30-cell contact sheet was generated for temporal visual inspection.",
-      "",
-      `GIF: ${gifPath}`,
-      `WebM: ${webmPath}`,
-      `Screenshot: ${screenshotPath}`,
-      `Contact sheet: ${contactSheetPath}`,
-      `Frame check: ${frameCheckPath}`,
-      `UX checks: ${uxChecksPath}`,
-      "",
-    ].join("\n"),
-  );
+  });
 
   console.log(`Proof GIF: ${gifPath}`);
   console.log(`Recording: ${webmPath}`);
@@ -1707,6 +1213,6 @@ try {
   if (browser) {
     await browser.close();
   }
-  stopProcessGroup(server);
+  stopProcessGroup(appServer);
   stopProcessGroup(relayServer);
 }

@@ -18,8 +18,10 @@ artifact library, drag, resize, pan, zoom, data, theme, Build Session creation,
 deletion, re-addition, and close/reopen persistence. A verification-only
 cursor and step label make each gesture legible in the recording. It launches a
 local relay emulator, opens a real Build Session, delivers two encrypted bundles
-with the skill script, and visibly rejects a mixed invalid selection without a
-partial install. The helper
+with the skill script, checks the pinned skill and launcher-integrity handoff,
+and visibly rejects a mixed invalid selection without a partial install. The
+handoff parser and delivery invocation include the protocol-v2 target View
+incarnation; artifact bundles themselves remain schema version 1. The helper
 captures video, converts it to GIF, and writes:
 
 - `proof.gif` for quick user-facing review.
@@ -79,9 +81,10 @@ as supplementary checks. Look for:
 - a closed but active Build Session losing its visible target/Open/End strip,
   transport state contradicting the delivery outcome, or rejection detail being
   clipped;
-- a deliberately slow install making the canvas inert without a visible
-  **Installing delivery…** progress state, or closing Build with AI from a
-  phone-width Artifact drawer failing to restore focus to the visible toggle;
+- trusted module preparation making the canvas inert, a deliberately delayed
+  atomic commit making it inert without a visible **Installing delivery…**
+  progress state, or closing Build with AI from a phone-width Artifact drawer
+  failing to restore focus to the visible toggle;
 - multi-artifact relay delivery appearing partially, overlapping a delivered or
   existing card while expanding beyond a full viewport, or showing a rejected
   selection on the canvas;

@@ -3,6 +3,7 @@ import { RELAY_TURNSTILE_ACTION } from "./config";
 
 const TURNSTILE_SCRIPT_ID = "freeform-turnstile-script";
 const TURNSTILE_SCRIPT_URL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+const TURNSTILE_CALLBACK_TIMEOUT_MS = 17_000;
 
 function loadTurnstile() {
   if (window.turnstile) return Promise.resolve(window.turnstile);
@@ -47,7 +48,15 @@ export function TurnstileGate({ siteKey, onError, onToken }: TurnstileGateProps)
       return;
     }
     let cancelled = false;
+    let settled = false;
     let widgetId: string | undefined;
+    let callbackWatchdog: number | undefined;
+    const finish = (callback: () => void) => {
+      if (cancelled || settled) return;
+      settled = true;
+      if (callbackWatchdog !== undefined) window.clearTimeout(callbackWatchdog);
+      callback();
+    };
     void loadTurnstile()
       .then((turnstile) => {
         if (cancelled || !containerRef.current) return;
@@ -56,15 +65,21 @@ export function TurnstileGate({ siteKey, onError, onToken }: TurnstileGateProps)
           action: RELAY_TURNSTILE_ACTION,
           appearance: "interaction-only",
           execution: "execute",
-          callback: onToken,
-          "error-callback": () => onError("Secure session verification failed; try Build with AI again"),
-          "expired-callback": () => onError("Secure session verification expired; try Build with AI again"),
+          callback: (token) => finish(() => onToken(token)),
+          "error-callback": () => finish(() => onError("Secure session verification failed; try Build with AI again")),
+          "expired-callback": () => finish(() => onError("Secure session verification expired; try Build with AI again")),
         });
         turnstile.execute(widgetId);
+        if (!settled) {
+          callbackWatchdog = window.setTimeout(() => {
+            finish(() => onError("Secure session verification timed out; retry verification"));
+          }, TURNSTILE_CALLBACK_TIMEOUT_MS);
+        }
       })
-      .catch((error) => onError(error instanceof Error ? error.message : "Unable to start secure verification"));
+      .catch((error) => finish(() => onError(error instanceof Error ? error.message : "Unable to start secure verification")));
     return () => {
       cancelled = true;
+      if (callbackWatchdog !== undefined) window.clearTimeout(callbackWatchdog);
       if (widgetId && window.turnstile) window.turnstile.remove(widgetId);
     };
   }, [onError, onToken, siteKey]);

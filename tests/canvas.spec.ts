@@ -370,6 +370,11 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   const beforeHandoffCount = (await page.evaluate(() => window.__FREEFORM_STATE__!)).nodes.length;
   await page.getByTestId("build-artifact").click();
   await expect(page.getByRole("heading", { name: "Build with AI" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Send the session to your agent" })).toBeVisible();
+  await expect(page.getByText("Paste it into Codex or Claude.")).toBeVisible();
+  await expect(page.locator(".agent-handoff-details")).not.toHaveAttribute("open", "");
+  await page.getByText("Review full agent handoff", { exact: true }).click();
+  await expect(page.getByTestId("agent-instruction")).toBeVisible();
   await expect(page.getByTestId("agent-request")).toHaveCount(0);
   await expect(page.getByTestId("agent-instruction")).toContainText(
     "Install the project artifact skill for your agent:",
@@ -378,8 +383,9 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_RELAY");
   await expect(page.getByTestId("agent-instruction")).toContainText("Browser Relay workflow");
   await expect(page.getByTestId("agent-instruction")).toContainText(
-    "npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder",
+    "git -C \"$skill_checkout\" fetch --quiet --depth 1 https://github.com/siriusctrl/freeform-artifacts.git",
   );
+  await expect(page.getByTestId("agent-instruction")).toContainText("npx --yes skills@1.5.17 add");
   await expect(page.getByTestId("agent-instruction")).toContainText("Ask the user what they want to build");
   await expect(page.getByTestId("agent-instruction")).not.toContainText("Claude Code");
   await expect(page.getByTestId("agent-instruction")).toContainText("scripts/deliver.mjs");
@@ -407,6 +413,33 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.themeMode)).toBe("dark");
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.snapToGrid)).toBe(true);
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.storageMode)).toBe("indexeddb");
+});
+
+test("silent Turnstile widgets time out into a retryable verification error", async ({ page }) => {
+  await page.addInitScript(() => {
+    const nativeSetTimeout = window.setTimeout.bind(window);
+    window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) =>
+      nativeSetTimeout(handler, timeout === 17_000 ? 40 : timeout, ...args)) as typeof window.setTimeout;
+    const probe = window as typeof window & { __turnstileExecuteCount?: number };
+    probe.__turnstileExecuteCount = 0;
+    window.turnstile = {
+      render: () => "silent-turnstile",
+      execute: () => { probe.__turnstileExecuteCount = (probe.__turnstileExecuteCount ?? 0) + 1; },
+      remove: () => undefined,
+    };
+  });
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("build-artifact").click();
+  const sessionStatus = page.getByTestId("relay-session-status");
+  await expect(sessionStatus).toContainText("Needs attention");
+  await expect(sessionStatus).toContainText("Secure session verification timed out; retry verification");
+  await expect.poll(async () => page.evaluate(() =>
+    (window as typeof window & { __turnstileExecuteCount?: number }).__turnstileExecuteCount)).toBe(1);
+  await page.getByRole("button", { name: "Retry verification" }).click();
+  await expect.poll(async () => page.evaluate(() =>
+    (window as typeof window & { __turnstileExecuteCount?: number }).__turnstileExecuteCount)).toBe(2);
+  await expect(sessionStatus).toContainText("Needs attention");
 });
 
 test("managed charts keep essential labels inside default and minimum card sizes", async ({ page }, testInfo) => {

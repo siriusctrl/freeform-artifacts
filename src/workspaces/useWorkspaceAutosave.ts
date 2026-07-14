@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
-import { saveWorkspace, writeWorkspaceRecovery, type WorkspaceSaveResult } from "./storage";
-import type { WorkspaceRecord } from "./types";
+import { saveWorkspace, writeWorkspaceEmergencyRecovery, type WorkspaceSaveResult } from "./storage";
+import { createWorkspaceCommitId, type WorkspaceRecord } from "./types";
 
 const SAVE_DEBOUNCE_MS = 400;
 
@@ -26,6 +26,7 @@ export function useWorkspaceAutosave({
   const shouldSkip = useRef(skipInitialSave);
   const dirty = useRef(!skipInitialSave);
   const knownRevision = useRef(workspace.revision);
+  const inFlightCommit = useRef<{ commitId: string; revision: number; updatedAt: string } | null>(null);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const callbacks = useRef({ onError, onSaved, onSaving });
   latestWorkspace.current = workspace;
@@ -56,14 +57,33 @@ export function useWorkspaceAutosave({
   }, []);
 
   const enqueueSave = useCallback((candidate: WorkspaceRecord) => {
+    const requestedGeneration = generation.current;
     const operation = saveQueue.current.catch(() => undefined).then(async () => {
-      const result = await saveWorkspace({ ...candidate, revision: knownRevision.current });
-      knownRevision.current = result.workspace.revision;
-      latestWorkspace.current = {
-        ...latestWorkspace.current,
-        revision: result.workspace.revision,
+      if (requestedGeneration !== generation.current) {
+        throw new DOMException("Superseded local save", "AbortError");
+      }
+      const commitId = createWorkspaceCommitId();
+      const expectedCommit = {
+        commitId,
+        revision: knownRevision.current + 1,
+        updatedAt: candidate.updatedAt,
       };
-      return result;
+      inFlightCommit.current = expectedCommit;
+      try {
+        const result = await saveWorkspace(
+          { ...candidate, revision: knownRevision.current },
+          { commitId },
+        );
+        knownRevision.current = result.workspace.revision;
+        latestWorkspace.current = {
+          ...latestWorkspace.current,
+          commitId: result.workspace.commitId,
+          revision: result.workspace.revision,
+        };
+        return result;
+      } finally {
+        if (inFlightCommit.current === expectedCommit) inFlightCommit.current = null;
+      }
     });
     saveQueue.current = operation.then(() => undefined, () => undefined);
     return operation;
@@ -122,7 +142,9 @@ export function useWorkspaceAutosave({
   useEffect(() => {
     const flushRecovery = () => {
       cancelPendingSave();
-      if (recoveryEnabled.current) writeWorkspaceRecovery(latestWorkspace.current);
+      if (recoveryEnabled.current && dirty.current) {
+        writeWorkspaceEmergencyRecovery(latestWorkspace.current, inFlightCommit.current ?? undefined);
+      }
     };
     window.addEventListener("pagehide", flushRecovery);
     return () => {

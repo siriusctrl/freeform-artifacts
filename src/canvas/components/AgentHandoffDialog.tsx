@@ -14,8 +14,37 @@ interface AgentHandoffDialogProps {
   onInstallBundle: (file: File) => Promise<string | null>;
 }
 
-const INSTALL_COMMAND =
-  "npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder";
+const SKILLS_CLI_VERSION = "1.5.17";
+const SKILL_SOURCE_REF = "b68d9e261f3417701afe28e13bff8973cae32754";
+const DELIVER_SCRIPT_SHA256 = "4a284fd9597f10a29a4c64f2cc9722e96979841acd38f596f4e885b94935b19e";
+
+type ResolvedSupplyChainValue<Value extends string, Placeholder extends string> =
+  Value extends Placeholder ? never : Value;
+
+// Release these values in two stages: publish the skill commit first, then pin
+// its immutable ref and launcher digest here. An unresolved production source
+// must fail TypeScript validation instead of silently installing from main.
+const VERIFIED_SKILL_SOURCE_REF: ResolvedSupplyChainValue<
+  typeof SKILL_SOURCE_REF,
+  "__FREEFORM_SKILL_REF__"
+> = SKILL_SOURCE_REF;
+const VERIFIED_DELIVER_SCRIPT_SHA256: ResolvedSupplyChainValue<
+  typeof DELIVER_SCRIPT_SHA256,
+  "__FREEFORM_DELIVER_SHA256__"
+> = DELIVER_SCRIPT_SHA256;
+
+const INSTALL_COMMAND = `(
+  set -eu
+  skill_checkout="$(mktemp -d)"
+  trap 'rm -rf "$skill_checkout"' EXIT
+  git -C "$skill_checkout" init --quiet
+  git -C "$skill_checkout" fetch --quiet --depth 1 https://github.com/siriusctrl/freeform-artifacts.git ${VERIFIED_SKILL_SOURCE_REF}
+  test "$(git -C "$skill_checkout" rev-parse FETCH_HEAD)" = ${JSON.stringify(VERIFIED_SKILL_SOURCE_REF)}
+  git -C "$skill_checkout" checkout --quiet --detach FETCH_HEAD
+  npx --yes skills@${SKILLS_CLI_VERSION} add "$skill_checkout" --skill freeform-artifact-builder --yes --global
+)`;
+const VERIFY_DELIVER_COMMAND =
+  `node --input-type=module -e "import { createHash } from 'node:crypto'; import { readFileSync } from 'node:fs'; const actual = createHash('sha256').update(readFileSync(process.argv[1])).digest('hex'); if (actual !== process.argv[2]) { console.error('Freeform delivery script integrity verification failed'); process.exit(1); }" <installed-freeform-artifact-builder-skill>/scripts/deliver.mjs ${VERIFIED_DELIVER_SCRIPT_SHA256}`;
 
 function expiryLabel(expiresAt: string) {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(expiresAt));
@@ -23,6 +52,7 @@ function expiryLabel(expiresAt: string) {
 
 export function AgentHandoffDialog({ installBusy, open, viewId, relay, onClose, onOpen, onInstallBundle }: AgentHandoffDialogProps) {
   const dialogRef = useRef<HTMLElement | null>(null);
+  const handoffDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const instructionRef = useRef<HTMLPreElement | null>(null);
   const onCloseRef = useRef(onClose);
   const copyButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -32,7 +62,10 @@ export function AgentHandoffDialog({ installBusy, open, viewId, relay, onClose, 
   const [revealCapabilities, setRevealCapabilities] = useState(false);
   onCloseRef.current = onClose;
   const activeSession = relay.session;
-  const session = activeSession?.targetViewId === relay.request?.targetViewId ? activeSession : null;
+  const session = activeSession?.targetViewId === relay.request?.targetViewId &&
+    activeSession?.targetViewIncarnationId === relay.request?.targetViewIncarnationId
+    ? activeSession
+    : null;
   const copiedCurrentInstruction = copied && Boolean(session);
   const completeVerification = relay.completeVerification;
   const handleTurnstileToken = useCallback((token: string) => {
@@ -46,6 +79,9 @@ This request came from an explicit Build with AI session in an open Freeform bro
 Install the project artifact skill for your agent:
 ${INSTALL_COMMAND}
 
+Verify the installed delivery launcher before using it. Stop if this command fails; the verified launcher also checks its dependency-free core before reading credentials:
+${VERIFY_DELIVER_COMMAND}
+
 After installation, follow the Browser Relay workflow. Ask the user what they want to build and clarify the data, visual form, and layout. Generate and validate one or more self-contained .freeform-artifact.json bundles outside the application source tree. Do not create src/artifacts/generated files. Do not modify, commit, or deploy the application repository.
 
 Use renderer: "chart-kit" for ordinary bar, line, or combo charts. Use raw ECharts only for a capability Chart Kit cannot express, and React only for non-chart composition. Do not use imports, network fetches, credentials, timers, or external dependencies inside a bundle.
@@ -57,6 +93,7 @@ node <installed-freeform-artifact-builder-skill>/scripts/deliver.mjs \\
   --session-id ${JSON.stringify(session.sessionId)} \\
   --credentials-stdin \\
   --view-id ${JSON.stringify(session.targetViewId)} \\
+  --view-incarnation-id ${JSON.stringify(session.targetViewIncarnationId)} \\
   <bundle-one.freeform-artifact.json> [bundle-two.freeform-artifact.json ...]
 
 Launch that command with no secrets in its arguments. Prefer the agent harness's non-TTY, pipe-backed stdin; when only a PTY is available, the script switches it to hidden raw input before reading. Then write this one-line JSON followed by a newline to standard input without logging it:
@@ -85,7 +122,10 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
     setFeedback("");
     setRevealCapabilities(false);
     window.requestAnimationFrame(() => {
-      dialogRef.current?.focus();
+      const firstControl = dialogRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled]), summary, input:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])',
+      );
+      (firstControl ?? dialogRef.current)?.focus();
     });
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
@@ -94,7 +134,7 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
       }
       if (event.key !== "Tab" || !dialogRef.current) return;
       const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])',
+        'button:not([disabled]), summary, input:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])',
       )].filter((element) => element.getClientRects().length > 0);
       if (!focusable.length) {
         event.preventDefault();
@@ -103,10 +143,11 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
       }
       const first = focusable[0];
       const last = focusable.at(-1)!;
-      if (event.shiftKey && document.activeElement === first) {
+      const focusIsOutsideDialog = !dialogRef.current.contains(document.activeElement);
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current || focusIsOutsideDialog)) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialogRef.current || focusIsOutsideDialog)) {
         event.preventDefault();
         first.focus();
       }
@@ -145,16 +186,24 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
 
   if (!open) {
     if (!activeSession) return null;
+    const compactMessage = installBusy
+      ? "Installing delivery…"
+      : relay.deliveryOutcome?.summary ?? `${statusLabel} · until ${expiryLabel(activeSession.expiresAt)}`;
+    const openLabel = relay.deliveryOutcome?.kind === "rejected" ? "Open details" : "Open";
     return (
-      <aside className={`relay-session-indicator relay-${relay.status}`} data-testid="relay-session-indicator" aria-label="Active Build Session">
+      <aside
+        className={`relay-session-indicator relay-${relay.status} ${relay.deliveryOutcome ? `relay-delivery-${relay.deliveryOutcome.kind}` : ""}`}
+        data-testid="relay-session-indicator"
+        aria-label="Active Build Session"
+      >
         <span className="relay-status-dot" aria-hidden="true" />
-        <div className="relay-session-indicator-copy" role="status">
+        <div className="relay-session-indicator-copy" role="status" aria-live="polite" aria-atomic="true">
           <strong>{activeSession.targetViewTitle}</strong>
           <span data-testid={installBusy ? "relay-install-progress" : undefined}>
-            {installBusy ? "Installing delivery…" : `${statusLabel} · until ${expiryLabel(activeSession.expiresAt)}`}
+            {compactMessage}
           </span>
         </div>
-        <button type="button" className="relay-indicator-action" data-testid="relay-session-reopen" onClick={onOpen}>Open</button>
+        <button type="button" className="relay-indicator-action" data-testid="relay-session-reopen" onClick={onOpen}>{openLabel}</button>
         <button type="button" className="relay-indicator-action relay-indicator-end" onClick={() => { void relay.stopSession(); }}>End</button>
       </aside>
     );
@@ -213,20 +262,33 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
           ) : null}
         </div>
 
-        <pre
-          ref={instructionRef}
-          className="agent-instruction"
-          data-testid="agent-instruction"
-          tabIndex={0}
-          aria-label={revealCapabilities ? "Agent instruction with sensitive capabilities visible" : "Agent instruction with sensitive capabilities hidden; Copy instruction includes them"}
-        >
-          {displayedInstruction}
-        </pre>
+        <div className="agent-handoff-content">
+          <section className="agent-handoff-summary" aria-labelledby="agent-handoff-summary-title">
+            <h3 id="agent-handoff-summary-title">Send the session to your agent</h3>
+            <ol>
+              <li><strong>Copy the instruction</strong><span>Paste it into Codex or Claude.</span></li>
+              <li><strong>Describe what to build</strong><span>Keep this tab open; completed cards arrive here.</span></li>
+            </ol>
+          </section>
+          <details ref={handoffDetailsRef} className="agent-handoff-details">
+            <summary>Review full agent handoff</summary>
+            <pre
+              ref={instructionRef}
+              className="agent-instruction"
+              data-testid="agent-instruction"
+              tabIndex={0}
+              aria-label={revealCapabilities ? "Agent instruction with sensitive capabilities visible" : "Agent instruction with sensitive capabilities hidden; Copy instruction includes them"}
+            >
+              {displayedInstruction}
+            </pre>
+          </details>
+        </div>
 
         <div className={`agent-dialog-feedback ${feedback.startsWith("Install failed") || feedback.startsWith("Copy failed") ? "error" : ""}`}>
           <span role="status" aria-live="polite">{feedback || "Capabilities stay hidden on screen and are included only when you copy."}</span>
           {feedback.startsWith("Copy failed") && !revealCapabilities ? (
             <button type="button" onClick={() => {
+              if (handoffDetailsRef.current) handoffDetailsRef.current.open = true;
               setRevealCapabilities(true);
               setFeedback("Capabilities are visible for manual copy. Hide them before recording or sharing the screen.");
               window.requestAnimationFrame(() => instructionRef.current?.focus());
