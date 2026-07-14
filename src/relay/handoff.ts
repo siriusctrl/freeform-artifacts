@@ -1,7 +1,7 @@
 import type { ActiveRelaySession, RelaySessionRequest } from "./types";
 
 const SKILLS_CLI_VERSION = "1.5.17";
-const SKILL_SOURCE_REF = "b68d9e261f3417701afe28e13bff8973cae32754";
+const SKILL_SOURCE_REF = "fd18f7169674f250983420756f49a057b9fbdee2";
 const DELIVER_SCRIPT_SHA256 = "4a284fd9597f10a29a4c64f2cc9722e96979841acd38f596f4e885b94935b19e";
 
 type ResolvedSupplyChainValue<Value extends string, Placeholder extends string> =
