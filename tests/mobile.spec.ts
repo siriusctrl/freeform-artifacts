@@ -80,4 +80,21 @@ test("mobile canvas keeps core controls visible without horizontal overflow", as
   await page.getByTestId("workspace-menu").click();
   await expect(page.getByTestId("snap-toggle")).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("menuitem", { name: "Load sample data" })).toBeVisible();
+  await page.getByTestId("workspace-menu").click();
+
+  await page.getByTestId("sidebar-toggle").click();
+  await expect(page.getByTestId("canvas-sidebar")).toBeVisible();
+  await expect(page.getByTestId("close-views")).toBeVisible();
+  await page.getByTestId("close-views").click();
+  await expect(page.getByTestId("canvas-sidebar")).not.toBeVisible();
+  await page.getByTestId("sidebar-toggle").click();
+  await page.locator(".sidebar-backdrop").click({ position: { x: 400, y: 400 } });
+  await expect(page.getByTestId("canvas-sidebar")).not.toBeVisible();
+
+  await page.getByTestId("workspace-menu").click();
+  await page.getByTestId("enter-presentation").click();
+  await expect(page.getByTestId("presentation-controls")).toBeVisible();
+  await page.getByTestId("exit-presentation").click();
+  await expect(page.getByTestId("canvas-stage")).toBeVisible();
+  await expect(page.getByTestId("workspace-menu")).toBeVisible();
 });

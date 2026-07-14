@@ -1,18 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CanvasWorkspace } from "./canvas/CanvasWorkspace";
 import {
   createWorkspace,
+  deleteWorkspace,
+  duplicateWorkspace,
   listWorkspaces,
   loadOrCreateWorkspace,
   loadWorkspaceById,
+  reorderWorkspaces,
+  restoreWorkspace,
   setActiveWorkspaceId,
 } from "./workspaces/storage";
 import { getRequestedTemplate } from "./workspaces/templates";
-import type { WorkspaceLoadResult, WorkspaceSummary, WorkspaceTemplate } from "./workspaces/types";
+import type { WorkspaceLoadResult, WorkspaceRecord, WorkspaceSummary, WorkspaceTemplate } from "./workspaces/types";
 
 interface BootstrappedWorkspace {
   template: WorkspaceTemplate;
   result: WorkspaceLoadResult;
+}
+
+interface DeletedView {
+  index: number;
+  workspace: WorkspaceRecord;
 }
 
 function statusForLoad(result: WorkspaceLoadResult) {
@@ -26,6 +35,10 @@ export default function App() {
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [views, setViews] = useState<WorkspaceSummary[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [presentationMode, setPresentationMode] = useState(false);
+  const [deletedView, setDeletedView] = useState<DeletedView | null>(null);
+  const requestedViewId = useRef("");
+  const viewRequestVersion = useRef(0);
   const template = useMemo(() => getRequestedTemplate(), []);
 
   useEffect(() => {
@@ -34,6 +47,7 @@ export default function App() {
       .then(async (result) => {
         const summaries = await listWorkspaces();
         if (!cancelled) {
+          requestedViewId.current = result.workspace.templateId;
           setBootstrapped({ template, result });
           setViews(summaries);
         }
@@ -50,16 +64,68 @@ export default function App() {
   }, [template]);
 
   async function selectView(id: string) {
+    const requestVersion = viewRequestVersion.current + 1;
+    viewRequestVersion.current = requestVersion;
+    requestedViewId.current = id;
     const result = await loadWorkspaceById(id);
-    if (!result) return;
+    if (requestVersion !== viewRequestVersion.current) return;
+    if (!result) {
+      requestedViewId.current = bootstrapped?.result.workspace.templateId ?? "";
+      return;
+    }
     setActiveWorkspaceId(id);
     setBootstrapped({ template, result });
   }
 
   async function addView() {
     const result = await createWorkspace(template);
+    viewRequestVersion.current += 1;
+    requestedViewId.current = result.workspace.templateId;
     setViews(await listWorkspaces());
     setBootstrapped({ template, result });
+  }
+
+  async function copyView(id: string, currentWorkspace?: WorkspaceRecord) {
+    const result = await duplicateWorkspace(id, currentWorkspace);
+    viewRequestVersion.current += 1;
+    requestedViewId.current = result.workspace.templateId;
+    setViews(await listWorkspaces());
+    setBootstrapped({ template, result });
+  }
+
+  async function removeView(id: string, currentWorkspace?: WorkspaceRecord) {
+    if (views.length <= 1) return;
+    const index = views.findIndex((view) => view.id === id);
+    const remaining = views.filter((view) => view.id !== id);
+    const removed = await deleteWorkspace(id, currentWorkspace);
+    if (!removed) return;
+    setDeletedView({ workspace: removed, index: Math.max(0, index) });
+    setViews(remaining);
+    if (bootstrapped?.result.workspace.templateId === id) {
+      const nextView = remaining[Math.min(Math.max(0, index), remaining.length - 1)];
+      if (nextView) await selectView(nextView.id);
+    }
+  }
+
+  function reorderView(sourceId: string, targetId: string) {
+    reorderWorkspaces(sourceId, targetId);
+    setViews((current) => {
+      const sourceIndex = current.findIndex((view) => view.id === sourceId);
+      const targetIndex = current.findIndex((view) => view.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return current;
+      const movingDown = sourceIndex < targetIndex;
+      const next = [...current];
+      const [source] = next.splice(sourceIndex, 1);
+      next.splice(next.findIndex((view) => view.id === targetId) + (movingDown ? 1 : 0), 0, source);
+      return next;
+    });
+  }
+
+  async function undoViewDeletion() {
+    if (!deletedView) return;
+    await restoreWorkspace(deletedView.workspace, deletedView.index);
+    setViews(await listWorkspaces());
+    setDeletedView(null);
   }
 
   function updateViewTitle(id: string, title: string) {
@@ -71,6 +137,20 @@ export default function App() {
     setSidebarOpen(opening);
     if (opening) setViews(await listWorkspaces());
   }
+
+  function navigatePresentation(direction: -1 | 1) {
+    const activeId = requestedViewId.current || bootstrapped?.result.workspace.templateId;
+    const activeIndex = views.findIndex((view) => view.id === activeId);
+    if (activeIndex < 0 || views.length < 2) return;
+    const nextIndex = (activeIndex + direction + views.length) % views.length;
+    void selectView(views[nextIndex].id);
+  }
+
+  useEffect(() => {
+    if (!deletedView) return;
+    const timer = window.setTimeout(() => setDeletedView(null), 6500);
+    return () => window.clearTimeout(timer);
+  }, [deletedView]);
 
   if (bootstrapError) {
     return (
@@ -96,18 +176,37 @@ export default function App() {
   }
 
   return (
-    <CanvasWorkspace
-      key={bootstrapped.result.workspace.templateId}
-      initialWorkspace={bootstrapped.result.workspace}
-      initialStorage={bootstrapped.result.storage}
-      initialStatus={statusForLoad(bootstrapped.result)}
-      template={bootstrapped.template}
-      views={views}
-      sidebarOpen={sidebarOpen}
-      onCreateView={addView}
-      onSelectView={selectView}
-      onToggleSidebar={toggleSidebar}
-      onViewTitleChange={updateViewTitle}
-    />
+    <>
+      <CanvasWorkspace
+        key={bootstrapped.result.workspace.templateId}
+        initialWorkspace={bootstrapped.result.workspace}
+        initialStorage={bootstrapped.result.storage}
+        initialStatus={statusForLoad(bootstrapped.result)}
+        template={bootstrapped.template}
+        views={views}
+        sidebarOpen={sidebarOpen}
+        presentationMode={presentationMode}
+        onCreateView={addView}
+        onDeleteView={removeView}
+        onDuplicateView={copyView}
+        onEnterPresentation={() => {
+          setSidebarOpen(false);
+          setPresentationMode(true);
+        }}
+        onExitPresentation={() => setPresentationMode(false)}
+        onNextPresentationView={() => navigatePresentation(1)}
+        onPreviousPresentationView={() => navigatePresentation(-1)}
+        onReorderView={reorderView}
+        onSelectView={selectView}
+        onToggleSidebar={toggleSidebar}
+        onViewTitleChange={updateViewTitle}
+      />
+      {deletedView ? (
+        <div className="view-undo-toast" role="status" data-testid="view-undo-toast">
+          <span>Deleted {deletedView.workspace.title}</span>
+          <button type="button" onClick={() => void undoViewDeletion()}>Undo</button>
+        </div>
+      ) : null}
+    </>
   );
 }

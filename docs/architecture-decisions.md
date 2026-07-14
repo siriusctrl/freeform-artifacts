@@ -1322,3 +1322,63 @@ reusable initial node payload. That is enough to render the actual object.
 Revisit cached preview images only if measured renderer cost remains high after
 visibility management, or if sandboxed artifacts can no longer be mounted in
 the host document.
+
+## ADR-0027: Keep editing history transactional and presentation framing derived
+
+Status: Accepted
+
+Date: 2026-07-13
+
+### Context
+
+Single-node editing was sufficient for the first demo, but real canvas assembly
+needs reversible operations, multi-object layout, and a clean way to present a
+board. Recording every pointer move would make Undo noisy and memory-heavy.
+Persisting a fitted presentation viewport would also overwrite the spatial frame
+the user expects to return to after presenting.
+
+The product remains a static, browser-local app. These capabilities should not
+introduce a backend, a collaboration log, or a second workspace format.
+
+### Decision
+
+- Keep a bounded history of 100 document snapshots in memory for the mounted
+  View. Snapshots contain nodes and the associated selection.
+- Treat add, delete, duplicate, paste, import, and layout as discrete commands.
+  Open one transaction on pointer down for drag/resize and commit it on pointer
+  up, so an entire gesture is one Undo step.
+- Exclude pan, zoom, theme, panel state, and selection-only changes from history.
+  History resets when a workspace is replaced, reloaded, or switched.
+- Preserve blank-stage drag as pan. Use `Shift+drag` for an additive marquee and
+  `Shift`/`Cmd`/`Ctrl` click for selection adjustment. Move a selected set with
+  one shared snapped delta so relative spacing does not drift.
+- Keep the persisted `selectedNodeId` compatibility field as the last active
+  selected node; the full multi-selection remains transient UI state.
+- Store View ordering as lightweight origin-local navigation metadata, separate
+  from IndexedDB workspace records. Duplicating a View clones only board data
+  and reuses origin-wide package identities. View deletion never removes
+  packages and exposes a short-lived workspace restore action. Duplicate/delete
+  of the active View uses its live snapshot rather than waiting for autosave;
+  deletion tombstones hide records when IndexedDB deletion is temporarily
+  unavailable.
+- Derive presentation Fit All from live stage dimensions and node world bounds.
+  Hide editing chrome, retain App-level presentation state across View switches,
+  leave selection and every persisted editing viewport untouched, and keep a
+  compact pointer-accessible exit/navigation strip.
+
+### Tradeoffs
+
+- Undo history does not survive reload or View switching. Persisted event logs
+  would add schema, migration, quota, and conflict semantics that a local demo
+  does not yet need.
+- Snapshot history is simpler and more reliable than inverse commands but costs
+  memory proportional to recent board size. The fixed limit bounds that cost.
+- Multi-selection is not a persistent group abstraction. Users can arrange and
+  move a set together without introducing nested coordinate systems into board
+  storage, resize, previews, or artifact delivery.
+- View order can fall back to the workspace listing order if localStorage is
+  unavailable; losing navigation order must never invalidate IndexedDB board
+  saves.
+
+Revisit persistent history or structural grouping only after a concrete workflow
+requires cross-session undo, shared collaboration, or reusable nested layouts.

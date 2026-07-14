@@ -21,7 +21,13 @@ on navigation, invariants, verification, and handoff rules.
 - `src/canvas/artifactCatalog.ts`: maps built-in presets and installed bundles
   into reusable, view-independent catalog entries.
 - `src/canvas/hooks/useCanvasInteractions.ts`: drag, resize, pan, zoom, snap,
-  and z-order interaction mechanics.
+  marquee selection, group movement, and z-order interaction mechanics.
+- `src/canvas/hooks/useCanvasDocumentHistory.ts`: bounded session history and
+  pointer-gesture transaction boundaries.
+- `src/canvas/hooks/useCanvasSelectionActions.ts`: selection layout, duplicate,
+  clipboard, delete, Undo, and Redo commands.
+- `src/canvas/selection.ts`: pure selection geometry, cloning, layout, and
+  presentation Fit All math.
 - `src/canvas/hooks/useCanvasShortcuts.ts`: guarded global canvas shortcuts;
   editable controls and modal workflows remain exempt.
 - `src/canvas/board.ts`: serializable board schema and legacy persistence
@@ -57,6 +63,8 @@ on navigation, invariants, verification, and handoff rules.
 - `src/styles.css` and `src/styles/`: product styling entry point and domain
   styles.
 - `tests/canvas.spec.ts`: Playwright interaction smoke test.
+- `tests/productivity.spec.ts`: multi-select/history, View management, and
+  presentation-mode journeys.
 - `scripts/`: preview and proof verification.
 - `skill/freeform-artifact-builder/`: project-local artifact authoring skill.
 - `skill/freeform-artifact-builder/references/visual-style-guide.md`: required
@@ -67,6 +75,11 @@ on navigation, invariants, verification, and handoff rules.
 - Keep `App.tsx` thin; put canvas mechanics under `src/canvas/`.
 - Keep the first screen canvas-first, not dashboard-first.
 - Keep viewport state separate from node world coordinates.
+- Keep presentation framing derived from node bounds; never persist it over the
+  user's editable viewport.
+- Record completed node mutations, not pointer-move frames. Pan, zoom, theme,
+  and transient selection are not history commands.
+- Keep ordinary blank-stage drag as pan; `Shift+drag` owns marquee selection.
 - Keep canvas state serializable.
 - Treat published templates as immutable seeds; user edits belong to local
   workspaces.
@@ -89,6 +102,13 @@ on navigation, invariants, verification, and handoff rules.
   then asks the agent to question the user about the requested artifact.
 - View thumbnails are geometry summaries, not cached screenshots or a second
   artifact rendering runtime.
+- View ordering is browser-local navigation metadata. Duplicated views reuse
+  package identities, and deleting a view must not delete artifact packages.
+- Active-view duplicate/delete actions must use the live workspace snapshot,
+  not a potentially stale debounced save. Deleted-view tombstones must keep a
+  failed IndexedDB deletion from resurfacing later.
+- Responsive drawers and presentation mode must retain a pointer-accessible
+  exit path; keyboard shortcuts are accelerators, not the only escape route.
 - Artifact Library thumbnails use the real trusted renderer and preset payload,
   scale the complete default-size node with contain semantics, disable preview
   animation/interaction, remain keyboard-inert, and mount only near the

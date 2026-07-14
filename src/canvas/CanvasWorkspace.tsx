@@ -33,9 +33,12 @@ import { CanvasToolbar } from "./components/CanvasToolbar";
 import { themeFor, type ThemeMode } from "./constants";
 import { publishCanvasDebugState } from "./debugState";
 import { useCanvasInteractions } from "./hooks/useCanvasInteractions";
+import { useCanvasDocumentHistory } from "./hooks/useCanvasDocumentHistory";
+import { useCanvasSelectionActions } from "./hooks/useCanvasSelectionActions";
 import { useCanvasShortcuts } from "./hooks/useCanvasShortcuts";
 import { createArtifactNode, createBundleNode, moveNodeToNearestOpenPosition } from "./nodeFactory";
 import { clampNodesToArtifactMinimums } from "./nodeSize";
+import { fitNodesToViewport } from "./selection";
 
 interface CanvasWorkspaceProps {
   initialWorkspace: WorkspaceRecord;
@@ -44,7 +47,15 @@ interface CanvasWorkspaceProps {
   template: WorkspaceTemplate;
   views: WorkspaceSummary[];
   sidebarOpen: boolean;
+  presentationMode: boolean;
   onCreateView: () => void;
+  onDeleteView: (id: string, currentWorkspace?: WorkspaceRecord) => Promise<void>;
+  onDuplicateView: (id: string, currentWorkspace?: WorkspaceRecord) => Promise<void>;
+  onEnterPresentation: () => void;
+  onExitPresentation: () => void;
+  onNextPresentationView: () => void;
+  onPreviousPresentationView: () => void;
+  onReorderView: (sourceId: string, targetId: string) => void;
   onSelectView: (id: string) => void;
   onToggleSidebar: () => void;
   onViewTitleChange: (id: string, title: string) => void;
@@ -57,7 +68,15 @@ export function CanvasWorkspace({
   template,
   views,
   sidebarOpen,
+  presentationMode,
   onCreateView,
+  onDeleteView,
+  onDuplicateView,
+  onEnterPresentation,
+  onExitPresentation,
+  onNextPresentationView,
+  onPreviousPresentationView,
+  onReorderView,
   onSelectView,
   onToggleSidebar,
   onViewTitleChange,
@@ -69,9 +88,22 @@ export function CanvasWorkspace({
   const stageRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const skipInitialSave = normalizedInitialNodes === initialWorkspace.board.nodes;
-  const [nodes, setNodes] = useState<CanvasNode[]>(normalizedInitialNodes);
+  const {
+    beginTransaction,
+    canRedo,
+    canUndo,
+    commitDocument,
+    commitTransaction,
+    nodes,
+    redo,
+    resetDocument,
+    selectedNodeIds,
+    setNodes,
+    setSelectedNodeIds,
+    undo,
+  } = useCanvasDocumentHistory(normalizedInitialNodes, initialWorkspace.board.selectedNodeId);
   const [viewport, setViewport] = useState<CanvasViewport>(initialWorkspace.board.viewport);
-  const [selectedNodeId, setSelectedNodeId] = useState(initialWorkspace.board.selectedNodeId);
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialWorkspace.board.themeMode);
   const [snapToGrid, setSnapToGrid] = useState(initialWorkspace.board.snapToGrid);
   const [viewTitle, setViewTitle] = useState(initialWorkspace.title);
@@ -80,6 +112,26 @@ export function CanvasWorkspace({
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [artifactLibraryOpen, setArtifactLibraryOpen] = useState(false);
   const [draggingCatalogItemId, setDraggingCatalogItemId] = useState("");
+  const selectedNodeId = selectedNodeIds.at(-1) ?? "";
+  const {
+    applySelectionLayout,
+    copySelection,
+    deleteNode,
+    deleteSelection,
+    duplicateSelection,
+    pasteSelection,
+    redoChange,
+    selectAll,
+    undoChange,
+  } = useCanvasSelectionActions({
+    commitDocument,
+    nodes,
+    redo,
+    selectedNodeIds,
+    setSelectedNodeIds,
+    setStatus,
+    undo,
+  });
   const {
     diagnostics: artifactDiagnostics,
     personalBundles,
@@ -98,8 +150,13 @@ export function CanvasWorkspace({
   );
   const canvasInteractions = useCanvasInteractions({
     artifactRegistry: runtimeArtifactRegistry,
+    disabled: presentationMode,
+    nodes,
+    onMutationCommit: commitTransaction,
+    onMutationStart: beginTransaction,
+    selectedNodeIds,
     setNodes,
-    setSelectedNodeId,
+    setSelectedNodeIds,
     setViewport,
     snapToGrid,
     stageRef,
@@ -119,9 +176,11 @@ export function CanvasWorkspace({
   );
 
   function applyWorkspace(workspace: WorkspaceRecord) {
-    setNodes(clampNodesToArtifactMinimums(workspace.board.nodes, runtimeArtifactRegistry));
+    resetDocument(
+      clampNodesToArtifactMinimums(workspace.board.nodes, runtimeArtifactRegistry),
+      workspace.board.selectedNodeId,
+    );
     setViewport(workspace.board.viewport);
-    setSelectedNodeId(workspace.board.selectedNodeId);
     setThemeMode(workspace.board.themeMode);
     setSnapToGrid(workspace.board.snapToGrid);
   }
@@ -134,7 +193,28 @@ export function CanvasWorkspace({
     setNodes((current) => clampNodesToArtifactMinimums(current, runtimeArtifactRegistry));
   }, [runtimeArtifactRegistry]);
 
-  const { cancelPendingSave } = useWorkspaceAutosave({
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const updateSize = () => setStageSize((current) => {
+      const next = { width: stage.clientWidth, height: stage.clientHeight };
+      return current.width === next.width && current.height === next.height ? current : next;
+    });
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!presentationMode) return;
+    setArtifactLibraryOpen(false);
+    setAgentDialogOpen(false);
+    setDraggingCatalogItemId("");
+    window.requestAnimationFrame(() => stageRef.current?.focus({ preventScroll: true }));
+  }, [presentationMode]);
+
+  const { cancelPendingSave, resumeRecovery, suppressRecovery } = useWorkspaceAutosave({
     workspace: workspaceSnapshot,
     skipInitialSave,
     onSaving: () => setStatus("Saving locally"),
@@ -155,6 +235,10 @@ export function CanvasWorkspace({
       artifactRegistry: runtimeArtifactRegistry,
       nodes,
       selectedNodeId,
+      selectedNodeIds,
+      canRedo,
+      canUndo,
+      presentationMode,
       snapToGrid,
       status,
       storageMode,
@@ -162,12 +246,7 @@ export function CanvasWorkspace({
       themeMode,
       viewport,
     });
-  }, [artifactCatalog, artifactLibraryOpen, nodes, viewport, selectedNodeId, themeMode, snapToGrid, status, storageMode, runtimeArtifactRegistry, initialWorkspace.templateId]);
-
-  function deleteNode(nodeId: string) {
-    setNodes((current) => current.filter((node) => node.id !== nodeId));
-    setSelectedNodeId((current) => (current === nodeId ? "" : current));
-  }
+  }, [artifactCatalog, artifactLibraryOpen, canRedo, canUndo, nodes, presentationMode, viewport, selectedNodeId, selectedNodeIds, themeMode, snapToGrid, status, storageMode, runtimeArtifactRegistry, initialWorkspace.templateId]);
 
   function importData() {
     const summary = runTransform(revenueSummaryTransform, importedRevenueRows);
@@ -177,8 +256,9 @@ export function CanvasWorkspace({
       return;
     }
 
-    setNodes((current) =>
-      current.map((node) => {
+    commitDocument((current) => ({
+      selectedNodeIds: ["node-revenue"],
+      nodes: current.nodes.map((node) => {
         if (node.dataBinding?.transformId === revenueSummaryTransform.id) {
           return {
             ...node,
@@ -195,8 +275,7 @@ export function CanvasWorkspace({
         }
         return node;
       }),
-    );
-    setSelectedNodeId("node-revenue");
+    }));
   }
 
   function exportWorkspace() {
@@ -249,7 +328,14 @@ export function CanvasWorkspace({
     if (!window.confirm("Replace this browser's workspace with the original demo?")) {
       return;
     }
-    applyWorkspace(createWorkspaceFromTemplate(template, { id: initialWorkspace.templateId, title: viewTitle }));
+    const workspace = createWorkspaceFromTemplate(template, { id: initialWorkspace.templateId, title: viewTitle });
+    commitDocument(() => ({
+      nodes: clampNodesToArtifactMinimums(workspace.board.nodes, runtimeArtifactRegistry),
+      selectedNodeIds: workspace.board.selectedNodeId ? [workspace.board.selectedNodeId] : [],
+    }));
+    setViewport(workspace.board.viewport);
+    setThemeMode(workspace.board.themeMode);
+    setSnapToGrid(workspace.board.snapToGrid);
     setStatus("Demo restored in this browser");
   }
 
@@ -332,8 +418,10 @@ export function CanvasWorkspace({
       node = moveNodeToNearestOpenPosition(node, nodes, CANVAS_GRID_SIZE, visibleBounds);
     }
     validatePreparedArtifact(node, artifact);
-    setNodes((current) => [...current, node]);
-    setSelectedNodeId(node.id);
+    commitDocument((current) => ({
+      nodes: [...current.nodes, node],
+      selectedNodeIds: [node.id],
+    }));
     closeArtifactLibrary();
     setStatus(`Added ${item.title}`);
     window.requestAnimationFrame(() => stageRef.current?.focus({ preventScroll: true }));
@@ -344,17 +432,28 @@ export function CanvasWorkspace({
   }
 
   useCanvasShortcuts({
+    artifactLibraryOpen,
     disabled: agentDialogOpen,
-    selectedNodeId,
-    onDeleteNode: deleteNode,
+    presentationMode,
+    selectedNodeIds,
+    onCopy: copySelection,
+    onDeleteSelection: deleteSelection,
     onDismiss: () => {
       if (artifactLibraryOpen) closeArtifactLibrary(true);
       else if (sidebarOpen) void onToggleSidebar();
-      else setSelectedNodeId("");
+      else setSelectedNodeIds([]);
     },
+    onDuplicate: duplicateSelection,
+    onExitPresentation,
+    onNextView: onNextPresentationView,
+    onPaste: pasteSelection,
+    onPreviousView: onPreviousPresentationView,
+    onRedo: redoChange,
     onResetView: resetView,
+    onSelectAll: selectAll,
     onToggleArtifacts: toggleArtifactLibrary,
     onToggleViews: toggleViews,
+    onUndo: undoChange,
     onZoomIn: () => canvasInteractions.changeZoom(1.15),
     onZoomOut: () => canvasInteractions.changeZoom(0.85),
   });
@@ -391,8 +490,7 @@ export function CanvasWorkspace({
       const mode = await commitWorkspaceWithArtifactPackage(workspace, bundle);
       setRuntimeArtifactRegistry((current) => ({ ...current, [artifact.id]: artifact }));
       setPersonalBundles((current) => [...current.filter((entry) => entry.artifactId !== bundle.artifactId), bundle]);
-      setNodes(nextNodes);
-      setSelectedNodeId(node.id);
+      commitDocument(() => ({ nodes: nextNodes, selectedNodeIds: [node.id] }));
       setStorageMode(mode);
       setStatus(`Installed ${artifact.title}`);
       return { artifactId: artifact.id, nodeId: node.id, viewId: targetViewId };
@@ -449,14 +547,50 @@ export function CanvasWorkspace({
       : view),
     [initialWorkspace.templateId, nodes, views],
   );
+  const displayViewport = useMemo(
+    () => presentationMode && stageSize.width > 0 && stageSize.height > 0
+      ? fitNodesToViewport(nodes, stageSize)
+      : viewport,
+    [nodes, presentationMode, stageSize, viewport],
+  );
+
+  async function deleteView(viewId: string) {
+    const removingActiveView = viewId === initialWorkspace.templateId;
+    if (removingActiveView) suppressRecovery();
+    try {
+      await onDeleteView(viewId, removingActiveView ? workspaceSnapshot : undefined);
+    } catch (error) {
+      if (removingActiveView) resumeRecovery();
+      setStatus(error instanceof Error ? `Delete failed: ${error.message}` : "Canvas deletion failed");
+    }
+  }
+
+  async function duplicateView(viewId: string) {
+    try {
+      await onDuplicateView(
+        viewId,
+        viewId === initialWorkspace.templateId ? workspaceSnapshot : undefined,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? `Duplicate failed: ${error.message}` : "Canvas duplication failed");
+    }
+  }
 
   return (
-    <main className={`app-shell canvas-app-shell ${sidebarOpen ? "sidebar-open" : ""}`} data-theme={themeMode}>
+    <main
+      className={`app-shell canvas-app-shell ${sidebarOpen ? "sidebar-open" : ""} ${presentationMode ? "presentation-mode" : ""}`}
+      data-theme={themeMode}
+      data-presentation={presentationMode}
+    >
       <div className="canvas-sidebar-slot" aria-hidden={!sidebarOpen} inert={!sidebarOpen}>
         <CanvasSidebar
           activeViewId={initialWorkspace.templateId}
           views={previewViews}
           onCreateView={onCreateView}
+          onClose={toggleViews}
+          onDeleteView={(id) => void deleteView(id)}
+          onDuplicateView={(id) => void duplicateView(id)}
+          onReorderView={onReorderView}
           onSelectView={onSelectView}
         />
       </div>
@@ -468,9 +602,12 @@ export function CanvasWorkspace({
           viewTitle={viewTitle}
           sidebarOpen={sidebarOpen}
           artifactLibraryOpen={artifactLibraryOpen}
+          canRedo={canRedo}
+          canUndo={canUndo}
           themeMode={themeMode}
           snapToGrid={snapToGrid}
           onBuildArtifact={() => { setArtifactLibraryOpen(false); setAgentDialogOpen(true); }}
+          onEnterPresentation={onEnterPresentation}
           onExportWorkspace={exportWorkspace}
           onImportData={importData}
           onImportWorkspace={importWorkspace}
@@ -483,19 +620,29 @@ export function CanvasWorkspace({
           onToggleArtifactLibrary={toggleArtifactLibrary}
           onToggleSidebar={toggleViews}
           onToggleSnapToGrid={toggleSnapToGrid}
+          onRedo={redoChange}
+          onUndo={undoChange}
         />
         <CanvasBoard
           canvasTheme={canvasTheme}
           nodes={nodes}
           runtimeArtifactRegistry={runtimeArtifactRegistry}
-          selectedNodeId={selectedNodeId}
+          selectedNodeIds={selectedNodeIds}
           stageRef={stageRef}
-          viewport={viewport}
+          viewport={displayViewport}
           artifactDragActive={Boolean(draggingCatalogItemId)}
+          hasMultipleViews={views.length > 1}
+          presentationMode={presentationMode}
           onChangeZoom={canvasInteractions.changeZoom}
           onDeleteNode={deleteNode}
+          onDeleteSelection={deleteSelection}
+          onDuplicateSelection={duplicateSelection}
+          onExitPresentation={onExitPresentation}
+          onLayoutSelection={applySelectionLayout}
+          onNextPresentationView={onNextPresentationView}
           onNodePointerDown={canvasInteractions.handleNodePointerDown}
           onResetView={resetView}
+          onPreviousPresentationView={onPreviousPresentationView}
           onArtifactDrop={(catalogItemId, clientX, clientY) => {
             const item = findCatalogItem(catalogItemId);
             if (item) addCatalogItem(item, { x: clientX, y: clientY });
@@ -503,6 +650,7 @@ export function CanvasWorkspace({
           }}
           onResizePointerDown={canvasInteractions.handleResizePointerDown}
           onStagePointerDown={canvasInteractions.handleStagePointerDown}
+          selectionRect={canvasInteractions.selectionRect}
         />
       </section>
       <div className={`artifact-library-slot ${artifactLibraryOpen ? "open" : ""}`} aria-hidden={!artifactLibraryOpen} inert={!artifactLibraryOpen}>

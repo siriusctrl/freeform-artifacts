@@ -83,6 +83,23 @@ preference. Node positions can be snapped to the 38px world-coordinate grid by
 the canvas shell. Resize remains aspect-locked and independent of grid snapping;
 artifacts do not own placement behavior.
 
+View order is lightweight origin-local navigation metadata stored separately
+from workspace records. Duplicating a view clones its serializable board while
+continuing to reference the same origin-wide artifact package ids. Deleting a
+view removes its workspace records but keeps packages; the UI retains the
+deleted workspace briefly so Undo can restore it at the previous list position.
+Active-view duplicate and delete operations receive the live in-memory snapshot
+so the 400 ms autosave window cannot discard a just-finished edit. A small
+localStorage tombstone set provides logical deletion when IndexedDB is
+temporarily unavailable and is cleared when a View is restored.
+
+Node editing uses a bounded in-memory document history. Discrete commands store
+one before-snapshot, while drag and resize open a transaction on pointer down and
+commit one entry on pointer up regardless of pointer-move count. Node arrays and
+selection are restored together. Viewport pan/zoom, theme, panel state, and
+selection-only changes are intentionally outside history, and history does not
+survive a reload or View switch.
+
 This is browser-profile isolation, not account identity. The static app has no
 shared board backend, so separate browser contexts cannot see each other's
 workspaces. Clearing site data removes the workspace, and cross-device sync is
@@ -132,8 +149,20 @@ previews, which remain renderer-free geometry summaries of complete boards.
 
 Canvas-level keyboard commands live in one guarded hook. `Cmd/Ctrl+B` toggles
 Views, `Shift+Cmd/Ctrl+A` toggles Artifacts, `Cmd/Ctrl+0` resets the viewport,
-`+`/`-` zoom, and `Escape` dismisses the active panel or selection. Editable
-targets and the modal AI handoff are excluded from global handling.
+`Cmd/Ctrl+Z` / `Shift+Cmd/Ctrl+Z` traverse session history, `Cmd/Ctrl+A`
+selects all, `Cmd/Ctrl+D` duplicates, `Cmd/Ctrl+C` / `V` use the in-session
+canvas clipboard, `+`/`-` zoom, and `Escape` dismisses the active panel or
+selection. Editable targets and the modal AI handoff are excluded from global
+handling. Ordinary blank-stage drag remains pan; `Shift+drag` creates an
+additive marquee, and dragging any selected node moves the full selection with
+one shared snapped delta.
+
+Presentation mode is a renderer state, not a board mutation. It hides editing
+chrome and derives a Fit All viewport from current node bounds and live stage
+dimensions. The persisted viewport remains untouched, so exiting restores the
+exact editing frame. Left/Right switches browser-local Views while App-level
+presentation state survives the workspace remount. `Escape` exits, while a
+minimal pointer-accessible control strip keeps touch users from being trapped.
 
 ## Artifact Registry
 
@@ -320,7 +349,12 @@ Canvas runtime behavior lives under `src/canvas/`:
 
 - `components/` renders the toolbar, board, canvas nodes, and zoom controls.
 - `hooks/useCanvasInteractions.ts` owns pointer drag, resize, wheel pan, pinch
-  zoom, toolbar zoom, z-order bumping, and snap-to-grid math.
+  zoom, toolbar zoom, marquee selection, group movement, z-order bumping, and
+  snap-to-grid math.
+- `hooks/useCanvasDocumentHistory.ts` owns bounded session snapshots and gesture
+  transactions; `hooks/useCanvasSelectionActions.ts` owns document commands.
+- `selection.ts` keeps selection geometry, layout, cloning, and presentation
+  framing pure and independently reviewable.
 - `debugState.ts` is the only place that writes `window.__FREEFORM_STATE__`.
 
 Styles are also split by domain under `src/styles/` and imported through

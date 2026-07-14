@@ -75,9 +75,24 @@ All notable user-facing changes to this project should be documented here.
   lifecycles in both themes.
 - Canvas shortcuts for Views, Artifacts, viewport reset, zoom, Escape, and
   deletion with editable-field and modal guards.
+- Transactional session Undo/Redo, marquee and additive multi-selection, group
+  movement, alignment/distribution, duplicate, and in-session copy/paste.
+- View duplication, persistent drag ordering, delete with short-lived Undo, and
+  clean Fit All presentation with keyboard View navigation.
+- Pointer-accessible responsive drawer/presentation exits and menu-based View
+  ordering for touch and keyboard workflows.
+- Worktree-safe Playwright port selection through `FREEFORM_TEST_PORT`.
 
 ### Fixed
 
+- Kept presentation framing derived from live node bounds so entering and
+  leaving presentation never overwrites the user's editable viewport.
+- Prevented parallel Playwright runs from silently testing a different
+  worktree's already-running Vite server.
+- Preserved unsaved active-View edits across duplicate and delete Undo, kept
+  failed IndexedDB deletions hidden with local tombstones, fixed downward View
+  ordering, equalized visible distribution gaps, and kept click-only selection
+  out of Undo history.
 - Made Artifact Library arrow-key tab focus move synchronously with selection,
   avoiding stale-focus reversals under a busy browser event loop.
 - Kept click-added artifacts inside the current visible canvas and placed them

@@ -96,6 +96,11 @@ npx skills add . --list --full-depth
 Current controls:
 
 - Drag an artifact card to move it.
+- Hold `Shift` while dragging blank canvas space to marquee-select artifacts;
+  use `Shift`/`Cmd`/`Ctrl` click to adjust the selection, then drag any selected
+  card to move the whole selection.
+- Use the contextual selection toolbar to align, distribute, duplicate, or
+  delete multiple artifacts.
 - Drag the selected card's labeled bottom-right resize control to resize it.
 - Delete the selected artifact from its title bar, or press `Delete` or
   `Backspace` while canvas focus is outside an input.
@@ -109,17 +114,26 @@ Current controls:
 - Toggle light/dark mode from the top toolbar.
 - Double-click the centered canvas name to rename the current view.
 - Open the collapsed **Views** sidebar to browse real canvas previews, create
-  views, and switch between independent browser-local workspaces.
+  views, duplicate or delete them, drag them into a stable order, and switch
+  between independent browser-local workspaces. A deleted view can be restored
+  from the short-lived Undo notice. On touch layouts, use the visible close
+  button or tap outside the drawer; **Move up** and **Move down** provide a
+  non-drag ordering path.
 - Open **Artifacts** from the top bar to search built-in and personal items,
   inspect a complete live preview, then click to add one at the nearest open
   position in the current viewport, or drag it to a specific canvas position.
   Removing a card does not remove its reusable artifact package.
-- Use `Cmd/Ctrl+B` for Views, `Shift+Cmd/Ctrl+A` for Artifacts,
-  `Cmd/Ctrl+0` to reset the viewport, `+`/`-` to zoom, and `Escape` to close the
-  active panel or clear selection. Canvas shortcuts do not intercept editable
-  fields or the Build with AI dialog.
+- Use `Cmd/Ctrl+Z` and `Shift+Cmd/Ctrl+Z` for session Undo/Redo; `Cmd/Ctrl+A`
+  selects all artifacts, `Cmd/Ctrl+D` duplicates, and `Cmd/Ctrl+C` / `V`
+  copy and paste within the active browser view. Use `Cmd/Ctrl+B` for Views,
+  `Shift+Cmd/Ctrl+A` for Artifacts, `Cmd/Ctrl+0` to reset the viewport,
+  `+`/`-` to zoom, and `Escape` to close the active panel or clear selection.
+  Canvas shortcuts do not intercept editable fields or the Build with AI dialog.
 - Use the **More** menu to load sample query rows, import/export a versioned
-  workspace backup, or explicitly reset to the authored demo.
+  workspace backup, enter a clean Fit All presentation, or explicitly reset to
+  the authored demo. In presentation mode, use Left/Right to move between views
+  and `Escape` to return without changing the saved viewport, or use the compact
+  on-canvas navigation and exit controls.
 - Open **Build with AI** from the desktop top bar or the Artifact Library footer
   and give its instruction to your coding agent. The
   prompt explicitly selects Browser View Bundle delivery, installs the project
@@ -398,16 +412,22 @@ Implemented:
 - Draggable artifact nodes.
 - Resizable selected artifact nodes.
 - Selected-artifact deletion through a title-bar control and keyboard shortcuts.
+- Bounded session Undo/Redo with one history entry per completed drag or resize.
+- Additive and marquee multi-selection, group movement, alignment/distribution,
+  duplicate, and in-session copy/paste commands.
 - Default-on 38px snap-to-grid placement with a labeled More-menu toggle.
 - Aspect-locked whole-object resizing with artifact-specific minimum scales.
 - Published demo template with a per-browser local workspace fork.
 - Multiple named local canvas views with a smoothly animated,
-  default-collapsed **Views** sidebar and data-derived page previews.
+  default-collapsed **Views** sidebar, data-derived page previews, persistent
+  ordering, duplicate, durable logical deletion, and short-lived delete Undo.
+- Full-canvas presentation mode with derived Fit All framing and view navigation
+  that leaves each view's editable viewport unchanged.
 - Searchable, default-collapsed **Artifacts** library with Built-in and Yours
   sources, click placement, drag-to-canvas placement, and cross-view personal
   package reuse.
-- Guarded canvas shortcuts for Views, Artifacts, viewport reset, zoom, Escape,
-  and selected-node deletion.
+- Guarded canvas shortcuts for history, selection, clipboard, Views, Artifacts,
+  viewport reset, zoom, Escape, and selected-node deletion.
 - Debounced, ordered IndexedDB workspace persistence with a synchronous
   page-close recovery mirror and versioned board-data JSON import/export.
 - Transform registry with fixtures for raw query rows.

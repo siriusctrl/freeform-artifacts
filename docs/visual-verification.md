@@ -12,9 +12,10 @@ npm run verify:proof
 ```
 
 The helper starts the local Vite server, opens Chromium through Playwright, and
-runs an asserted user journey across layout, shortcuts, the shared artifact
-library, drag, resize, pan, zoom, data, theme, AI handoff generation, deletion,
-re-addition, and close/reopen persistence. A verification-only
+runs an asserted user journey across layout, multi-selection, history, View
+management, presentation, responsive drawer/exit paths, shortcuts, the shared
+artifact library, drag, resize, pan, zoom, data, theme, AI handoff generation,
+deletion, re-addition, and close/reopen persistence. A verification-only
 cursor and step label make each gesture legible in the recording. The helper
 captures video, converts it to GIF, and writes:
 
@@ -71,6 +72,8 @@ as supplementary checks. Look for:
 - light/dark mode leaving illegible cards or panels;
 - AI handoff accidentally changing board state or omitting the skill command;
 - Views or Artifacts shortcuts firing inside editable controls;
+- downward View ordering doing nothing, deletion Undo restoring a stale save, or
+  responsive drawers/presentation leaving no pointer-accessible exit;
 - the Artifact Library covering its drag target, clipping on mobile, or losing
   personal packages when a node is deleted or the active view changes;
 - Artifact Library previews showing a cropped card, stretching its aspect
@@ -88,4 +91,5 @@ as supplementary checks. Look for:
 - Add frame-diff checks for blank frames.
 - Add visible-latency metrics for drag and zoom.
 - Add production preview proof after `npm run build`.
-- Add mobile viewport proof once touch gestures are implemented.
+- Add dedicated touch-gesture proof once direct touch manipulation is
+  implemented; the current responsive proof covers visible controls and exits.

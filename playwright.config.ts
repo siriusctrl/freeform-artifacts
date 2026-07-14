@@ -1,21 +1,24 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const testPort = Number(process.env.FREEFORM_TEST_PORT ?? 4177);
+const testUrl = `http://127.0.0.1:${testPort}`;
+
 export default defineConfig({
   testDir: "./tests",
-  timeout: 30_000,
+  timeout: 45_000,
   expect: {
     timeout: 5_000,
   },
   use: {
-    baseURL: "http://127.0.0.1:4177",
+    baseURL: testUrl,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
   webServer: {
-    command: "npm run dev -- --host 127.0.0.1 --port 4177",
-    url: "http://127.0.0.1:4177",
-    reuseExistingServer: !process.env.CI,
+    command: `npm run dev -- --host 127.0.0.1 --port ${testPort}`,
+    url: testUrl,
+    reuseExistingServer: !process.env.CI && !process.env.FREEFORM_TEST_PORT,
     timeout: 120_000,
   },
   projects: [

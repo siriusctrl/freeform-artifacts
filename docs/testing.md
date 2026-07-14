@@ -66,9 +66,17 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   that asks the agent to discover the artifact request without changing board
   state until a bundle is installed;
 - centered-title rename, smoothly animated Views navigation, data-derived
-  previews, create/switch, and active-view reload recovery;
-- guarded `Cmd/Ctrl+B`, `Shift+Cmd/Ctrl+A`, `Cmd/Ctrl+0`, zoom, Escape, and
-  deletion shortcuts, including input-field exemption;
+  previews, create/switch, persistent reorder, board-only duplication,
+  bidirectional drag/menu ordering, live-snapshot duplicate/delete Undo,
+  tombstoned delete failure recovery, and active-view reload recovery;
+- marquee/additive multi-selection, shared-delta group drag, alignment,
+  duplicate, clipboard, multi-delete, and one-entry gesture Undo/Redo;
+- guarded history, selection, clipboard, `Cmd/Ctrl+B`,
+  `Shift+Cmd/Ctrl+A`, `Cmd/Ctrl+0`, zoom, Escape, and deletion shortcuts,
+  including input-field and open-library exemptions;
+- presentation Fit All containment, hidden editing chrome, exact viewport
+  and selection restoration, rapid Left/Right View navigation, keyboard exit,
+  and pointer-accessible exit controls;
 - Built-in artifact search, visible-viewport click placement, and drag placement
   with world-coordinate conversion and grid snap;
 - complete contained live previews for all built-in renderer families, personal
@@ -104,17 +112,22 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   each other's deletions;
 - the debug state reports the active template ID and storage mode.
 
-The browser suites live under `tests/`; `canvas.spec.ts` intentionally follows
-end-to-end user journeys, while helpers should move out when they are reused by
+The browser suites live under `tests/`; `canvas.spec.ts` follows core end-to-end
+journeys, while `productivity.spec.ts` owns history, multi-select, View
+management, and presentation workflows. Helpers should move out when reused by
 another suite rather than solely to satisfy a line-count target.
 `tests/mobile.spec.ts` keeps the touch-sized layout honest without pretending
-desktop mouse gestures are touch interaction coverage.
+desktop mouse gestures are touch interaction coverage. It also verifies that
+the Views drawer and presentation mode always expose a touch exit path.
 
 If Chromium is missing, run:
 
 ```sh
 npm run setup:browsers
 ```
+
+Parallel worktrees can avoid reusing another agent's dev server with an isolated
+port, for example `FREEFORM_TEST_PORT=4277 npm run verify:ui`.
 
 ## Browser Proof
 

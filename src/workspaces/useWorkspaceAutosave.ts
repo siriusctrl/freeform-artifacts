@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { saveWorkspace, writeWorkspaceRecovery } from "./storage";
 import type { WorkspaceLoadResult, WorkspaceRecord } from "./types";
 
-const SAVE_DEBOUNCE_MS = 180;
+const SAVE_DEBOUNCE_MS = 400;
 
 interface UseWorkspaceAutosaveOptions {
   onError: (message: string) => void;
@@ -22,6 +22,7 @@ export function useWorkspaceAutosave({
   const latestWorkspace = useRef(workspace);
   const timer = useRef<number | null>(null);
   const generation = useRef(0);
+  const recoveryEnabled = useRef(true);
   const shouldSkip = useRef(skipInitialSave);
   const callbacks = useRef({ onError, onSaved, onSaving });
   latestWorkspace.current = workspace;
@@ -33,6 +34,15 @@ export function useWorkspaceAutosave({
       window.clearTimeout(timer.current);
       timer.current = null;
     }
+  }, []);
+
+  const suppressRecovery = useCallback(() => {
+    recoveryEnabled.current = false;
+    cancelPendingSave();
+  }, [cancelPendingSave]);
+
+  const resumeRecovery = useCallback(() => {
+    recoveryEnabled.current = true;
   }, []);
 
   useEffect(() => {
@@ -63,7 +73,7 @@ export function useWorkspaceAutosave({
   useEffect(() => {
     const flushRecovery = () => {
       cancelPendingSave();
-      writeWorkspaceRecovery(latestWorkspace.current);
+      if (recoveryEnabled.current) writeWorkspaceRecovery(latestWorkspace.current);
     };
     window.addEventListener("pagehide", flushRecovery);
     return () => {
@@ -72,5 +82,5 @@ export function useWorkspaceAutosave({
     };
   }, [cancelPendingSave]);
 
-  return { cancelPendingSave };
+  return { cancelPendingSave, resumeRecovery, suppressRecovery };
 }

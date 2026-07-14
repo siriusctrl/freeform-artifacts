@@ -14,6 +14,8 @@ const DATABASE_VERSION = 2;
 export const WORKSPACE_STORE = "workspaces";
 export const ARTIFACT_PACKAGE_STORE = "artifact-packages";
 const ACTIVE_WORKSPACE_KEY = "freeform-artifacts.active-view.v1";
+const VIEW_ORDER_KEY = "freeform-artifacts.view-order.v1";
+const DELETED_WORKSPACES_KEY = "freeform-artifacts.deleted-views.v1";
 const workspaceWriteQueues = new Map<string, Promise<unknown>>();
 
 function enqueueWorkspaceWrite<T>(workspaceId: string, operation: () => Promise<T>): Promise<T> {
@@ -99,6 +101,21 @@ async function writeIndexedWorkspace(workspace: WorkspaceRecord): Promise<void> 
   }
 }
 
+async function deleteIndexedWorkspace(workspaceId: string): Promise<void> {
+  const database = await openDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(WORKSPACE_STORE, "readwrite");
+      transaction.objectStore(WORKSPACE_STORE).delete(workspaceId);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error("Unable to delete the local canvas"));
+      transaction.onabort = () => reject(transaction.error ?? new Error("Local canvas deletion was aborted"));
+    });
+  } finally {
+    database.close();
+  }
+}
+
 function readFallbackWorkspace(templateId: string): WorkspaceRecord | null {
   try {
     const parsed = workspaceRecordSchema.safeParse(JSON.parse(window.localStorage.getItem(fallbackKey(templateId)) ?? "null"));
@@ -110,6 +127,66 @@ function readFallbackWorkspace(templateId: string): WorkspaceRecord | null {
 
 function writeFallbackWorkspace(workspace: WorkspaceRecord) {
   window.localStorage.setItem(fallbackKey(workspace.templateId), JSON.stringify(workspace));
+}
+
+function readViewOrder() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(VIEW_ORDER_KEY) ?? "[]");
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeViewOrder(ids: string[]) {
+  try {
+    window.localStorage.setItem(VIEW_ORDER_KEY, JSON.stringify([...new Set(ids)]));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readDeletedWorkspaceIds() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(DELETED_WORKSPACES_KEY) ?? "[]");
+    return new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function writeDeletedWorkspaceIds(ids: Set<string>) {
+  try {
+    if (ids.size === 0) window.localStorage.removeItem(DELETED_WORKSPACES_KEY);
+    else window.localStorage.setItem(DELETED_WORKSPACES_KEY, JSON.stringify([...ids]));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function markWorkspaceDeleted(workspaceId: string) {
+  const deletedIds = readDeletedWorkspaceIds();
+  deletedIds.add(workspaceId);
+  return writeDeletedWorkspaceIds(deletedIds);
+}
+
+function clearWorkspaceDeletion(workspaceId: string) {
+  const deletedIds = readDeletedWorkspaceIds();
+  if (!deletedIds.delete(workspaceId)) return true;
+  return writeDeletedWorkspaceIds(deletedIds);
+}
+
+function ensureWorkspaceOrder(workspaceId: string) {
+  const order = readViewOrder();
+  if (!order.includes(workspaceId)) writeViewOrder([...order, workspaceId]);
+}
+
+function insertWorkspaceOrder(workspaceId: string, index: number) {
+  const order = readViewOrder().filter((id) => id !== workspaceId);
+  order.splice(Math.max(0, Math.min(index, order.length)), 0, workspaceId);
+  writeViewOrder(order);
 }
 
 export function writeWorkspaceRecovery(workspace: WorkspaceRecord) {
@@ -145,8 +222,23 @@ export async function listWorkspaces(): Promise<WorkspaceSummary[]> {
   } catch {
     records = listFallbackWorkspaces();
   }
+  const deletedIds = readDeletedWorkspaceIds();
+  records = records.filter((workspace) => !deletedIds.has(workspace.templateId));
+  const savedOrder = readViewOrder();
+  const savedPositions = new Map(savedOrder.map((id, index) => [id, index]));
+  records.sort((first, second) => {
+    const firstPosition = savedPositions.get(first.templateId);
+    const secondPosition = savedPositions.get(second.templateId);
+    if (firstPosition !== undefined && secondPosition !== undefined) return firstPosition - secondPosition;
+    if (firstPosition !== undefined) return -1;
+    if (secondPosition !== undefined) return 1;
+    return second.updatedAt.localeCompare(first.updatedAt);
+  });
+  const normalizedOrder = records.map((workspace) => workspace.templateId);
+  if (normalizedOrder.join("\0") !== savedOrder.filter((id) => normalizedOrder.includes(id)).join("\0")) {
+    writeViewOrder(normalizedOrder);
+  }
   return records
-    .sort((first, second) => second.updatedAt.localeCompare(first.updatedAt))
     .map((workspace) => ({
       id: workspace.templateId,
       title: workspace.title,
@@ -156,6 +248,7 @@ export async function listWorkspaces(): Promise<WorkspaceSummary[]> {
 }
 
 export async function loadWorkspaceById(id: string): Promise<WorkspaceLoadResult | null> {
+  if (readDeletedWorkspaceIds().has(id)) return null;
   let storage: WorkspaceLoadResult["storage"] = "indexeddb";
   let workspace: WorkspaceRecord | null = null;
   const fallback = readFallbackWorkspace(id);
@@ -184,15 +277,96 @@ export async function createWorkspace(template: WorkspaceTemplate): Promise<Work
   return { workspace, source: "template", storage };
 }
 
+export async function duplicateWorkspace(
+  workspaceId: string,
+  currentWorkspace?: WorkspaceRecord,
+): Promise<WorkspaceLoadResult> {
+  const providedSource = currentWorkspace?.templateId === workspaceId
+    ? workspaceRecordSchema.parse(currentWorkspace)
+    : null;
+  const storedSource = providedSource ? null : await loadWorkspaceById(workspaceId);
+  const source = providedSource ?? storedSource?.workspace;
+  if (!source) throw new Error(`Unknown canvas view: ${workspaceId}`);
+  const id = `canvas-${crypto.randomUUID()}`;
+  const workspace: WorkspaceRecord = {
+    ...source,
+    templateId: id,
+    title: `${source.title} copy`.slice(0, 80),
+    updatedAt: new Date().toISOString(),
+    board: {
+      ...structuredClone(source.board),
+      selectedNodeId: "",
+    },
+  };
+  const sourceIndex = readViewOrder().indexOf(workspaceId);
+  const storage = await saveWorkspace(workspace);
+  insertWorkspaceOrder(id, sourceIndex < 0 ? readViewOrder().length : sourceIndex + 1);
+  setActiveWorkspaceId(id);
+  return { workspace, source: "existing", storage };
+}
+
+export async function deleteWorkspace(workspaceId: string, currentWorkspace?: WorkspaceRecord) {
+  const providedWorkspace = currentWorkspace?.templateId === workspaceId
+    ? workspaceRecordSchema.parse(currentWorkspace)
+    : null;
+  const storedWorkspace = providedWorkspace ? null : await loadWorkspaceById(workspaceId);
+  const existing = providedWorkspace ?? storedWorkspace?.workspace;
+  if (!existing) return null;
+  await enqueueWorkspaceWrite(workspaceId, async () => {
+    const tombstoneSaved = markWorkspaceDeleted(workspaceId);
+    let indexedWorkspaceDeleted = false;
+    let fallbackWorkspaceDeleted = false;
+    try {
+      await deleteIndexedWorkspace(workspaceId);
+      indexedWorkspaceDeleted = true;
+    } catch {
+      // A tombstone keeps a temporarily unavailable IndexedDB record hidden.
+    }
+    try {
+      window.localStorage.removeItem(fallbackKey(workspaceId));
+      fallbackWorkspaceDeleted = true;
+    } catch {
+      // The tombstone or IndexedDB deletion can still make the logical delete durable.
+    }
+    if (!tombstoneSaved && !(indexedWorkspaceDeleted && fallbackWorkspaceDeleted)) {
+      throw new Error("Unable to delete this canvas from browser storage");
+    }
+  });
+  writeViewOrder(readViewOrder().filter((id) => id !== workspaceId));
+  return existing;
+}
+
+export async function restoreWorkspace(workspace: WorkspaceRecord, index: number) {
+  const storage = await saveWorkspace({ ...workspace, updatedAt: new Date().toISOString() });
+  insertWorkspaceOrder(workspace.templateId, index);
+  return storage;
+}
+
+export function reorderWorkspaces(sourceId: string, targetId: string) {
+  if (sourceId === targetId) return;
+  const order = readViewOrder();
+  const sourceIndex = order.indexOf(sourceId);
+  const targetIndex = order.indexOf(targetId);
+  if (sourceIndex < 0 || targetIndex < 0) return;
+  const movingDown = sourceIndex < targetIndex;
+  order.splice(sourceIndex, 1);
+  order.splice(order.indexOf(targetId) + (movingDown ? 1 : 0), 0, sourceId);
+  writeViewOrder(order);
+}
+
 export async function saveWorkspace(workspace: WorkspaceRecord): Promise<"indexeddb" | "localstorage"> {
   const checked = workspaceRecordSchema.parse(workspace);
   return enqueueWorkspaceWrite(checked.templateId, async () => {
     const fallbackSaved = writeWorkspaceRecovery(checked);
     try {
       await writeIndexedWorkspace(checked);
+      ensureWorkspaceOrder(checked.templateId);
+      clearWorkspaceDeletion(checked.templateId);
       return "indexeddb";
     } catch {
       if (fallbackSaved) {
+        ensureWorkspaceOrder(checked.templateId);
+        clearWorkspaceDeletion(checked.templateId);
         return "localstorage";
       }
       throw new Error("Unable to save this workspace in browser storage");
@@ -241,6 +415,7 @@ export async function commitWorkspaceWithArtifactPackage(
       database.close();
     }
     writeWorkspaceRecovery(checked);
+    clearWorkspaceDeletion(checked.templateId);
     return "indexeddb" as const;
   });
 }

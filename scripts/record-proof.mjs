@@ -545,8 +545,173 @@ try {
   await page.waitForTimeout(1000);
   const viewSummaries = await page.evaluate(() => window.__FREEFORM_AGENT__.listViews());
   verifyUx("view switch restores the first canvas and keeps both names", (await page.getByTestId("canvas-title").innerText()) === "Market canvas" && viewSummaries.some((view) => view.title === "Scenario canvas"), { viewSummaries });
+
+  await showProofStep(page, "Duplicate View • preserve the complete board", 700);
+  await page.getByTestId("view-menu-market-overview").click();
+  await page.getByTestId("duplicate-view-market-overview").click();
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.templateId !== "market-overview" && window.__FREEFORM_STATE__?.nodes.length === 5);
+  const duplicateViewId = await page.evaluate(() => window.__FREEFORM_STATE__.templateId);
+  verifyUx(
+    "View duplicate clones board data without changing artifact packages",
+    duplicateViewId !== "market-overview" && (await page.getByTestId("canvas-title").innerText()) === "Market canvas copy",
+    { duplicateViewId },
+  );
+
+  await showProofStep(page, "Reorder Views • drag the preview into place", 700);
+  await page.locator(`[data-view-id="${duplicateViewId}"]`).dragTo(page.locator('[data-view-id="market-overview"]'));
+  await page.waitForTimeout(700);
+  const reorderedViewIds = await page.locator(".view-item").evaluateAll((items) => items.map((item) => item.getAttribute("data-view-id")));
+  verifyUx("View drag order updates immediately", reorderedViewIds[0] === duplicateViewId, { reorderedViewIds });
+
+  await showProofStep(page, "Reorder downward • place the first View after its target", 650);
+  await page.locator(`[data-view-id="${duplicateViewId}"]`).dragTo(page.locator('[data-view-id="market-overview"]'));
+  await page.waitForTimeout(650);
+  const downwardViewIds = await page.locator(".view-item").evaluateAll((items) => items.map((item) => item.getAttribute("data-view-id")));
+  verifyUx("View drag order works in both directions", downwardViewIds[1] === duplicateViewId, { downwardViewIds });
+  await page.getByTestId(`view-menu-${duplicateViewId}`).click();
+  await page.getByTestId(`move-view-up-${duplicateViewId}`).click();
+  await page.waitForTimeout(450);
+
+  await page.getByTestId("canvas-title").dblclick();
+  const duplicateTitleInput = page.getByTestId("canvas-title-input");
+  await duplicateTitleInput.press("Control+A");
+  await duplicateTitleInput.pressSequentially("Transient market copy", { delay: 35 });
+  await duplicateTitleInput.press("Enter");
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saving locally");
+
+  await page.getByTestId(`view-menu-${duplicateViewId}`).click();
+  await page.getByTestId(`delete-view-${duplicateViewId}`).click();
+  await page.getByTestId("view-undo-toast").waitFor({ state: "visible" });
+  await showProofStep(page, "Delete unsaved View • restore the live snapshot", 700);
+  verifyUx("deleted View leaves the sidebar", (await page.locator(`[data-view-id="${duplicateViewId}"]`).count()) === 0);
+  await page.waitForTimeout(650);
+  await page.getByTestId("view-undo-toast").getByRole("button", { name: "Undo" }).click();
+  await page.waitForFunction((id) => Boolean(document.querySelector(`[data-view-id="${id}"]`)), duplicateViewId);
+  verifyUx("View deletion Undo restores the same local View", (await page.locator(`[data-view-id="${duplicateViewId}"]`).count()) === 1);
+  verifyUx(
+    "View deletion Undo preserves edits that had not reached autosave",
+    (await page.locator(`[data-view-id="${duplicateViewId}"] .view-label`).innerText()) === "Transient market copy",
+  );
+
+  await page.getByTestId("view-market-overview").click();
+  await page.getByTestId("node-node-revenue").waitFor({ state: "visible" });
   await page.getByTestId("sidebar-toggle").click();
   await page.waitForTimeout(500);
+
+  const editableViewportBeforePresentation = await page.evaluate(() => window.__FREEFORM_STATE__.viewport);
+  await page.getByTestId("workspace-menu").click();
+  await page.getByTestId("enter-presentation").click();
+  await showProofStep(page, "Present canvas • Fit All without editing chrome", 1200);
+  verifyUx("presentation exposes a touch-friendly exit and View navigation strip", await page.getByTestId("presentation-controls").isVisible());
+  const presentationGeometry = await page.evaluate(() => {
+    const stageRect = document.querySelector('[data-testid="canvas-stage"]').getBoundingClientRect();
+    const nodeRects = [...document.querySelectorAll(".canvas-node")].map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+    });
+    return {
+      topbarVisible: document.querySelector(".topbar")?.getBoundingClientRect().height > 0,
+      nodeChromeVisible: [...document.querySelectorAll(".node-chrome")].some((element) => element.getBoundingClientRect().height > 0),
+      contained: nodeRects.every((rect) => rect.left >= stageRect.left - 1 && rect.right <= stageRect.right + 1 && rect.top >= stageRect.top - 1 && rect.bottom <= stageRect.bottom + 1),
+      nodeCount: nodeRects.length,
+    };
+  });
+  verifyUx(
+    "presentation hides editing chrome and contains every node",
+    !presentationGeometry.topbarVisible && !presentationGeometry.nodeChromeVisible && presentationGeometry.contained && presentationGeometry.nodeCount === 5,
+    presentationGeometry,
+  );
+
+  await showProofStep(page, "Presentation navigation • Left and Right switch Views", 650);
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction((id) => window.__FREEFORM_STATE__?.templateId === id, duplicateViewId);
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.templateId === "market-overview");
+  verifyUx("presentation survives View switches", await page.evaluate(() => window.__FREEFORM_STATE__.presentationMode === true));
+  await page.keyboard.press("Escape");
+  await page.locator(".topbar").waitFor({ state: "visible" });
+  const editableViewportAfterPresentation = await page.evaluate(() => window.__FREEFORM_STATE__.viewport);
+  verifyUx(
+    "presentation restores the exact editable viewport",
+    JSON.stringify(editableViewportAfterPresentation) === JSON.stringify(editableViewportBeforePresentation),
+    { before: editableViewportBeforePresentation, after: editableViewportAfterPresentation },
+  );
+
+  const marqueeStageBox = await stage.boundingBox();
+  if (!marqueeStageBox) throw new Error("Canvas was not visible enough to record marquee selection");
+  await showProofStep(page, "Shift-drag • marquee-select several artifacts", 450);
+  await page.keyboard.down("Shift");
+  await page.mouse.move(marqueeStageBox.x + 100, marqueeStageBox.y + 80);
+  await page.mouse.down();
+  await page.mouse.move(marqueeStageBox.x + 1180, marqueeStageBox.y + 560, { steps: 18 });
+  await page.waitForTimeout(700);
+  verifyUx("marquee is visibly rendered during selection", await page.getByTestId("selection-marquee").isVisible());
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await page.waitForTimeout(450);
+  const marqueeSelection = await page.evaluate(() => window.__FREEFORM_STATE__.selectedNodeIds);
+  verifyUx("marquee selects multiple intersecting artifacts", marqueeSelection.length >= 3, { marqueeSelection });
+  verifyUx("multi-selection opens the contextual layout toolbar", await page.getByTestId("selection-toolbar").isVisible());
+
+  await showProofStep(page, "Layout selection • distribute, then Undo", 600);
+  const marqueePositionsBeforeLayout = await page.evaluate(() => Object.fromEntries(window.__FREEFORM_STATE__.nodes.map((node) => [node.id, { x: node.x, y: node.y }])));
+  await page.getByTestId("layout-distribute-horizontal").click();
+  await page.waitForTimeout(700);
+  await page.keyboard.press("Meta+z");
+  await page.waitForTimeout(450);
+  const marqueePositionsAfterUndo = await page.evaluate(() => Object.fromEntries(window.__FREEFORM_STATE__.nodes.map((node) => [node.id, { x: node.x, y: node.y }])));
+  verifyUx("layout command is restored by one Undo", JSON.stringify(marqueePositionsAfterUndo) === JSON.stringify(marqueePositionsBeforeLayout));
+
+  await page.keyboard.press("Escape");
+  await page.getByTestId("node-node-revenue").click({ position: { x: 90, y: 16 } });
+  await page.getByTestId("node-node-probability").click({ position: { x: 120, y: 16 }, modifiers: ["Shift"] });
+  const groupIds = ["node-revenue", "node-probability"];
+  const groupBefore = await page.evaluate((ids) => Object.fromEntries(window.__FREEFORM_STATE__.nodes.filter((node) => ids.includes(node.id)).map((node) => [node.id, { x: node.x, y: node.y }])), groupIds);
+  const groupAnchorBox = await page.getByTestId("node-node-revenue").boundingBox();
+  if (!groupAnchorBox) throw new Error("Selected group was not visible enough to record drag");
+  await showProofStep(page, "Drag selection • move two artifacts as one", 450);
+  await page.mouse.move(groupAnchorBox.x + 90, groupAnchorBox.y + 16);
+  await page.mouse.down();
+  await page.mouse.move(groupAnchorBox.x + 210, groupAnchorBox.y + 92, { steps: 18 });
+  await page.mouse.up();
+  await page.waitForTimeout(650);
+  const groupAfter = await page.evaluate((ids) => Object.fromEntries(window.__FREEFORM_STATE__.nodes.filter((node) => ids.includes(node.id)).map((node) => [node.id, { x: node.x, y: node.y }])), groupIds);
+  verifyUx(
+    "group drag applies one shared delta",
+    groupAfter["node-revenue"].x - groupBefore["node-revenue"].x === groupAfter["node-probability"].x - groupBefore["node-probability"].x &&
+      groupAfter["node-revenue"].y - groupBefore["node-revenue"].y === groupAfter["node-probability"].y - groupBefore["node-probability"].y,
+    { before: groupBefore, after: groupAfter },
+  );
+
+  await showProofStep(page, "Undo and Redo • one complete gesture per step", 500);
+  await page.keyboard.press("Meta+z");
+  await page.waitForTimeout(450);
+  const groupUndo = await page.evaluate((ids) => Object.fromEntries(window.__FREEFORM_STATE__.nodes.filter((node) => ids.includes(node.id)).map((node) => [node.id, { x: node.x, y: node.y }])), groupIds);
+  await page.keyboard.press("Meta+Shift+z");
+  await page.waitForTimeout(450);
+  const groupRedo = await page.evaluate((ids) => Object.fromEntries(window.__FREEFORM_STATE__.nodes.filter((node) => ids.includes(node.id)).map((node) => [node.id, { x: node.x, y: node.y }])), groupIds);
+  verifyUx("one Undo restores the complete drag and one Redo reapplies it", JSON.stringify(groupUndo) === JSON.stringify(groupBefore) && JSON.stringify(groupRedo) === JSON.stringify(groupAfter));
+  await page.keyboard.press("Meta+z");
+  await page.waitForTimeout(450);
+
+  const countBeforeDuplicate = await page.evaluate(() => window.__FREEFORM_STATE__.nodes.length);
+  await showProofStep(page, "Duplicate selection • then remove both copies", 500);
+  await page.getByTestId("duplicate-selection").click();
+  await page.waitForFunction((count) => window.__FREEFORM_STATE__?.nodes.length === count + 2, countBeforeDuplicate);
+  verifyUx("selection toolbar duplicates the complete selection", (await page.evaluate(() => window.__FREEFORM_STATE__.selectedNodeIds.length)) === 2);
+  await page.keyboard.press("Delete");
+  await page.waitForFunction((count) => window.__FREEFORM_STATE__?.nodes.length === count, countBeforeDuplicate);
+
+  await page.getByTestId("node-node-revenue").click({ position: { x: 90, y: 16 } });
+  await page.getByTestId("node-node-probability").click({ position: { x: 120, y: 16 }, modifiers: ["Shift"] });
+  await showProofStep(page, "Copy and paste • place a reusable in-session copy", 500);
+  await page.keyboard.press("Meta+c");
+  await page.keyboard.press("Meta+v");
+  await page.waitForFunction((count) => window.__FREEFORM_STATE__?.nodes.length === count + 2, countBeforeDuplicate);
+  verifyUx("canvas clipboard pastes both selected artifacts", (await page.evaluate(() => window.__FREEFORM_STATE__.selectedNodeIds.length)) === 2);
+  await page.keyboard.press("Delete");
+  await page.waitForFunction((count) => window.__FREEFORM_STATE__?.nodes.length === count, countBeforeDuplicate);
+  await page.keyboard.press("Escape");
 
   const stageBox = await stage.boundingBox();
   const revenueNode = page.getByTestId("node-node-revenue");
@@ -986,6 +1151,31 @@ try {
   await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saved locally");
   await page.waitForTimeout(650);
 
+  await page.setViewportSize({ width: 820, height: 700 });
+  await showProofStep(page, "Responsive canvas • close Views without a keyboard", 800);
+  await page.getByTestId("sidebar-toggle").click();
+  await page.getByTestId("close-views").waitFor({ state: "visible" });
+  verifyUx("responsive Views exposes a visible close control", await page.getByTestId("close-views").isVisible());
+  await page.getByTestId("close-views").click();
+  await page.getByTestId("canvas-sidebar").waitFor({ state: "hidden" });
+  verifyUx(
+    "responsive canvas has no horizontal overflow",
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  );
+
+  await page.getByTestId("workspace-menu").click();
+  await page.getByTestId("enter-presentation").click();
+  await showProofStep(page, "Responsive presentation • tap the visible exit control", 900);
+  await page.getByTestId("presentation-controls").waitFor({ state: "visible" });
+  await page.getByTestId("exit-presentation").click();
+  await page.locator(".topbar").waitFor({ state: "visible" });
+  verifyUx(
+    "responsive presentation can be exited without a hardware keyboard",
+    await page.evaluate(() => window.__FREEFORM_STATE__?.presentationMode === false),
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(650);
+
   await showProofStep(page, "Close page • preserve this browser’s workspace", 750);
   const persistedSnapshot = await page.evaluate(() => window.__FREEFORM_STATE__);
   const proofVideo = page.video();
@@ -1085,6 +1275,12 @@ try {
       "rename the centered canvas title",
       "toggle Views with Cmd+B",
       "open the sidebar, create and rename a second view, and switch back",
+      "duplicate, reorder, delete, and restore a View",
+      "reorder a View downward and restore an unsaved deleted View snapshot",
+      "enter Fit All presentation and navigate between Views",
+      "marquee-select and distribute multiple artifacts",
+      "group-drag with transactional Undo and Redo",
+      "duplicate, copy, paste, and delete a selection",
       "drag node",
       "visibly resize the complete chart object",
       "visibly resize Sankey to its proportional minimum",
@@ -1099,6 +1295,7 @@ try {
       "reject an invalid Chart Kit artifact before persistence",
       "delete and drag a personal artifact back from the shared library",
       "delete and restore a built-in artifact from the library",
+      "close responsive Views and exit responsive presentation without a keyboard",
       "close, reopen, and restore the browser-local workspace",
       "capture screenshot",
     ],
