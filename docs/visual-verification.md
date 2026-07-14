@@ -12,9 +12,10 @@ npm run verify:proof
 ```
 
 The helper starts the local Vite server, opens Chromium through Playwright, and
-runs an asserted user journey across layout, shortcuts, the shared artifact
-library, drag, resize, pan, zoom, data, theme, AI handoff generation, deletion,
-re-addition, and close/reopen persistence. A verification-only
+runs an asserted user journey across layout, multi-selection, history, View
+management, presentation, responsive drawer/exit paths, shortcuts, the shared
+artifact library, drag, resize, pan, zoom, data, theme, Build Session creation,
+deletion, re-addition, and close/reopen persistence. A verification-only
 cursor and step label make each gesture legible in the recording. It launches a
 local relay emulator, opens a real Build Session, delivers two encrypted bundles
 with the skill script, and visibly rejects a mixed invalid selection without a
@@ -75,9 +76,19 @@ as supplementary checks. Look for:
 - Build Session status failing to become connected, omitting the skill/delivery
   command, silently changing its target view, or changing board state before a
   delivery;
-- multi-artifact relay delivery appearing partially, stacking every fallback in
-  exactly one hidden position, or showing a rejected selection on the canvas;
+- a closed but active Build Session losing its visible target/Open/End strip,
+  transport state contradicting the delivery outcome, or rejection detail being
+  clipped;
+- a deliberately slow install making the canvas inert without a visible
+  **Installing delivery…** progress state, or closing Build with AI from a
+  phone-width Artifact drawer failing to restore focus to the visible toggle;
+- multi-artifact relay delivery appearing partially, overlapping a delivered or
+  existing card while expanding beyond a full viewport, or showing a rejected
+  selection on the canvas;
 - Views or Artifacts shortcuts firing inside editable controls;
+- downward View ordering doing nothing, deletion Undo restoring a stale save, or
+  phone drawers/presentation losing focus containment or a pointer-accessible
+  exit;
 - the Artifact Library covering its drag target, clipping on mobile, or losing
   personal packages when a node is deleted or the active view changes;
 - Artifact Library previews showing a cropped card, stretching its aspect
@@ -96,4 +107,5 @@ as supplementary checks. Look for:
   current blank-frame detector.
 - Add visible-latency metrics for drag and zoom.
 - Add production preview proof after `npm run build`.
-- Add mobile viewport proof once touch gestures are implemented.
+- Add dedicated touch-gesture proof once direct touch manipulation is
+  implemented; the current responsive proof covers visible controls and exits.

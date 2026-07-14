@@ -98,6 +98,8 @@ Code orientation:
   cross-view package reuse, reload, and browser-profile isolation.
 - `tests/relay.spec.ts` verifies encrypted script delivery, atomicity,
   idempotency, view binding, placement, and WebSocket reconnect in Chromium.
+- `tests/persistence.spec.ts` stresses multi-tab revision, fallback recovery,
+  delete/Undo, and symmetric deletion races in Chromium.
 - `scripts/record-proof.mjs` records the browser proof WebM, converts it to
   GIF, asserts a complete UX journey, and writes manifest, screenshot,
   contact-sheet, UX-check, frame-check, and inspection artifacts.

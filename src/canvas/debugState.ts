@@ -8,7 +8,11 @@ interface CanvasDebugStateOptions {
   artifactLibraryCounts: { builtIn: number; personal: number };
   artifactRegistry: Record<string, RegisteredArtifact>;
   nodes: CanvasNode[];
+  canRedo: boolean;
+  canUndo: boolean;
+  presentationMode: boolean;
   selectedNodeId: string;
+  selectedNodeIds: string[];
   snapToGrid: boolean;
   status: string;
   storageMode: "indexeddb" | "localstorage";
@@ -22,7 +26,11 @@ export function publishCanvasDebugState({
   artifactLibraryCounts,
   artifactRegistry,
   nodes,
+  canRedo,
+  canUndo,
+  presentationMode,
   selectedNodeId,
+  selectedNodeIds,
   snapToGrid,
   status,
   storageMode,
@@ -34,8 +42,12 @@ export function publishCanvasDebugState({
     artifactLibraryOpen,
     artifactLibraryCounts,
     artifactIds: Object.keys(artifactRegistry),
+    canRedo,
+    canUndo,
     nodes,
+    presentationMode,
     selectedNodeId,
+    selectedNodeIds,
     snapGridSize: CANVAS_GRID_SIZE,
     snapToGrid,
     status,
@@ -54,6 +66,10 @@ declare global {
       readonly artifactLibraryCounts: { builtIn: number; personal: number };
       readonly viewport: CanvasViewport;
       readonly selectedNodeId: string;
+      readonly selectedNodeIds: string[];
+      readonly canRedo: boolean;
+      readonly canUndo: boolean;
+      readonly presentationMode: boolean;
       readonly themeMode: ThemeMode;
       readonly snapToGrid: boolean;
       readonly snapGridSize: number;

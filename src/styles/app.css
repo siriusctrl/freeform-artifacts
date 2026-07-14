@@ -138,6 +138,24 @@
   background: var(--panel-soft);
 }
 
+.toolbar-menu button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.toolbar-menu kbd {
+  color: var(--faint);
+  font: 10px/1 var(--font-mono), monospace;
+  white-space: nowrap;
+}
+
+.toolbar-menu-separator {
+  display: block;
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--line);
+}
+
 .menu-switch {
   position: relative;
   width: 32px;
@@ -358,6 +376,8 @@
 }
 
 .canvas-sidebar {
+  position: relative;
+  z-index: 1;
   width: var(--sidebar-width);
   height: 100%;
   display: grid;
@@ -367,6 +387,17 @@
   border-right: 1px solid var(--line);
   transform: translateX(-12px);
   transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sidebar-backdrop,
+.sidebar-close {
+  display: none;
+}
+
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .sidebar-open .canvas-sidebar {
@@ -389,23 +420,30 @@
   padding: 12px 10px 18px;
 }
 
-.canvas-sidebar nav button {
+.view-item {
+  position: relative;
+  margin-bottom: 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.view-select {
   width: 100%;
   display: grid;
   grid-template-rows: auto 24px;
   gap: 7px;
-  margin-bottom: 8px;
   padding: 7px;
   color: var(--muted);
   background: transparent;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 7px;
   text-align: left;
   cursor: pointer;
-  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+  transition: color 160ms ease, transform 160ms ease;
 }
 
-.canvas-sidebar nav button:active {
+.view-select:active {
   transform: scale(0.985);
 }
 
@@ -465,18 +503,23 @@
   background: transparent;
 }
 
-.canvas-sidebar nav button:hover {
+.view-item:hover {
   color: var(--text);
   background: var(--panel-soft);
 }
 
-.canvas-sidebar nav button.active {
+.view-item:hover .view-select,
+.view-item.active .view-select {
+  color: var(--text);
+}
+
+.view-item.active {
   color: var(--text);
   background: color-mix(in srgb, var(--accent), transparent 93%);
   border-color: color-mix(in srgb, var(--accent), transparent 68%);
 }
 
-.canvas-sidebar nav button.active .view-status-dot {
+.view-item.active .view-status-dot {
   background: var(--accent);
 }
 
@@ -485,6 +528,178 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.view-drag-handle,
+.view-menu-toggle {
+  position: absolute;
+  top: 13px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel), transparent 8%);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  box-shadow: 0 4px 12px var(--shadow);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+
+.view-drag-handle {
+  left: 12px;
+  pointer-events: none;
+}
+
+.view-menu-toggle {
+  right: 12px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.view-item:hover .view-drag-handle,
+.view-item:hover .view-menu-toggle,
+.view-item.active .view-menu-toggle,
+.view-item:focus-within .view-menu-toggle,
+.view-menu-toggle[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.view-menu-toggle:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+
+.view-menu-wrap {
+  position: static;
+}
+
+.view-menu {
+  position: absolute;
+  top: 42px;
+  right: 8px;
+  z-index: 8;
+  width: 132px;
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: 0 16px 36px var(--shadow);
+}
+
+.view-menu button {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.view-menu button:hover {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.view-menu button.danger:hover {
+  color: var(--alert);
+  background: var(--alert-soft);
+}
+
+.view-menu button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.view-item.drop-target::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.view-item.drop-before::after {
+  top: -5px;
+}
+
+.view-item.drop-after::after {
+  bottom: -5px;
+}
+
+@media (hover: none) {
+  .view-menu-toggle {
+    width: 32px;
+    height: 32px;
+    opacity: 1;
+  }
+
+  .view-drag-handle {
+    display: none;
+  }
+}
+
+.view-undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 90;
+  min-width: 248px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0 8px 0 14px;
+  color: #f4f7f7;
+  background: #171b1d;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 7px;
+  box-shadow: 0 18px 42px rgb(0 0 0 / 24%);
+  transform: translateX(-50%);
+  font-size: 13px;
+}
+
+.view-undo-toast button {
+  height: 30px;
+  padding: 0 10px;
+  color: #75dcea;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 620;
+}
+
+.view-undo-toast button:hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+.canvas-app-shell.presentation-mode {
+  grid-template-columns: minmax(0, 1fr);
+  transition: none;
+}
+
+.presentation-mode .workspace {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.presentation-mode .topbar,
+.presentation-mode .canvas-sidebar-slot,
+.presentation-mode .artifact-library-slot {
+  display: none;
 }
 
 .artifact-library-slot {
@@ -809,7 +1024,8 @@
   .canvas-app-shell,
   .canvas-sidebar-slot,
   .canvas-sidebar,
-  .canvas-sidebar nav button,
+  .view-item,
+  .view-select,
   .artifact-library-slot,
   .artifact-library-item,
   .artifact-preview {
@@ -879,6 +1095,69 @@
   font-size: 12px;
 }
 
+.relay-session-indicator {
+  position: fixed;
+  bottom: 18px;
+  right: 14px;
+  z-index: 30;
+  max-width: min(430px, calc(100vw - 28px));
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px 7px 11px;
+  color: var(--muted);
+  background: var(--panel-glass);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px var(--shadow);
+  backdrop-filter: blur(12px);
+  font-size: 11.5px;
+}
+
+.relay-session-indicator-copy {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.relay-session-indicator-copy strong,
+.relay-session-indicator-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relay-session-indicator-copy strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 640;
+}
+
+.relay-indicator-action {
+  padding: 3px 1px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 620;
+}
+
+.relay-indicator-end {
+  color: var(--muted);
+}
+
+.presentation-mode .relay-session-indicator {
+  display: none;
+}
+
+.artifact-library-slot.open + .relay-session-indicator {
+  display: none;
+}
+
 .relay-status-dot {
   width: 8px;
   height: 8px;
@@ -918,7 +1197,23 @@
   background: #bd603f;
 }
 
-.relay-delivery-rejected > div:not(.relay-turnstile) span {
+.relay-delivery-outcome {
+  grid-column: 1 / -1;
+  padding-top: 7px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.relay-session-state .relay-delivery-outcome strong,
+.relay-session-state .relay-delivery-outcome span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.relay-delivery-rejected .relay-delivery-outcome strong,
+.relay-delivery-rejected .relay-delivery-outcome span {
   color: #a64f34;
 }
 
@@ -1024,6 +1319,12 @@
   height: 40px;
 }
 
+@media (max-width: 900px) {
+  .relay-session-indicator {
+    bottom: 70px;
+  }
+}
+
 @media (max-width: 700px) {
   .dialog-backdrop {
     padding: 8px;
@@ -1043,6 +1344,11 @@
 
   .relay-session-state time {
     grid-column: 2;
+  }
+
+  .relay-session-indicator {
+    right: 8px;
+    max-width: calc(100vw - 16px);
   }
 
   .agent-dialog-actions {

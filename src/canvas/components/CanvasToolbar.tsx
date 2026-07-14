@@ -8,9 +8,12 @@ import {
   LibraryBig,
   Moon,
   PanelLeft,
+  Presentation,
+  Redo2,
   RotateCcw,
   Sparkles,
   Sun,
+  Undo2,
   Upload,
 } from "lucide-react";
 import type { ThemeMode } from "../constants";
@@ -22,9 +25,12 @@ interface CanvasToolbarProps {
   viewTitle: string;
   sidebarOpen: boolean;
   artifactLibraryOpen: boolean;
+  canRedo: boolean;
+  canUndo: boolean;
   themeMode: ThemeMode;
   snapToGrid: boolean;
   onBuildArtifact: () => void;
+  onEnterPresentation: () => void;
   onToggleArtifactLibrary: () => void;
   onExportWorkspace: () => void;
   onImportData: () => void;
@@ -34,6 +40,8 @@ interface CanvasToolbarProps {
   onThemeToggle: () => void;
   onToggleSidebar: () => void;
   onToggleSnapToGrid: () => void;
+  onRedo: () => void;
+  onUndo: () => void;
 }
 
 export function CanvasToolbar({
@@ -43,9 +51,12 @@ export function CanvasToolbar({
   viewTitle,
   sidebarOpen,
   artifactLibraryOpen,
+  canRedo,
+  canUndo,
   themeMode,
   snapToGrid,
   onBuildArtifact,
+  onEnterPresentation,
   onToggleArtifactLibrary,
   onExportWorkspace,
   onImportData,
@@ -55,6 +66,8 @@ export function CanvasToolbar({
   onThemeToggle,
   onToggleSidebar,
   onToggleSnapToGrid,
+  onRedo,
+  onUndo,
 }: CanvasToolbarProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -148,6 +161,7 @@ export function CanvasToolbar({
             className="visually-hidden"
             type="file"
             accept="application/json,.json"
+            tabIndex={-1}
             data-testid="workspace-file"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
@@ -178,6 +192,13 @@ export function CanvasToolbar({
             </button>
             {menuOpen ? (
               <div className="toolbar-menu" role="menu">
+                <button type="button" role="menuitem" data-testid="undo-action" disabled={!canUndo} onClick={() => { onUndo(); setMenuOpen(false); }}>
+                  <Undo2 size={17} /><span>Undo</span><kbd>Cmd/Ctrl+Z</kbd>
+                </button>
+                <button type="button" role="menuitem" data-testid="redo-action" disabled={!canRedo} onClick={() => { onRedo(); setMenuOpen(false); }}>
+                  <Redo2 size={17} /><span>Redo</span><kbd>Shift+Cmd/Ctrl+Z</kbd>
+                </button>
+                <span className="toolbar-menu-separator" role="separator" />
                 <button type="button" role="menuitemcheckbox" aria-checked={snapToGrid} data-testid="snap-toggle" onClick={onToggleSnapToGrid}>
                   <Grid3X3 size={17} />
                   <span>Snap to grid</span>
@@ -192,6 +213,10 @@ export function CanvasToolbar({
                 <button type="button" role="menuitem" data-testid="export-workspace" onClick={() => { onExportWorkspace(); setMenuOpen(false); }}>
                   <ArrowDownToLine size={17} /><span>Export backup</span>
                 </button>
+                <button type="button" role="menuitem" data-testid="enter-presentation" onClick={() => { onEnterPresentation(); setMenuOpen(false); }}>
+                  <Presentation size={17} /><span>Present canvas</span><kbd>Esc to exit</kbd>
+                </button>
+                <span className="toolbar-menu-separator" role="separator" />
                 <button type="button" role="menuitem" data-testid="reset-workspace" onClick={() => { onResetWorkspace(); setMenuOpen(false); }}>
                   <RotateCcw size={17} /><span>Reset demo</span>
                 </button>

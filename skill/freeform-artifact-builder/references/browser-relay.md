@@ -41,7 +41,8 @@ The script:
 - retries transient failures, including a later script invocation on the same
   machine, with the exact same ciphertext and id;
 - prints only the delivery id, target view id, artifact ids, and relay acceptance
-  state. It never prints the token or encryption key;
+  state. A successful upload explicitly reports `outcome: "relay_accepted"` and
+  `browserInstalled: false`; it never prints the token or encryption key;
 - reports an ambiguous network outcome with the delivery id. Retry the same
   bundles with that exact `--delivery-id`; never create a new id for an
   uncertain attempt.

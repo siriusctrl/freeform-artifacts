@@ -8,28 +8,32 @@ import { artifactObjectScale } from "../nodeSize";
 interface CanvasNodeViewProps {
   artifact?: RegisteredArtifact;
   canvasTheme: CanvasTheme;
+  isPresentation: boolean;
   isSelected: boolean;
   node: CanvasNode;
   onDeleteNode: (nodeId: string) => void;
   onNodePointerDown: (event: PointerEvent<HTMLDivElement>, node: CanvasNode) => void;
   onResizePointerDown: (event: PointerEvent<HTMLButtonElement>, node: CanvasNode) => void;
+  showSelectionControls: boolean;
 }
 
 export function CanvasNodeView({
   artifact,
   canvasTheme,
+  isPresentation,
   isSelected,
   node,
   onDeleteNode,
   onNodePointerDown,
   onResizePointerDown,
+  showSelectionControls,
 }: CanvasNodeViewProps) {
   const baseSize = artifact?.defaultSize ?? { width: node.width, height: node.height };
   const objectScale = artifactObjectScale(node, artifact);
 
   return (
     <div
-      className={`canvas-node ${isSelected ? "selected" : ""}`}
+      className={`canvas-node ${isSelected ? "selected" : ""} ${isPresentation ? "presenting" : ""}`}
       data-testid={`node-${node.id}`}
       data-node-id={node.id}
       draggable={false}
@@ -39,7 +43,7 @@ export function CanvasNodeView({
         transform: `translate(${node.x}px, ${node.y}px) scale(${objectScale})`,
         zIndex: node.zIndex,
       }}
-      onPointerDown={(event) => onNodePointerDown(event, node)}
+      onPointerDown={isPresentation ? undefined : (event) => onNodePointerDown(event, node)}
       onDragStart={(event) => event.preventDefault()}
     >
       <div className="node-chrome">
@@ -47,7 +51,7 @@ export function CanvasNodeView({
           <AppWindow size={14} />
           <span>{node.title}</span>
         </div>
-        {isSelected ? (
+        {isSelected && showSelectionControls ? (
           <button
             type="button"
             className="node-delete"
@@ -68,10 +72,10 @@ export function CanvasNodeView({
           artifact={artifact}
           canvasTheme={canvasTheme}
           node={node}
-          renderSize={{ width: baseSize.width, height: Math.max(0, baseSize.height - 32) }}
+          renderSize={{ width: baseSize.width, height: Math.max(0, baseSize.height - (isPresentation ? 0 : 32)) }}
         />
       </div>
-      {isSelected ? (
+      {isSelected && showSelectionControls ? (
         <button
           type="button"
           className="resize-handle"

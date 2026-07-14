@@ -5,6 +5,7 @@ export const WORKSPACE_VERSION = 1;
 
 export const workspaceRecordSchema = z.object({
   version: z.literal(WORKSPACE_VERSION),
+  revision: z.number().int().nonnegative().default(0),
   templateId: z.string().min(1),
   title: z.string().trim().min(1).max(80).optional(),
   templateVersion: z.number().int().positive(),
@@ -17,6 +18,7 @@ export const workspaceRecordSchema = z.object({
 
 export interface WorkspaceRecord {
   version: typeof WORKSPACE_VERSION;
+  revision: number;
   templateId: string;
   title: string;
   templateVersion: number;

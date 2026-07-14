@@ -68,9 +68,18 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   immediately copyable, agent-neutral Browser Relay instruction without changing
   board state until a delivery is installed;
 - centered-title rename, smoothly animated Views navigation, data-derived
-  previews, create/switch, and active-view reload recovery;
-- guarded `Cmd/Ctrl+B`, `Shift+Cmd/Ctrl+A`, `Cmd/Ctrl+0`, zoom, Escape, and
-  deletion shortcuts, including input-field exemption;
+  previews, create/switch, persistent reorder, board-only duplication,
+  bidirectional drag/menu ordering, live-snapshot duplicate/delete Undo,
+  per-View tombstoned delete failure recovery, stale-tab reconciliation,
+  conditional restore, and active-view reload recovery;
+- marquee/additive multi-selection, shared-delta group drag, alignment,
+  duplicate, clipboard, multi-delete, and one-entry gesture Undo/Redo;
+- guarded history, selection, clipboard, `Cmd/Ctrl+B`,
+  `Shift+Cmd/Ctrl+A`, `Cmd/Ctrl+0`, zoom, Escape, and deletion shortcuts,
+  including input-field and open-library exemptions;
+- presentation Fit All containment, hidden editing chrome, exact viewport
+  and selection restoration, rapid Left/Right View navigation, keyboard exit,
+  and pointer-accessible exit controls;
 - Built-in artifact search, visible-viewport click placement, and drag placement
   with world-coordinate conversion and grid snap;
 - complete contained live previews for all built-in renderer families, personal
@@ -88,7 +97,8 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   the prohibition on self-deployed source files;
 - encrypted multi-artifact delivery, repeat deliveries in one session, local
   script interoperability, grid snap/highest-z placement, and centered
-  grid-offset fallback when no complete viewport opening exists;
+  expansion into the nearest free world-grid positions when no complete
+  viewport opening exists, without overlap between existing or delivered nodes;
 - all-or-nothing browser validation for a bad multi-artifact selection, target
   binding after view navigation, pending replay after disconnect, and receipt
   replay without duplicate placement when a post-commit ACK is lost;
@@ -113,11 +123,13 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   each other's deletions;
 - the debug state reports the active template ID and storage mode.
 
-The browser suites live under `tests/`; `canvas.spec.ts` intentionally follows
-end-to-end user journeys, while helpers should move out when they are reused by
+The browser suites live under `tests/`; `canvas.spec.ts` follows core end-to-end
+journeys, while `productivity.spec.ts` owns history, multi-select, View
+management, and presentation workflows. Helpers should move out when reused by
 another suite rather than solely to satisfy a line-count target.
 `tests/mobile.spec.ts` keeps the touch-sized layout honest without pretending
-desktop mouse gestures are touch interaction coverage.
+desktop mouse gestures are touch interaction coverage. It also verifies that
+the Views drawer and presentation mode always expose a touch exit path.
 
 ## Relay Emulator and Adversarial Coverage
 
@@ -133,8 +145,10 @@ checks strict CORS, 30-minute alarms, separate browser/upload capabilities,
 WebSocket hibernation/replay, terminal ACK deletion, idempotency, capability
 substitution attempts, signed-locator forgery, changed-envelope delivery-id
 conflicts, invalid-token rate-limit isolation, fail-closed environment drift,
-malformed and oversized bodies, cross-origin uploads, session delivery ceilings,
-cleanup/upload races, and refusal after cleanup. `relay:check` also proves
+canonical IPv6 and mapped-IPv4 rate keys, malformed and oversized bodies,
+cross-origin rejection, allowlisted upload CORS on success and error, session delivery ceilings,
+cleanup/upload races, post-expiry WebSocket ACK refusal, and refusal after
+cleanup. `relay:check` also proves
 that committed Wrangler-generated types are current and that the production
 bundle/migration can be produced with `wrangler deploy --dry-run`.
 
@@ -142,10 +156,16 @@ bundle/migration can be produced with `wrangler deploy --dry-run`.
 Chromium page. Its Turnstile stub uses Cloudflare's documented development test
 key/token only; production verification must use the real widget and siteverify.
 The browser suite also covers rapid deliveries across current persisted state,
-same-view multi-tab edits during a relay commit, page-memory-only capabilities,
-cancellation during module preparation, stale view creation responses,
+same-view multi-tab edits during a relay commit, current-tab edits inside the
+autosave window, relay Undo without clearing earlier history, stale-save and
+deleted-View resurrection resistance, page-memory-only capabilities,
+cancellation during module preparation, deletion of a target View while its
+module is preparing, stale view creation responses,
 authenticated byte-identical uploader retry caching, and ambiguous network
-outcomes that preserve the original delivery id. CI gives each independent
+outcomes that preserve the original delivery id. A deterministic regression
+holds the relay IndexedDB transaction open while attempting a real title edit;
+it proves the workspace is inert until commit and that UI and IndexedDB retain
+the same title and installed artifact afterward. CI gives each independent
 browser page a documentation-range source IP because every context otherwise
 shares one loopback address; the Worker suite separately exercises shared-IP
 rate-limit exhaustion against the production binding limits. A reload removes
@@ -153,11 +173,21 @@ the browser capability synchronously; its `pagehide` DELETE may race one last
 upload, so browser tests require that such ciphertext can never install while
 the server's synchronous TTL and alarm remain the final cleanup boundary.
 
+`tests/persistence.spec.ts` repeats fallback-recovery and multi-tab deletion
+races. It covers stale active deletes, competing Undo, symmetric zero-View
+recovery, and an older Undo presented after restore, edit, and a second deletion;
+the last case must preserve the newer generation UUID and latest snapshot.
+
 If Chromium is missing, run:
 
 ```sh
 npm run setup:browsers
 ```
+
+Parallel worktrees can avoid reusing another agent's app and relay servers with
+an isolated app port, for example `FREEFORM_TEST_PORT=4277 npm run verify:ui`.
+The Playwright config derives a matching relay port and CORS origin; set
+`FREEFORM_RELAY_PORT` as well only when that derived port is unavailable.
 
 ## Browser Proof
 
@@ -168,10 +198,11 @@ npm run verify:proof
 ```
 
 This is the visual evidence path. It opens Chromium and runs a complete asserted
-journey through layout, drag, resize, pan, pinch in/out, toolbar zoom/reset, data
-import, theme switching, Build Session creation, encrypted multi-artifact relay
-delivery, atomic bad-selection rejection, artifact deletion, and persistence
-after reopening. It
+journey through layout, multi-selection, Undo/Redo, View management,
+presentation and responsive exits, drag, resize, pan, pinch in/out, toolbar
+zoom/reset, data import, theme switching, Build Session creation, encrypted
+multi-artifact relay delivery, atomic bad-selection rejection, artifact
+deletion, and persistence after reopening. It
 records WebM video with a verification-only cursor and step label, writes a
 final screenshot, converts the recording to GIF with `ffmpeg`, writes a 30-cell
 contact sheet sampled across the full timeline, runs a blank-frame check, and

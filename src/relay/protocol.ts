@@ -4,7 +4,9 @@ export const RELAY_PROTOCOL_VERSION = 1 as const;
 export const RELAY_SESSION_TTL_MS = 30 * 60 * 1_000;
 export const RELAY_MAX_ARTIFACTS_PER_DELIVERY = 12;
 export const RELAY_MAX_DELIVERIES_PER_SESSION = 24;
-export const RELAY_MAX_CIPHERTEXT_BYTES = 2_000_000;
+// Stored as base64url TEXT in Durable Object SQLite. Keep the encoded value,
+// row metadata, and SQLite overhead comfortably below the 2 MB row/value cap.
+export const RELAY_MAX_CIPHERTEXT_BYTES = 1_400_000;
 export const RELAY_MAX_PENDING_BYTES = 8_000_000;
 export const RELAY_WEBSOCKET_PROTOCOL = "freeform-relay-v1";
 

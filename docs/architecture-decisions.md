@@ -1251,15 +1251,35 @@ must remain in the user's browser.
   writes so a failed item cannot leave an accidental partial dashboard.
 - Place delivered artifacts using host-owned layout knowledge. Search the
   current target-view viewport for a complete non-overlapping position nearest
-  its center, snap it to the grid, and append it at the highest z-index. If no
-  complete position exists, place it at the viewport center; offset additional
-  fallback items by one grid step so they do not become perfectly hidden.
+  its center, snap it to the grid, and append it at the highest z-index. If the
+  viewport has no complete opening, continue the same center-out search across
+  the neighboring world grid until every item has its own non-overlapping
+  position; never stack a fallback at the occupied viewport center.
 - Keep the existing file installer as the offline fallback. Do not require an
   npm-published delivery CLI initially; the project skill may invoke a bundled
   script or the relay HTTP contract directly.
 - Persist a successful browser delivery receipt in the same IndexedDB
   transaction as its packages and target workspace. If an ACK is lost, replay
   returns the receipt and sends another ACK without placing duplicate nodes.
+- Give every browser-local workspace a monotonic revision. Flush current-tab
+  dirty state before a live install, compare-and-swap ordinary saves, and merge
+  relay nodes into the transaction's latest revision. Rebase external node
+  changes through bounded in-memory history and record the delivery as one Undo
+  step instead of clearing prior Undo entries.
+- Make mounted editing surfaces inert for the short validation-and-commit
+  critical section and cancel any active drag when it begins. This prevents a
+  new local mutation from being accepted after the flushed snapshot but before
+  the committed workspace is applied; session controls remain available so the
+  user can still end an in-flight session.
+- Treat a deleted target view as a terminal delivery rejection. Check its
+  browser-local tombstone at the serialized write boundary and inside the
+  IndexedDB transaction; never clear that tombstone from the relay path or
+  recreate the view from an in-flight snapshot.
+- Store deletion as an independent per-View tombstone with a fresh generation
+  UUID, and make restore a one-time conditional write against both that
+  generation and the deleted revision. Recovery mirrors are monotonic, so
+  stale pagehide and stale Undo paths cannot resurrect or overwrite a newer
+  View, including after restore, edit, and a later deletion.
 - Bind each idempotency UUID to a digest of its complete encrypted envelope.
   Reject the same id with changed ciphertext. Let the uploader retain only that
   envelope and a payload digest in a private, mode-0600 OS cache only while an
@@ -1270,8 +1290,12 @@ must remain in the user's browser.
   allowlists, Turnstile on session creation, signed session locators, IP
   session-creation rate limiting, per-source and authenticated per-session
   upload and WebSocket-connect rate limiting, 12 artifacts per delivery, 24 deliveries per
-  session, 2 MB ciphertext per delivery, 8 MB pending ciphertext per session,
+  session, 1.4 MB decoded ciphertext per delivery (so its base64url TEXT and row
+  metadata remain below Durable Object SQLite's 2 MB limit), 8 MB pending ciphertext per session,
   body limits, a 30-minute alarm, and an operational kill switch.
+- Return strict CORS headers for every allowlisted browser-origin upload result,
+  including errors, and canonicalize IPv6 limit keys by /64 while mapping only
+  genuine IPv4-mapped IPv6 addresses into IPv4 buckets.
 - Deploy the personal demo on `workers.dev`. Do not add D1, KV, or R2: the
   SQLite-backed Durable Object is sufficient for the session's bounded pending
   ciphertext and idempotency rows.
@@ -1293,9 +1317,9 @@ must remain in the user's browser.
   object preserves the server-side capability split, but does not turn artifact
   modules into an untrusted-code sandbox.
 - Durable Object alarms are at-least-once and may run after their scheduled
-  time. Every route enforces the expiry timestamp synchronously, so ciphertext
-  becomes inaccessible at 30 minutes even if physical deletion is delayed until
-  the alarm retry.
+  time. Every route and hibernating WebSocket message enforces the expiry
+  timestamp synchronously, so ciphertext becomes inaccessible at 30 minutes
+  even if physical deletion is delayed until the alarm retry.
 - The SQL schema-v2 upgrade adds envelope digests. An exact retry of still-
   pending schema-v1 ciphertext is compared field-by-field and backfills its
   digest. A terminal schema-v1 delivery whose ciphertext was already deleted is
@@ -1305,6 +1329,12 @@ must remain in the user's browser.
   needs rate limits to avoid quota exhaustion.
 - A session bound to another view uses that view's last persisted viewport for
   placement; it must not silently retarget itself when the user navigates.
+- The mounted canvas is briefly read-only while a delivery validates and
+  commits. Normal bundles make this nearly invisible, but a slow trusted module
+  can make the busy interval noticeable.
+- Deleting the bound view invalidates future installation into it. A delivery
+  already in module preparation receives a rejected ACK rather than reviving
+  the view or retrying until session expiry.
 
 ### Implemented boundary
 
@@ -1370,3 +1400,63 @@ reusable initial node payload. That is enough to render the actual object.
 Revisit cached preview images only if measured renderer cost remains high after
 visibility management, or if sandboxed artifacts can no longer be mounted in
 the host document.
+
+## ADR-0027: Keep editing history transactional and presentation framing derived
+
+Status: Accepted
+
+Date: 2026-07-13
+
+### Context
+
+Single-node editing was sufficient for the first demo, but real canvas assembly
+needs reversible operations, multi-object layout, and a clean way to present a
+board. Recording every pointer move would make Undo noisy and memory-heavy.
+Persisting a fitted presentation viewport would also overwrite the spatial frame
+the user expects to return to after presenting.
+
+The product remains a static, browser-local app. These capabilities should not
+introduce a backend, a collaboration log, or a second workspace format.
+
+### Decision
+
+- Keep a bounded history of 100 document snapshots in memory for the mounted
+  View. Snapshots contain nodes and the associated selection.
+- Treat add, delete, duplicate, paste, import, and layout as discrete commands.
+  Open one transaction on pointer down for drag/resize and commit it on pointer
+  up, so an entire gesture is one Undo step.
+- Exclude pan, zoom, theme, panel state, and selection-only changes from history.
+  History resets when a workspace is replaced, reloaded, or switched.
+- Preserve blank-stage drag as pan. Use `Shift+drag` for an additive marquee and
+  `Shift`/`Cmd`/`Ctrl` click for selection adjustment. Move a selected set with
+  one shared snapped delta so relative spacing does not drift.
+- Keep the persisted `selectedNodeId` compatibility field as the last active
+  selected node; the full multi-selection remains transient UI state.
+- Store View ordering as lightweight origin-local navigation metadata, separate
+  from IndexedDB workspace records. Duplicating a View clones only board data
+  and reuses origin-wide package identities. View deletion never removes
+  packages and exposes a short-lived workspace restore action. Duplicate/delete
+  of the active View uses its live snapshot rather than waiting for autosave;
+  deletion tombstones hide records when IndexedDB deletion is temporarily
+  unavailable.
+- Derive presentation Fit All from live stage dimensions and node world bounds.
+  Hide editing chrome, retain App-level presentation state across View switches,
+  leave selection and every persisted editing viewport untouched, and keep a
+  compact pointer-accessible exit/navigation strip.
+
+### Tradeoffs
+
+- Undo history does not survive reload or View switching. Persisted event logs
+  would add schema, migration, quota, and conflict semantics that a local demo
+  does not yet need.
+- Snapshot history is simpler and more reliable than inverse commands but costs
+  memory proportional to recent board size. The fixed limit bounds that cost.
+- Multi-selection is not a persistent group abstraction. Users can arrange and
+  move a set together without introducing nested coordinate systems into board
+  storage, resize, previews, or artifact delivery.
+- View order can fall back to the workspace listing order if localStorage is
+  unavailable; losing navigation order must never invalidate IndexedDB board
+  saves.
+
+Revisit persistent history or structural grouping only after a concrete workflow
+requires cross-session undo, shared collaboration, or reusable nested layouts.

@@ -20,6 +20,20 @@ const DELIVERY_SCRIPT = path.resolve("skill/freeform-artifact-builder/scripts/de
 
 test.describe.configure({ mode: "serial" });
 
+interface PositionedNode {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function nodesOverlapWithGap(left: PositionedNode, right: PositionedNode, gap = 0) {
+  return left.x < right.x + right.width + gap &&
+    left.x + left.width + gap > right.x &&
+    left.y < right.y + right.height + gap &&
+    left.y + left.height + gap > right.y;
+}
+
 async function openBuildSession(page: Page) {
   await stubTurnstile(page);
   await page.goto("/");
@@ -27,7 +41,9 @@ async function openBuildSession(page: Page) {
   await page.getByTestId("build-artifact").click();
   await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
   await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:4177" });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(page.url()).origin,
+  });
   await page.getByTestId("copy-agent-instruction").click();
   const handoff = await page.evaluate(() => navigator.clipboard.readText());
   const option = (name: string) => handoff.match(new RegExp(`--${name}\\s+"([^"]+)"`))?.[1];
@@ -46,6 +62,8 @@ async function openBuildSession(page: Page) {
   expect(session.uploadToken).toHaveLength(43);
   expect(session.encryptionKey).toHaveLength(43);
   expect(Date.parse(session.expiresAt)).toBeGreaterThan(Date.now() + 25 * 60_000);
+  await expect(page.getByTestId("artifact-bundle-file")).toHaveAttribute("tabindex", "-1");
+  await expect(page.getByTestId("workspace-file")).toHaveAttribute("tabindex", "-1");
   return session;
 }
 
@@ -114,6 +132,28 @@ async function readArtifactPackage(page: Page, artifactId: string) {
   }, artifactId);
 }
 
+async function readWorkspaceTitle(page: Page, workspaceId: string) {
+  return page.evaluate(async (id) => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("freeform-artifacts", 3);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise<string | null>((resolve, reject) => {
+        const request = database.transaction("workspaces", "readonly").objectStore("workspaces").get(id);
+        request.onsuccess = () => {
+          const value = request.result as { title?: unknown } | undefined;
+          resolve(typeof value?.title === "string" ? value.title : null);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      database.close();
+    }
+  }, workspaceId);
+}
+
 test("one session accepts atomic, repeated, and multi-tab-safe deliveries", async ({ page }, testInfo) => {
   test.setTimeout(75_000);
   const session = await openBuildSession(page);
@@ -148,6 +188,11 @@ test("one session accepts atomic, repeated, and multi-tab-safe deliveries", asyn
   [first.artifactId, second.artifactId]);
   expect(deliveredNodes).toHaveLength(2);
   expect(deliveredNodes.every((node) => node.x % 38 === 0 && node.y % 38 === 0)).toBe(true);
+  const placementBlockers = [...initialNodes];
+  for (const delivered of deliveredNodes) {
+    expect(placementBlockers.some((existing) => nodesOverlapWithGap(delivered, existing, 38))).toBe(false);
+    placementBlockers.push(delivered);
+  }
   expect(deliveredNodes[0].zIndex).toBeGreaterThan(Math.max(...initialNodes.map((node) => node.zIndex)));
   expect(deliveredNodes[1].zIndex).toBeGreaterThan(deliveredNodes[0].zIndex);
 
@@ -192,7 +237,12 @@ test("one session accepts atomic, repeated, and multi-tab-safe deliveries", asyn
   await page.waitForTimeout(350);
   const sessionId = session.sessionId;
   await page.getByTitle("Close", { exact: true }).click();
-  await page.getByTestId("build-artifact").click();
+  const compactSession = page.getByTestId("relay-session-indicator");
+  await expect(compactSession).toBeVisible();
+  await expect(compactSession).toContainText(session.targetViewTitle);
+  await expect(compactSession).toContainText("Relay connected");
+  await expect(compactSession.getByRole("button", { name: "End" })).toBeVisible();
+  await page.getByTestId("relay-session-reopen").click();
   await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
   await page.getByTestId("copy-agent-instruction").click();
   expect((await page.evaluate(() => navigator.clipboard.readText())).includes(sessionId)).toBe(true);
@@ -224,7 +274,219 @@ test("one session accepts atomic, repeated, and multi-tab-safe deliveries", asyn
   expect(await page.evaluate((id) => window.__FREEFORM_STATE__!.artifactIds.includes(id), afterReload.artifactId)).toBe(false);
 });
 
-test("host placement falls back to centered, grid-offset stacking when no card fits the viewport", async ({ page }, testInfo) => {
+test("a stale tab cannot overwrite a relay commit and Undo removes only the delivery", async ({ page }, testInfo) => {
+  const session = await openBuildSession(page);
+  const sibling = await page.context().newPage();
+  await sibling.goto("/");
+  await sibling.getByTestId("canvas-stage").waitFor({ state: "visible" });
+
+  await sibling.getByTestId("canvas-title").dblclick();
+  await sibling.getByTestId("canvas-title-input").fill("Shared planning view");
+  await sibling.getByTestId("canvas-title-input").press("Enter");
+  await expect.poll(async () => readWorkspaceTitle(sibling, session.targetViewId)).toBe("Shared planning view");
+
+  const bundle = agentArtifactBundle("relay-revision-guard");
+  await runDelivery(testInfo, session, [bundle]);
+  await expect.poll(async () => page.evaluate((artifactId) =>
+    window.__FREEFORM_STATE__!.artifactIds.includes(artifactId), bundle.artifactId)).toBe(true);
+  await expect(page.getByTestId("canvas-title")).toHaveText("Shared planning view");
+  await page.getByTitle("Close", { exact: true }).click();
+
+  await page.keyboard.press("Meta+z");
+  await expect.poll(async () => page.evaluate((artifactId) =>
+    window.__FREEFORM_STATE__!.nodes.some((node) => node.artifactId === artifactId), bundle.artifactId)).toBe(false);
+  await expect(page.getByTestId("canvas-title")).toHaveText("Shared planning view");
+  await page.keyboard.press("Meta+Shift+z");
+  await expect.poll(async () => page.evaluate((artifactId) =>
+    window.__FREEFORM_STATE__!.nodes.some((node) => node.artifactId === artifactId), bundle.artifactId)).toBe(true);
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+
+  await sibling.getByTestId("canvas-title").dblclick();
+  await sibling.getByTestId("canvas-title-input").fill("Stale overwrite attempt");
+  await sibling.getByTestId("canvas-title-input").press("Enter");
+  await expect.poll(async () => sibling.evaluate(() => window.__FREEFORM_STATE__!.status))
+    .toContain("changed in another browser tab");
+
+  await page.reload();
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await expect(page.getByTestId("canvas-title")).toHaveText("Shared planning view");
+  await expect.poll(async () => page.evaluate((artifactId) =>
+    window.__FREEFORM_STATE__!.artifactIds.includes(artifactId), bundle.artifactId)).toBe(true);
+  await sibling.close();
+});
+
+test("a stale tab cannot resurrect a deleted target view", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("sidebar-toggle").click();
+  await page.getByTestId("create-view").click();
+  const safeViewId = await page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId);
+  expect(safeViewId).not.toBe("market-overview");
+  await page.getByTestId("view-market-overview").click();
+
+  const stale = await page.context().newPage();
+  await stale.goto("/?view=market-overview");
+  await stale.getByTestId("canvas-stage").waitFor({ state: "visible" });
+
+  await page.getByTestId("view-menu-market-overview").click();
+  await page.getByTestId("delete-view-market-overview").click();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId)).not.toBe("market-overview");
+  await expect.poll(async () => stale.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId)).not.toBe("market-overview");
+
+  await stale.close();
+  await page.goto("/?view=market-overview");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  expect(await page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId)).not.toBe("market-overview");
+  await page.getByTestId("sidebar-toggle").click();
+  await expect(page.locator('[data-view-id="market-overview"]')).toHaveCount(0);
+});
+
+test("relay delivery remains undoable without clearing earlier local history", async ({ page }, testInfo) => {
+  const session = await openBuildSession(page);
+  await page.getByTitle("Close", { exact: true }).click();
+  const initialCount = await page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length);
+  await page.getByTestId("node-node-revenue").click({ position: { x: 90, y: 16 } });
+  await page.keyboard.press("Meta+d");
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(initialCount + 1);
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+
+  const bundle = agentArtifactBundle("relay-history-card");
+  await runDelivery(testInfo, session, [bundle]);
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(initialCount + 2);
+
+  await page.keyboard.press("Meta+z");
+  await expect.poll(async () => page.evaluate((artifactId) => ({
+    count: window.__FREEFORM_STATE__!.nodes.length,
+    delivered: window.__FREEFORM_STATE__!.nodes.some((node) => node.artifactId === artifactId),
+  }), bundle.artifactId)).toEqual({ count: initialCount + 1, delivered: false });
+  await page.keyboard.press("Meta+z");
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(initialCount);
+
+  await page.keyboard.press("Meta+Shift+z");
+  await page.keyboard.press("Meta+Shift+z");
+  await expect.poll(async () => page.evaluate((artifactId) => ({
+    count: window.__FREEFORM_STATE__!.nodes.length,
+    delivered: window.__FREEFORM_STATE__!.nodes.some((node) => node.artifactId === artifactId),
+  }), bundle.artifactId)).toEqual({ count: initialCount + 2, delivered: true });
+});
+
+test("an immediate delivery preserves edits still inside the autosave window", async ({ page }, testInfo) => {
+  const session = await openBuildSession(page);
+  await page.getByTitle("Close", { exact: true }).click();
+  await page.getByTestId("canvas-title").dblclick();
+  await page.getByTestId("canvas-title-input").fill("Unsaved relay draft");
+  await page.getByTestId("canvas-title-input").press("Enter");
+
+  const bundle = agentArtifactBundle("relay-autosave-window-card");
+  await runDelivery(testInfo, session, [bundle]);
+  await expect(page.getByTestId("canvas-title")).toHaveText("Unsaved relay draft");
+  await expect.poll(async () => page.evaluate((artifactId) =>
+    window.__FREEFORM_STATE__!.nodes.some((node) => node.artifactId === artifactId), bundle.artifactId)).toBe(true);
+
+  await page.reload();
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await expect(page.getByTestId("canvas-title")).toHaveText("Unsaved relay draft");
+  await expect.poll(async () => page.evaluate((artifactId) =>
+    window.__FREEFORM_STATE__!.nodes.some((node) => node.artifactId === artifactId), bundle.artifactId)).toBe(true);
+});
+
+test("relay installation locks workspace interaction until its atomic transaction commits", async ({ page }, testInfo) => {
+  const session = await openBuildSession(page);
+  await page.getByTitle("Close", { exact: true }).click();
+  const originalTitle = await page.getByTestId("canvas-title").innerText();
+  await page.getByTestId("canvas-title").dblclick();
+  const titleInput = page.getByTestId("canvas-title-input");
+  await expect(titleInput).toBeFocused();
+  await expect(titleInput).toHaveValue(originalTitle);
+
+  await page.evaluate(() => {
+    const relayProbe = window as unknown as {
+      __relayTxStarted?: boolean;
+      __relayTxReleased?: boolean;
+      __relayTxCompleted?: boolean;
+    };
+    const originalTransaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function (
+      this: IDBDatabase,
+      storeNames: string | string[],
+      mode?: IDBTransactionMode,
+      options?: IDBTransactionOptions,
+    ) {
+      const transaction = originalTransaction.call(this, storeNames, mode, options);
+      const names = typeof storeNames === "string" ? [storeNames] : Array.from(storeNames);
+      if (mode === "readwrite" && names.includes("relay-receipts")) {
+        relayProbe.__relayTxStarted = true;
+        transaction.addEventListener("complete", () => {
+          relayProbe.__relayTxCompleted = true;
+        }, { once: true });
+        const receiptStore = transaction.objectStore("relay-receipts");
+        const startedAt = performance.now();
+        const keepAlive = () => {
+          if (performance.now() - startedAt >= 2_500) {
+            relayProbe.__relayTxReleased = true;
+            return;
+          }
+          const request = receiptStore.get("__relay-install-lock-keepalive__");
+          request.addEventListener("success", keepAlive, { once: true });
+        };
+        keepAlive();
+      }
+      return transaction;
+    } as typeof originalTransaction;
+  });
+
+  const bundle = agentArtifactBundle("relay-install-lock-card");
+  const upload = runDelivery(testInfo, session, [bundle]);
+  await expect.poll(async () => page.evaluate(() => Boolean(
+    (window as unknown as { __relayTxStarted?: boolean }).__relayTxStarted,
+  ))).toBe(true);
+
+  const appShell = page.locator("main.canvas-app-shell");
+  const workspace = page.locator("section.workspace");
+  await expect(appShell).toHaveAttribute("aria-busy", "true");
+  await expect(workspace).toHaveAttribute("inert", "");
+  await expect(page.getByTestId("relay-install-progress")).toContainText("Installing delivery");
+  await expect(titleInput).toHaveCount(0);
+  const lockedTitle = page.getByTestId("canvas-title");
+  await expect(lockedTitle).toHaveText(originalTitle);
+  const titleBox = await lockedTitle.boundingBox();
+  expect(titleBox).not.toBeNull();
+  await page.mouse.dblclick(titleBox!.x + titleBox!.width / 2, titleBox!.y + titleBox!.height / 2);
+  await page.keyboard.type(" blocked title mutation");
+  await expect(page.getByTestId("canvas-title-input")).toHaveCount(0);
+  await expect(lockedTitle).toHaveText(originalTitle);
+
+  await upload;
+  await expect.poll(async () => page.evaluate((artifactId) =>
+    window.__FREEFORM_STATE__!.artifactIds.includes(artifactId), bundle.artifactId), { timeout: 10_000 }).toBe(true);
+  await expect.poll(async () => page.evaluate(() => Boolean(
+    (window as unknown as { __relayTxCompleted?: boolean }).__relayTxCompleted,
+  ))).toBe(true);
+  await expect(appShell).not.toHaveAttribute("aria-busy", "true");
+  await expect(workspace).not.toHaveAttribute("inert", "");
+  await expect(lockedTitle).toHaveText(originalTitle);
+
+  const persisted = await page.evaluate(async ({ artifactId, targetViewId }) => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("freeform-artifacts", 3);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const record = await new Promise<{ title: string; board: { nodes: Array<{ artifactId: string }> } }>((resolve, reject) => {
+      const request = database.transaction("workspaces", "readonly").objectStore("workspaces").get(targetViewId);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return {
+      title: record.title,
+      artifactInstalled: record.board.nodes.some((node) => node.artifactId === artifactId),
+    };
+  }, { artifactId: bundle.artifactId, targetViewId: session.targetViewId });
+  expect(persisted).toEqual({ title: originalTitle, artifactInstalled: true });
+});
+
+test("host placement expands into the nearest free world grid when no card fits the viewport", async ({ page }, testInfo) => {
   const session = await openBuildSession(page);
   const makeOversized = (artifactId: string) => {
     const bundle = agentArtifactBundle(artifactId);
@@ -238,7 +500,8 @@ test("host placement falls back to centered, grid-offset stacking when no card f
   };
   const first = makeOversized("relay-oversized-one");
   const second = makeOversized("relay-oversized-two");
-  const expected = await page.evaluate(() => {
+  const initialNodes = await page.evaluate(() => window.__FREEFORM_STATE__!.nodes);
+  const origin = await page.evaluate(() => {
     const state = window.__FREEFORM_STATE__!;
     const rect = document.querySelector<HTMLElement>('[data-testid="canvas-stage"]')!.getBoundingClientRect();
     const centerX = (rect.width / 2 - state.viewport.x) / state.viewport.scale;
@@ -253,10 +516,30 @@ test("host placement falls back to centered, grid-offset stacking when no card f
   const nodes = await page.evaluate((ids) =>
     window.__FREEFORM_STATE__!.nodes.filter((node) => ids.includes(node.artifactId)),
   [first.artifactId, second.artifactId]);
-  expect(nodes.map(({ x, y }) => ({ x, y }))).toEqual([
-    expected,
-    { x: expected.x + 38, y: expected.y + 38 },
-  ]);
+  expect(nodes).toHaveLength(2);
+  expect(nodes.every((node) => node.x % 38 === 0 && node.y % 38 === 0)).toBe(true);
+  expect(nodesOverlapWithGap(nodes[0], nodes[1], 38)).toBe(false);
+  for (const delivered of nodes) {
+    expect(initialNodes.some((existing) => nodesOverlapWithGap(delivered, existing, 38))).toBe(false);
+  }
+  const blockers = [...initialNodes];
+  for (const delivered of nodes) {
+    const radius = Math.max(Math.abs(delivered.x - origin.x), Math.abs(delivered.y - origin.y)) / 38;
+    expect(Number.isInteger(radius)).toBe(true);
+    let closerOpening: { x: number; y: number } | undefined;
+    for (let y = -radius + 1; y < radius; y += 1) {
+      for (let x = -radius + 1; x < radius; x += 1) {
+        const candidate = { ...delivered, x: origin.x + x * 38, y: origin.y + y * 38 };
+        if (!blockers.some((existing) => nodesOverlapWithGap(candidate, existing, 38))) {
+          closerOpening = { x: candidate.x, y: candidate.y };
+          break;
+        }
+      }
+      if (closerOpening) break;
+    }
+    expect(closerOpening).toBeUndefined();
+    blockers.push(delivered);
+  }
   expect(nodes[1].zIndex).toBeGreaterThan(nodes[0].zIndex);
 });
 
@@ -275,9 +558,12 @@ test("a bad artifact rejects the complete multi-artifact delivery atomically", a
   const initialCount = await page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length);
   const accepted = await runDelivery(testInfo, session, [valid, invalid]);
   expect(accepted.accepted).toBe(true);
-  await expect(page.getByTestId("relay-session-status")).toContainText("Delivery rejected");
-  await expect(page.getByTestId("relay-session-status")).toContainText("category count");
-  await expect(page.getByTestId("relay-session-status")).toContainText("Nothing was installed");
+  await expect(page.getByTestId("relay-transport-state")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-transport-state")).not.toContainText("Delivery rejected");
+  const outcome = page.getByTestId("relay-delivery-outcome");
+  await expect(outcome).toContainText("Delivery rejected. Nothing was installed.");
+  await expect(outcome).toContainText("category count");
+  await expect(outcome.getByText("Delivery rejected. Nothing was installed.", { exact: true })).toHaveCSS("white-space", "normal");
   expect(await readArtifactPackage(page, valid.artifactId)).toBeUndefined();
   expect(await readArtifactPackage(page, invalid.artifactId)).toBeUndefined();
   expect(await page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(initialCount);
@@ -325,9 +611,63 @@ test("a session remains bound to its original view after navigation", async ({ p
   const bundle = agentArtifactBundle("relay-bound-view-card");
   await runDelivery(testInfo, session, [bundle]);
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(0);
+  await page.getByTestId("artifact-library-toggle").click();
+  await page.getByTestId("artifact-tab-personal").click();
+  await expect(page.getByTestId(`artifact-library-item-${bundle.artifactId}`)).toBeVisible();
+  await page.getByTitle("Close artifacts").click();
+  await page.getByTestId("sidebar-toggle").click();
   await page.getByTestId(`view-${session.targetViewId}`).click();
   await expect.poll(async () => page.evaluate((id) => window.__FREEFORM_STATE__!.artifactIds.includes(id), bundle.artifactId)).toBe(true);
   await expect(page.getByText("Installed without a deploy")).toBeVisible();
+});
+
+test("deleting the target during delivery rejects it without resurrecting the view", async ({ page, context }, testInfo) => {
+  let resolveRejectedAck!: () => void;
+  const rejectedAck = new Promise<void>((resolve) => { resolveRejectedAck = resolve; });
+  await context.routeWebSocket(/\/v1\/sessions\/[^/]+\/connect$/, (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((message) => {
+      if (typeof message === "string" && message.includes('"type":"ack"') && message.includes('"outcome":"rejected"')) {
+        resolveRejectedAck();
+      }
+      server.send(message);
+    });
+  });
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("sidebar-toggle").click();
+  await page.getByTestId("create-view").click();
+  const safeViewId = await page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId);
+  await page.getByTestId("view-market-overview").click();
+
+  const deleter = await context.newPage();
+  await deleter.goto("/?view=market-overview");
+  await deleter.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await deleter.getByTestId("sidebar-toggle").click();
+
+  const session = await openBuildSession(page);
+  const slow = agentArtifactBundle("relay-deleted-target-card");
+  slow.moduleSource = `window.__relayDeletedTargetInstallStarted = true;
+await new Promise((resolve) => setTimeout(resolve, 1200));
+${slow.moduleSource}`;
+  const upload = runDelivery(testInfo, session, [slow]);
+  await expect.poll(async () => page.evaluate(() => Boolean(
+    (window as unknown as { __relayDeletedTargetInstallStarted?: boolean }).__relayDeletedTargetInstallStarted,
+  ))).toBe(true);
+
+  await deleter.getByTestId("view-menu-market-overview").click();
+  await deleter.getByTestId("delete-view-market-overview").click();
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId)).toBe(safeViewId);
+  await upload;
+  await rejectedAck;
+
+  expect(await readArtifactPackage(page, slow.artifactId)).toBeUndefined();
+  await expect(page.locator('[data-view-id="market-overview"]')).toHaveCount(0);
+  await page.reload();
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("sidebar-toggle").click();
+  await expect(page.locator('[data-view-id="market-overview"]')).toHaveCount(0);
+  expect(await readArtifactPackage(page, slow.artifactId)).toBeUndefined();
 });
 
 test("a pending encrypted delivery is replayed after the browser reconnects", async ({ page, context }, testInfo) => {
@@ -352,6 +692,11 @@ test("a pending encrypted delivery is replayed after the browser reconnects", as
   blockConnections = false;
   await expect(page.getByTestId("relay-session-status")).toContainText("Installed 1 artifact", { timeout: 15_000 });
   await expect.poll(async () => page.evaluate((id) => window.__FREEFORM_STATE__!.artifactIds.includes(id), bundle.artifactId)).toBe(true);
+  blockConnections = true;
+  (browserSocket as WebSocketRoute | null)?.close({ code: 1012, reason: "Second Playwright interruption" });
+  await expect(page.getByTestId("relay-transport-state")).toContainText("Reconnecting");
+  await expect(page.getByTestId("relay-transport-state")).not.toContainText("Installed 1 artifact");
+  await expect(page.getByTestId("relay-delivery-outcome")).toContainText("Installed 1 artifact");
 });
 
 test("an expired session clears stale copy feedback and its browser handoff", async ({ page, context }) => {
@@ -382,7 +727,8 @@ test("session creation failure can be retried and a stale target cannot win the 
       return;
     }
     creationAttempt += 1;
-    const corsHeaders = { "Access-Control-Allow-Origin": "http://127.0.0.1:4177", Vary: "Origin" };
+    const requestOrigin = route.request().headers().origin ?? new URL(page.url()).origin;
+    const corsHeaders = { "Access-Control-Allow-Origin": requestOrigin, Vary: "Origin" };
     if (creationAttempt === 1) {
       await route.fulfill({
         status: 503,

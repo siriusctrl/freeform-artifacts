@@ -2,12 +2,17 @@ import { env } from "cloudflare:workers";
 import { runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import {
+  RELAY_MAX_CIPHERTEXT_BYTES,
   RELAY_PROTOCOL_VERSION,
   RELAY_WEBSOCKET_PROTOCOL,
   relayServerMessageSchema,
   type EncryptedRelayDelivery,
 } from "../../src/relay/protocol";
-import { developmentTurnstileBypassAllowed, relayConfigurationReady } from "../src/index";
+import {
+  developmentTurnstileBypassAllowed,
+  normalizeRateLimitSource,
+  relayConfigurationReady,
+} from "../src/index";
 
 const APP_ORIGIN = "http://127.0.0.1:4177";
 const browserToken = "browser-capability-for-relay-tests";
@@ -25,9 +30,14 @@ async function tokenHash(token: string) {
 }
 
 async function createSession(targetViewId = "market-overview") {
-  const response = await SELF.fetch("https://relay.test/v1/sessions", {
+  const sourceSegment = crypto.randomUUID().replaceAll("-", "").slice(0, 4);
+  const response = await SELF.fetch("http://127.0.0.1/v1/sessions", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Origin: APP_ORIGIN },
+    headers: {
+      "CF-Connecting-IP": `2001:db8:${sourceSegment}::1`,
+      "Content-Type": "application/json",
+      Origin: APP_ORIGIN,
+    },
     body: JSON.stringify({
       version: RELAY_PROTOCOL_VERSION,
       targetViewId,
@@ -90,6 +100,16 @@ function nextMessage(socket: WebSocket) {
   });
 }
 
+function nextClose(socket: WebSocket) {
+  return new Promise<CloseEvent>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Timed out waiting for relay WebSocket close")), 2_000);
+    socket.addEventListener("close", (event) => {
+      clearTimeout(timeout);
+      resolve(event);
+    }, { once: true });
+  });
+}
+
 async function connect(sessionId: string) {
   const response = await SELF.fetch(`https://relay.test/v1/sessions/${sessionId}/connect`, {
     headers: {
@@ -119,9 +139,43 @@ describe("artifact delivery relay", () => {
       ...preview,
       ALLOWED_ORIGINS: "http://public.example",
     } as unknown as Env)).toBe(false);
-    expect(developmentTurnstileBypassAllowed(preview, APP_ORIGIN, "test-turnstile-pass")).toBe(false);
-    expect(developmentTurnstileBypassAllowed(development, APP_ORIGIN, "test-turnstile-pass")).toBe(true);
-    expect(developmentTurnstileBypassAllowed(development, "https://public.example", "test-turnstile-pass")).toBe(false);
+    expect(developmentTurnstileBypassAllowed(
+      preview,
+      APP_ORIGIN,
+      "test-turnstile-pass",
+      "http://127.0.0.1/v1/sessions",
+    )).toBe(false);
+    expect(developmentTurnstileBypassAllowed(
+      development,
+      APP_ORIGIN,
+      "test-turnstile-pass",
+      "http://127.0.0.1/v1/sessions",
+    )).toBe(true);
+    expect(developmentTurnstileBypassAllowed(
+      development,
+      "https://public.example",
+      "test-turnstile-pass",
+      "http://127.0.0.1/v1/sessions",
+    )).toBe(false);
+    expect(developmentTurnstileBypassAllowed(
+      development,
+      APP_ORIGIN,
+      "test-turnstile-pass",
+      "https://public-preview.example/v1/sessions",
+    )).toBe(false);
+  });
+
+  it("groups IPv6 rate-limit sources by /64 without coalescing IPv4 clients", () => {
+    expect(normalizeRateLimitSource("2001:db8:abcd:12::1"))
+      .toBe(normalizeRateLimitSource("2001:0db8:abcd:0012:ffff::9"));
+    expect(normalizeRateLimitSource("2001:db8:abcd:12::1"))
+      .not.toBe(normalizeRateLimitSource("2001:db8:abcd:13::1"));
+    expect(normalizeRateLimitSource("192.0.2.8")).toBe("192.0.2.8");
+    expect(normalizeRateLimitSource("::ffff:192.0.2.8")).toBe("192.0.2.8");
+    expect(normalizeRateLimitSource("0:0:0:0:0:ffff:c000:0208")).toBe("192.0.2.8");
+    expect(normalizeRateLimitSource("64:ff9b::192.0.2.8"))
+      .toBe(normalizeRateLimitSource("64:ff9b::c000:208"));
+    expect(normalizeRateLimitSource("64:ff9b::192.0.2.8")).not.toBe("192.0.2.8");
   });
 
   it("creates a view-bound session with strict CORS and a thirty-minute expiry", async () => {
@@ -152,11 +206,14 @@ describe("artifact delivery relay", () => {
     const { body } = await createSession();
     const value = delivery();
 
-    for (let index = 0; index < 31; index += 1) {
-      const unauthorized = await upload(body.sessionId, value, browserToken, `invalid-source-${index}`);
+    for (let index = 0; index < 30; index += 1) {
+      const unauthorized = await upload(body.sessionId, value, browserToken, "shared-invalid-source");
       expect(unauthorized.status).toBe(401);
       await expect(unauthorized.json()).resolves.toEqual({ error: "invalid_upload_capability" });
     }
+    const sourceLimited = await upload(body.sessionId, value, browserToken, "shared-invalid-source");
+    expect(sourceLimited.status).toBe(429);
+    await expect(sourceLimited.json()).resolves.toEqual({ error: "rate_limited" });
 
     const accepted = await upload(body.sessionId, value, uploadToken, "valid-source");
     expect(accepted.status).toBe(202);
@@ -262,6 +319,36 @@ describe("artifact delivery relay", () => {
     reconnected.close(1000, "Done");
   });
 
+  it("refuses WebSocket acknowledgements after synchronous session expiry", async () => {
+    const { body } = await createSession();
+    const socket = await connect(body.sessionId);
+    expect(relayServerMessageSchema.parse(await nextMessage(socket))).toMatchObject({ type: "ready" });
+    const value = delivery();
+    const pushedMessage = nextMessage(socket);
+    expect((await upload(body.sessionId, value)).status).toBe(202);
+    expect(relayServerMessageSchema.parse(await pushedMessage)).toMatchObject({
+      type: "delivery",
+      delivery: { deliveryId: value.deliveryId },
+    });
+
+    const stub = env.BUILD_SESSIONS.getByName(body.sessionId);
+    await runInDurableObject(stub, (_instance, state) => {
+      state.storage.sql.exec(
+        "UPDATE session_metadata SET expires_at = ? WHERE singleton = 1",
+        Date.now() - 1,
+      );
+    });
+    const closed = nextClose(socket);
+    socket.send(JSON.stringify({
+      version: RELAY_PROTOCOL_VERSION,
+      type: "ack",
+      deliveryId: value.deliveryId,
+      outcome: "installed",
+    }));
+    expect((await closed).code).toBe(4000);
+    expect((await sessionStatus(body.sessionId)).status).toBe(410);
+  });
+
   it("cleans session state on its alarm and refuses later replay", async () => {
     const { body } = await createSession();
     const value = delivery();
@@ -321,8 +408,38 @@ describe("artifact delivery relay", () => {
     });
     expect(crossOrigin.status).toBe(403);
 
+    const allowedOriginUpload = await SELF.fetch(`https://relay.test/v1/sessions/${body.sessionId}/deliveries`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${uploadToken}`,
+        "CF-Connecting-IP": "cors-browser-upload",
+        "Content-Type": "application/json",
+        Origin: APP_ORIGIN,
+      },
+      body: JSON.stringify(delivery()),
+    });
+    expect(allowedOriginUpload.status).toBe(202);
+    expect(allowedOriginUpload.headers.get("Access-Control-Allow-Origin")).toBe(APP_ORIGIN);
+
+    const allowedOriginError = await SELF.fetch(`https://relay.test/v1/sessions/${body.sessionId}/deliveries`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer invalid-upload-capability",
+        "CF-Connecting-IP": "cors-browser-error",
+        "Content-Type": "application/json",
+        Origin: APP_ORIGIN,
+      },
+      body: JSON.stringify(delivery()),
+    });
+    expect(allowedOriginError.status).toBe(401);
+    expect(allowedOriginError.headers.get("Access-Control-Allow-Origin")).toBe(APP_ORIGIN);
+
+    const boundary = delivery();
+    boundary.ciphertext = bytesToBase64Url(new Uint8Array(RELAY_MAX_CIPHERTEXT_BYTES));
+    expect((await upload(body.sessionId, boundary)).status).toBe(202);
+
     const tooLarge = delivery();
-    tooLarge.ciphertext = bytesToBase64Url(new Uint8Array(2_000_001));
+    tooLarge.ciphertext = bytesToBase64Url(new Uint8Array(RELAY_MAX_CIPHERTEXT_BYTES + 1));
     const oversized = await upload(body.sessionId, tooLarge);
     expect(oversized.status).toBe(413);
   });

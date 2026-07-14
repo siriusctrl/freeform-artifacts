@@ -302,15 +302,16 @@ function checkSampledFrames(gifFile) {
 
 function proofArtifactBundle(
   artifactId = "agent-capacity-card",
-  nodeTitle = "Agent capacity",
+  nodeTitle = "Agent Capacity",
   chartTitle = "Installed directly into this view",
+  artifactTitle = "Agent Capacity",
 ) {
   return {
     version: 1,
     artifactId,
     moduleSource: `export const artifact = {
       id: ${JSON.stringify(artifactId)}, renderer: "chart-kit",
-      title: "Agent Capacity", version: "1.0.0", defaultSize: { width: 480, height: 300 },
+      title: ${JSON.stringify(artifactTitle)}, version: "1.0.0", defaultSize: { width: 480, height: 300 },
       buildChart: ({ data }) => ({
         kind: "cartesian", title: data.title,
         categories: data.points.map((point) => point.label),
@@ -375,6 +376,47 @@ function deliverProofBundles(session, bundles, label) {
     throw new Error(`Relay delivery script failed: ${delivery.stderr || "unknown error"}`);
   }
   return JSON.parse(delivery.stdout);
+}
+
+function deliverProofBundlesAsync(session, bundles, label) {
+  const bundlePaths = bundles.map((bundle, index) => {
+    const bundlePath = path.join(outputDir, `${label}-${index}.freeform-artifact.json`);
+    writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
+    return bundlePath;
+  });
+  return new Promise((resolve, reject) => {
+    const delivery = spawn(process.execPath, [
+      path.join(root, "skill/freeform-artifact-builder/scripts/deliver.mjs"),
+      "--relay-url", session.endpoint,
+      "--session-id", session.sessionId,
+      "--credentials-stdin",
+      "--view-id", session.targetViewId,
+      ...bundlePaths,
+    ], {
+      cwd: root,
+      env: { ...process.env, FREEFORM_RELAY_CACHE_DIR: path.join(outputDir, "relay-cache") },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    delivery.stdout.setEncoding("utf8");
+    delivery.stderr.setEncoding("utf8");
+    delivery.stdout.on("data", (chunk) => { stdout += chunk; });
+    delivery.stderr.on("data", (chunk) => { stderr += chunk; });
+    delivery.on("error", reject);
+    delivery.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`Relay delivery script failed: ${stderr || `exit ${code}`}`));
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    delivery.stdin.end(`${JSON.stringify({ uploadToken: session.uploadToken, encryptionKey: session.encryptionKey })}\n`);
+  });
 }
 
 const relayServer = spawn("npx", [
@@ -654,8 +696,173 @@ try {
   await page.waitForTimeout(1000);
   const viewSummaries = await page.evaluate(() => window.__FREEFORM_AGENT__.listViews());
   verifyUx("view switch restores the first canvas and keeps both names", (await page.getByTestId("canvas-title").innerText()) === "Market canvas" && viewSummaries.some((view) => view.title === "Scenario canvas"), { viewSummaries });
+
+  await showProofStep(page, "Duplicate View • preserve the complete board", 700);
+  await page.getByTestId("view-menu-market-overview").click();
+  await page.getByTestId("duplicate-view-market-overview").click();
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.templateId !== "market-overview" && window.__FREEFORM_STATE__?.nodes.length === 5);
+  const duplicateViewId = await page.evaluate(() => window.__FREEFORM_STATE__.templateId);
+  verifyUx(
+    "View duplicate clones board data without changing artifact packages",
+    duplicateViewId !== "market-overview" && (await page.getByTestId("canvas-title").innerText()) === "Market canvas copy",
+    { duplicateViewId },
+  );
+
+  await showProofStep(page, "Reorder Views • drag the preview into place", 700);
+  await page.locator(`[data-view-id="${duplicateViewId}"]`).dragTo(page.locator('[data-view-id="market-overview"]'));
+  await page.waitForTimeout(700);
+  const reorderedViewIds = await page.locator(".view-item").evaluateAll((items) => items.map((item) => item.getAttribute("data-view-id")));
+  verifyUx("View drag order updates immediately", reorderedViewIds[0] === duplicateViewId, { reorderedViewIds });
+
+  await showProofStep(page, "Reorder downward • place the first View after its target", 650);
+  await page.locator(`[data-view-id="${duplicateViewId}"]`).dragTo(page.locator('[data-view-id="market-overview"]'));
+  await page.waitForTimeout(650);
+  const downwardViewIds = await page.locator(".view-item").evaluateAll((items) => items.map((item) => item.getAttribute("data-view-id")));
+  verifyUx("View drag order works in both directions", downwardViewIds[1] === duplicateViewId, { downwardViewIds });
+  await page.getByTestId(`view-menu-${duplicateViewId}`).click();
+  await page.getByTestId(`move-view-up-${duplicateViewId}`).click();
+  await page.waitForTimeout(450);
+
+  await page.getByTestId("canvas-title").dblclick();
+  const duplicateTitleInput = page.getByTestId("canvas-title-input");
+  await duplicateTitleInput.press("Control+A");
+  await duplicateTitleInput.pressSequentially("Transient market copy", { delay: 35 });
+  await duplicateTitleInput.press("Enter");
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saving locally");
+
+  await page.getByTestId(`view-menu-${duplicateViewId}`).click();
+  await page.getByTestId(`delete-view-${duplicateViewId}`).click();
+  await page.getByTestId("view-undo-toast").waitFor({ state: "visible" });
+  await showProofStep(page, "Delete unsaved View • restore the live snapshot", 700);
+  verifyUx("deleted View leaves the sidebar", (await page.locator(`[data-view-id="${duplicateViewId}"]`).count()) === 0);
+  await page.waitForTimeout(650);
+  await page.getByTestId("view-undo-toast").getByRole("button", { name: "Undo" }).click();
+  await page.waitForFunction((id) => Boolean(document.querySelector(`[data-view-id="${id}"]`)), duplicateViewId);
+  verifyUx("View deletion Undo restores the same local View", (await page.locator(`[data-view-id="${duplicateViewId}"]`).count()) === 1);
+  verifyUx(
+    "View deletion Undo preserves edits that had not reached autosave",
+    (await page.locator(`[data-view-id="${duplicateViewId}"] .view-label`).innerText()) === "Transient market copy",
+  );
+
+  await page.getByTestId("view-market-overview").click();
+  await page.getByTestId("node-node-revenue").waitFor({ state: "visible" });
   await page.getByTestId("sidebar-toggle").click();
   await page.waitForTimeout(500);
+
+  const editableViewportBeforePresentation = await page.evaluate(() => window.__FREEFORM_STATE__.viewport);
+  await page.getByTestId("workspace-menu").click();
+  await page.getByTestId("enter-presentation").click();
+  await showProofStep(page, "Present canvas • Fit All without editing chrome", 1200);
+  verifyUx("presentation exposes a touch-friendly exit and View navigation strip", await page.getByTestId("presentation-controls").isVisible());
+  const presentationGeometry = await page.evaluate(() => {
+    const stageRect = document.querySelector('[data-testid="canvas-stage"]').getBoundingClientRect();
+    const nodeRects = [...document.querySelectorAll(".canvas-node")].map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+    });
+    return {
+      topbarVisible: document.querySelector(".topbar")?.getBoundingClientRect().height > 0,
+      nodeChromeVisible: [...document.querySelectorAll(".node-chrome")].some((element) => element.getBoundingClientRect().height > 0),
+      contained: nodeRects.every((rect) => rect.left >= stageRect.left - 1 && rect.right <= stageRect.right + 1 && rect.top >= stageRect.top - 1 && rect.bottom <= stageRect.bottom + 1),
+      nodeCount: nodeRects.length,
+    };
+  });
+  verifyUx(
+    "presentation hides editing chrome and contains every node",
+    !presentationGeometry.topbarVisible && !presentationGeometry.nodeChromeVisible && presentationGeometry.contained && presentationGeometry.nodeCount === 5,
+    presentationGeometry,
+  );
+
+  await showProofStep(page, "Presentation navigation • Left and Right switch Views", 650);
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction((id) => window.__FREEFORM_STATE__?.templateId === id, duplicateViewId);
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(() => window.__FREEFORM_STATE__?.templateId === "market-overview");
+  verifyUx("presentation survives View switches", await page.evaluate(() => window.__FREEFORM_STATE__.presentationMode === true));
+  await page.keyboard.press("Escape");
+  await page.locator(".topbar").waitFor({ state: "visible" });
+  const editableViewportAfterPresentation = await page.evaluate(() => window.__FREEFORM_STATE__.viewport);
+  verifyUx(
+    "presentation restores the exact editable viewport",
+    JSON.stringify(editableViewportAfterPresentation) === JSON.stringify(editableViewportBeforePresentation),
+    { before: editableViewportBeforePresentation, after: editableViewportAfterPresentation },
+  );
+
+  const marqueeStageBox = await stage.boundingBox();
+  if (!marqueeStageBox) throw new Error("Canvas was not visible enough to record marquee selection");
+  await showProofStep(page, "Shift-drag • marquee-select several artifacts", 450);
+  await page.keyboard.down("Shift");
+  await page.mouse.move(marqueeStageBox.x + 100, marqueeStageBox.y + 80);
+  await page.mouse.down();
+  await page.mouse.move(marqueeStageBox.x + 1180, marqueeStageBox.y + 560, { steps: 18 });
+  await page.waitForTimeout(700);
+  verifyUx("marquee is visibly rendered during selection", await page.getByTestId("selection-marquee").isVisible());
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await page.waitForTimeout(450);
+  const marqueeSelection = await page.evaluate(() => window.__FREEFORM_STATE__.selectedNodeIds);
+  verifyUx("marquee selects multiple intersecting artifacts", marqueeSelection.length >= 3, { marqueeSelection });
+  verifyUx("multi-selection opens the contextual layout toolbar", await page.getByTestId("selection-toolbar").isVisible());
+
+  await showProofStep(page, "Layout selection • distribute, then Undo", 600);
+  const marqueePositionsBeforeLayout = await page.evaluate(() => Object.fromEntries(window.__FREEFORM_STATE__.nodes.map((node) => [node.id, { x: node.x, y: node.y }])));
+  await page.getByTestId("layout-distribute-horizontal").click();
+  await page.waitForTimeout(700);
+  await page.keyboard.press("Meta+z");
+  await page.waitForTimeout(450);
+  const marqueePositionsAfterUndo = await page.evaluate(() => Object.fromEntries(window.__FREEFORM_STATE__.nodes.map((node) => [node.id, { x: node.x, y: node.y }])));
+  verifyUx("layout command is restored by one Undo", JSON.stringify(marqueePositionsAfterUndo) === JSON.stringify(marqueePositionsBeforeLayout));
+
+  await page.keyboard.press("Escape");
+  await page.getByTestId("node-node-revenue").click({ position: { x: 90, y: 16 } });
+  await page.getByTestId("node-node-probability").click({ position: { x: 120, y: 16 }, modifiers: ["Shift"] });
+  const groupIds = ["node-revenue", "node-probability"];
+  const groupBefore = await page.evaluate((ids) => Object.fromEntries(window.__FREEFORM_STATE__.nodes.filter((node) => ids.includes(node.id)).map((node) => [node.id, { x: node.x, y: node.y }])), groupIds);
+  const groupAnchorBox = await page.getByTestId("node-node-revenue").boundingBox();
+  if (!groupAnchorBox) throw new Error("Selected group was not visible enough to record drag");
+  await showProofStep(page, "Drag selection • move two artifacts as one", 450);
+  await page.mouse.move(groupAnchorBox.x + 90, groupAnchorBox.y + 16);
+  await page.mouse.down();
+  await page.mouse.move(groupAnchorBox.x + 210, groupAnchorBox.y + 92, { steps: 18 });
+  await page.mouse.up();
+  await page.waitForTimeout(650);
+  const groupAfter = await page.evaluate((ids) => Object.fromEntries(window.__FREEFORM_STATE__.nodes.filter((node) => ids.includes(node.id)).map((node) => [node.id, { x: node.x, y: node.y }])), groupIds);
+  verifyUx(
+    "group drag applies one shared delta",
+    groupAfter["node-revenue"].x - groupBefore["node-revenue"].x === groupAfter["node-probability"].x - groupBefore["node-probability"].x &&
+      groupAfter["node-revenue"].y - groupBefore["node-revenue"].y === groupAfter["node-probability"].y - groupBefore["node-probability"].y,
+    { before: groupBefore, after: groupAfter },
+  );
+
+  await showProofStep(page, "Undo and Redo • one complete gesture per step", 500);
+  await page.keyboard.press("Meta+z");
+  await page.waitForTimeout(450);
+  const groupUndo = await page.evaluate((ids) => Object.fromEntries(window.__FREEFORM_STATE__.nodes.filter((node) => ids.includes(node.id)).map((node) => [node.id, { x: node.x, y: node.y }])), groupIds);
+  await page.keyboard.press("Meta+Shift+z");
+  await page.waitForTimeout(450);
+  const groupRedo = await page.evaluate((ids) => Object.fromEntries(window.__FREEFORM_STATE__.nodes.filter((node) => ids.includes(node.id)).map((node) => [node.id, { x: node.x, y: node.y }])), groupIds);
+  verifyUx("one Undo restores the complete drag and one Redo reapplies it", JSON.stringify(groupUndo) === JSON.stringify(groupBefore) && JSON.stringify(groupRedo) === JSON.stringify(groupAfter));
+  await page.keyboard.press("Meta+z");
+  await page.waitForTimeout(450);
+
+  const countBeforeDuplicate = await page.evaluate(() => window.__FREEFORM_STATE__.nodes.length);
+  await showProofStep(page, "Duplicate selection • then remove both copies", 500);
+  await page.getByTestId("duplicate-selection").click();
+  await page.waitForFunction((count) => window.__FREEFORM_STATE__?.nodes.length === count + 2, countBeforeDuplicate);
+  verifyUx("selection toolbar duplicates the complete selection", (await page.evaluate(() => window.__FREEFORM_STATE__.selectedNodeIds.length)) === 2);
+  await page.keyboard.press("Delete");
+  await page.waitForFunction((count) => window.__FREEFORM_STATE__?.nodes.length === count, countBeforeDuplicate);
+
+  await page.getByTestId("node-node-revenue").click({ position: { x: 90, y: 16 } });
+  await page.getByTestId("node-node-probability").click({ position: { x: 120, y: 16 }, modifiers: ["Shift"] });
+  await showProofStep(page, "Copy and paste • place a reusable in-session copy", 500);
+  await page.keyboard.press("Meta+c");
+  await page.keyboard.press("Meta+v");
+  await page.waitForFunction((count) => window.__FREEFORM_STATE__?.nodes.length === count + 2, countBeforeDuplicate);
+  verifyUx("canvas clipboard pastes both selected artifacts", (await page.evaluate(() => window.__FREEFORM_STATE__.selectedNodeIds.length)) === 2);
+  await page.keyboard.press("Delete");
+  await page.waitForFunction((count) => window.__FREEFORM_STATE__?.nodes.length === count, countBeforeDuplicate);
+  await page.keyboard.press("Escape");
 
   const stageBox = await stage.boundingBox();
   const revenueNode = page.getByTestId("node-node-revenue");
@@ -987,19 +1194,75 @@ try {
     socketConnections: routedSockets.length,
   });
   const proofBundle = proofArtifactBundle();
-  const outlookBundle = proofArtifactBundle("agent-outlook-card", "Agent outlook", "Delivered together in one encrypted selection");
+  const outlookBundle = proofArtifactBundle("agent-outlook-card", "Agent Outlook", "Delivered together in one encrypted selection", "Agent Outlook");
+  await page.evaluate(() => {
+    const probe = window;
+    const originalTransaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function (storeNames, mode, options) {
+      const transaction = originalTransaction.call(this, storeNames, mode, options);
+      const names = typeof storeNames === "string" ? [storeNames] : Array.from(storeNames);
+      if (!probe.__proofRelayDelayUsed && mode === "readwrite" && names.includes("relay-receipts")) {
+        probe.__proofRelayDelayUsed = true;
+        const store = transaction.objectStore("relay-receipts");
+        const startedAt = performance.now();
+        const keepAlive = () => {
+          if (performance.now() - startedAt >= 1_800) return;
+          const request = store.get("__proof-relay-keepalive__");
+          request.addEventListener("success", keepAlive, { once: true });
+        };
+        keepAlive();
+      }
+      return transaction;
+    };
+  });
   await showProofStep(page, "Encrypted relay • deliver two artifacts in one selection", 900);
-  const deliveryResponse = deliverProofBundles(relaySession, [proofBundle, outlookBundle], "relay-valid");
+  const deliveryPromise = deliverProofBundlesAsync(relaySession, [proofBundle, outlookBundle], "relay-valid");
+  await page.getByTestId("relay-install-progress").waitFor({ state: "visible" });
+  const installCriticalSection = await page.evaluate(() => ({
+    busy: document.querySelector("main.canvas-app-shell")?.getAttribute("aria-busy"),
+    workspaceInert: document.querySelector("section.workspace")?.hasAttribute("inert"),
+  }));
+  verifyUx(
+    "slow relay commit shows progress while the editing surface is inert",
+    installCriticalSection.busy === "true" && installCriticalSection.workspaceInert,
+    installCriticalSection,
+  );
+  await showProofStep(page, "Atomic commit • editing pauses with visible progress", 850);
+  const deliveryResponse = await deliveryPromise;
   await page.getByTestId("relay-session-status").getByText(/Installed 2 artifacts/).waitFor({ state: "visible" });
+  await page.getByText("Agent Capacity", { exact: true }).waitFor({ state: "visible" });
+  await page.getByText("Agent Outlook", { exact: true }).waitFor({ state: "visible" });
   await page.waitForTimeout(1200);
   const afterInstall = await page.evaluate(() => window.__FREEFORM_STATE__);
   verifyUx("one encrypted delivery installs both artifacts without a deploy", deliveryResponse.accepted === true && deliveryResponse.artifactIds.length === 2 && afterInstall.nodes.length === beforeHandoff.nodes.length + 2 && afterInstall.artifactIds.includes("agent-capacity-card") && afterInstall.artifactIds.includes("agent-outlook-card"), { deliveryId: deliveryResponse.deliveryId, artifactIds: deliveryResponse.artifactIds });
+  const relayPlacement = await page.evaluate((artifactIds) => {
+    const nodes = window.__FREEFORM_STATE__.nodes;
+    const delivered = nodes.filter((node) => artifactIds.includes(node.artifactId));
+    const overlaps = (left, right, gap = 38) =>
+      left.x < right.x + right.width + gap && left.x + left.width + gap > right.x &&
+      left.y < right.y + right.height + gap && left.y + left.height + gap > right.y;
+    return {
+      delivered: delivered.length,
+      overlap: delivered.some((node, index) =>
+        nodes.some((other) => other.id !== node.id &&
+          (!artifactIds.includes(other.artifactId) || delivered.indexOf(other) > index) && overlaps(node, other))),
+    };
+  }, deliveryResponse.artifactIds);
+  verifyUx("relay host placement keeps the complete delivery clear of existing and sibling cards", relayPlacement.delivered === 2 && !relayPlacement.overlap, relayPlacement);
+
+  await page.getByTitle("Close", { exact: true }).click();
+  await page.getByTestId("relay-session-indicator").waitFor({ state: "visible" });
+  await showProofStep(page, "Active Build Session • target, connection, Open, and End stay visible", 850);
+  verifyUx("closing the dialog keeps active-session consent visible and controllable", await page.getByTestId("relay-session-reopen").isVisible() && (await page.getByTestId("relay-session-indicator").innerText()).includes("Market canvas"));
+  await page.getByTestId("relay-session-reopen").click();
+  await page.getByTestId("relay-session-status").waitFor({ state: "visible" });
 
   await showProofStep(page, "Atomic validation • reject the whole bad selection", 900);
   const nodeCountBeforeRejection = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.length;
   const shouldNotInstall = proofArtifactBundle("relay-proof-should-not-install", "Should not install", "Atomic rollback proof");
   deliverProofBundles(relaySession, [shouldNotInstall, brokenProofArtifactBundle()], "relay-invalid");
-  await page.getByTestId("relay-session-status").getByText(/Delivery rejected:.*category count/).waitFor({ state: "visible" });
+  await page.getByTestId("relay-delivery-outcome").getByText("Delivery rejected. Nothing was installed.", { exact: true }).waitFor({ state: "visible" });
+  await page.getByTestId("relay-delivery-outcome").getByText(/category count/).waitFor({ state: "visible" });
   await page.waitForTimeout(900);
   const afterRejection = await page.evaluate(() => window.__FREEFORM_STATE__);
   verifyUx("browser preflight rejects an invalid Chart Kit delivery", (await page.getByTestId("relay-session-status").innerText()).includes("category count"));
@@ -1048,7 +1311,56 @@ try {
   verifyUx("expired session clears stale copy confirmation", !(await page.getByTestId("copy-agent-instruction").innerText()).includes("Copied"));
   await showProofStep(page, "Session expired • capabilities disappear and restart stays explicit", 900);
   await page.getByTitle("Close", { exact: true }).click();
-  await page.getByText("Installed directly into this view").waitFor({ state: "visible" });
+  await page.locator(".dialog-backdrop").waitFor({ state: "detached" });
+  const deliveredViewportTarget = await page.evaluate((artifactIds) => {
+    const state = window.__FREEFORM_STATE__;
+    const stage = document.querySelector('[data-testid="canvas-stage"]')?.getBoundingClientRect();
+    const delivered = state.nodes.filter((node) => artifactIds.includes(node.artifactId));
+    if (!stage || delivered.length !== artifactIds.length) return null;
+    const left = Math.min(...delivered.map((node) => node.x));
+    const right = Math.max(...delivered.map((node) => node.x + node.width));
+    const top = Math.min(...delivered.map((node) => node.y));
+    const bottom = Math.max(...delivered.map((node) => node.y + node.height));
+    return {
+      x: Math.round(stage.width / 2 - ((left + right) / 2) * state.viewport.scale),
+      y: Math.round(stage.height / 2 - ((top + bottom) / 2) * state.viewport.scale),
+      current: state.viewport,
+    };
+  }, deliveryResponse.artifactIds);
+  if (!deliveredViewportTarget) throw new Error("Relay proof could not frame the delivered artifacts");
+  const deliveredStageBox = await stage.boundingBox();
+  if (!deliveredStageBox) throw new Error("Relay proof lost the canvas stage before framing delivery");
+  await page.mouse.move(
+    deliveredStageBox.x + deliveredStageBox.width / 2,
+    deliveredStageBox.y + deliveredStageBox.height / 2,
+  );
+  await page.mouse.wheel(
+    deliveredViewportTarget.current.x - deliveredViewportTarget.x,
+    deliveredViewportTarget.current.y - deliveredViewportTarget.y,
+  );
+  await page.waitForFunction((target) => {
+    const viewport = window.__FREEFORM_STATE__?.viewport;
+    return viewport && Math.abs(viewport.x - target.x) <= 1 && Math.abs(viewport.y - target.y) <= 1;
+  }, deliveredViewportTarget);
+  const deliveredVisibility = await page.evaluate((artifactIds) => {
+    const stage = document.querySelector('[data-testid="canvas-stage"]')?.getBoundingClientRect();
+    if (!stage) return [];
+    return artifactIds.map((artifactId) => {
+      const nodeId = window.__FREEFORM_STATE__.nodes.find((node) => node.artifactId === artifactId)?.id;
+      const rect = nodeId
+        ? document.querySelector(`[data-node-id="${CSS.escape(nodeId)}"]`)?.getBoundingClientRect()
+        : null;
+      return Boolean(rect && rect.left >= stage.left && rect.right <= stage.right &&
+        rect.top >= stage.top && rect.bottom <= stage.bottom);
+    });
+  }, deliveryResponse.artifactIds);
+  verifyUx(
+    "both relay-delivered cards can be framed completely in the current viewport",
+    deliveredVisibility.length === 2 && deliveredVisibility.every(Boolean),
+    { deliveredVisibility, deliveredViewportTarget },
+  );
+  await showProofStep(page, "Delivered dashboard • frame both encrypted artifacts", 1000);
+  await page.getByText("Installed directly into this view", { exact: true }).waitFor({ state: "visible" });
   await page.waitForTimeout(1300);
   verifyUx("both healthy relay artifacts render after the dialog closes", await page.getByText("Installed directly into this view").isVisible() && await page.getByText("Delivered together in one encrypted selection").isVisible());
   const capacityNode = afterInstall.nodes.find((node) => node.artifactId === "agent-capacity-card");
@@ -1112,13 +1424,53 @@ try {
   );
 
   await showProofStep(page, "Drag from Yours • place the saved artifact back on this canvas", 900);
-  await personalLibraryItem.dragTo(stage, { targetPosition: { x: 620, y: 360 } });
+  const personalDropTarget = await page.evaluate((originalNode) => {
+    const viewport = window.__FREEFORM_STATE__.viewport;
+    const stage = document.querySelector('[data-testid="canvas-stage"]')?.getBoundingClientRect();
+    const library = document.querySelector(".artifact-library-slot.open")?.getBoundingClientRect();
+    if (!stage) return null;
+    const x = viewport.x + (originalNode.x + originalNode.width / 2) * viewport.scale;
+    const y = viewport.y + (originalNode.y + originalNode.height / 2) * viewport.scale;
+    return {
+      x,
+      y,
+      accessible: x >= 0 && x <= stage.width && y >= 0 && y <= stage.height &&
+        (!library || stage.left + x < library.left),
+    };
+  }, capacityNode);
+  if (!personalDropTarget) throw new Error("Personal artifact's original open slot is unavailable");
+  verifyUx(
+    "the personal artifact's prior open slot remains reachable while the library is open",
+    personalDropTarget.accessible,
+    { personalDropTarget, capacityNode },
+  );
+  await personalLibraryItem.dragTo(stage, {
+    targetPosition: { x: personalDropTarget.x, y: personalDropTarget.y },
+  });
   await page.waitForFunction(() => window.__FREEFORM_STATE__.nodes.some((node) => node.artifactId === "agent-capacity-card"));
   const restoredPersonalNode = (await page.evaluate(() => window.__FREEFORM_STATE__)).nodes.find((node) => node.artifactId === "agent-capacity-card");
   if (!restoredPersonalNode) throw new Error("Personal artifact did not return from the library");
   installedArtifact = { ...installedArtifact, nodeId: restoredPersonalNode.id };
   verifyUx("personal artifact can be dragged back after node deletion", await page.getByTestId(`node-${restoredPersonalNode.id}`).isVisible(), { restoredPersonalNode });
   verifyUx("re-added personal artifact keeps its generated content", await page.getByText("Installed directly into this view").isVisible());
+  const restoredPersonalPlacement = await page.evaluate(({ nodeId, original }) => {
+    const node = window.__FREEFORM_STATE__.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return null;
+    const overlaps = window.__FREEFORM_STATE__.nodes.some((candidate) => candidate.id !== node.id &&
+      node.x < candidate.x + candidate.width + 38 && node.x + node.width + 38 > candidate.x &&
+      node.y < candidate.y + candidate.height + 38 && node.y + node.height + 38 > candidate.y);
+    return {
+      x: node.x,
+      y: node.y,
+      returnedToOpenSlot: node.x === original.x && node.y === original.y,
+      overlaps,
+    };
+  }, { nodeId: restoredPersonalNode.id, original: capacityNode });
+  verifyUx(
+    "dragging the personal artifact back restores its original open, non-overlapping slot",
+    Boolean(restoredPersonalPlacement?.returnedToOpenSlot && !restoredPersonalPlacement.overlaps),
+    restoredPersonalPlacement ?? {},
+  );
 
   await showProofStep(page, "Delete built-in card • recover it from Built-in", 650);
   await page.getByTestId("node-node-revenue").click({ position: { x: 100, y: 18 } });
@@ -1157,6 +1509,31 @@ try {
   );
   await showProofStep(page, "Click placement • restored artifact stays in the visible canvas", 900);
   await page.waitForFunction(() => window.__FREEFORM_STATE__?.status === "Saved locally");
+  await page.waitForTimeout(650);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await showProofStep(page, "Phone canvas • close Views without a keyboard", 800);
+  await page.getByTestId("sidebar-toggle").click();
+  await page.getByTestId("close-views").waitFor({ state: "visible" });
+  verifyUx("responsive Views exposes a visible close control", await page.getByTestId("close-views").isVisible());
+  await page.getByTestId("close-views").click();
+  await page.getByTestId("canvas-sidebar").waitFor({ state: "hidden" });
+  verifyUx(
+    "responsive canvas has no horizontal overflow",
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  );
+
+  await page.getByTestId("workspace-menu").click();
+  await page.getByTestId("enter-presentation").click();
+  await showProofStep(page, "Phone presentation • tap the visible exit control", 900);
+  await page.getByTestId("presentation-controls").waitFor({ state: "visible" });
+  await page.getByTestId("exit-presentation").click();
+  await page.locator(".topbar").waitFor({ state: "visible" });
+  verifyUx(
+    "responsive presentation can be exited without a hardware keyboard",
+    await page.evaluate(() => window.__FREEFORM_STATE__?.presentationMode === false),
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(650);
 
   await showProofStep(page, "Close page • preserve this browser’s workspace", 750);
@@ -1259,6 +1636,12 @@ try {
       "rename the centered canvas title",
       "toggle Views with Cmd+B",
       "open the sidebar, create and rename a second view, and switch back",
+      "duplicate, reorder, delete, and restore a View",
+      "reorder a View downward and restore an unsaved deleted View snapshot",
+      "enter Fit All presentation and navigate between Views",
+      "marquee-select and distribute multiple artifacts",
+      "group-drag with transactional Undo and Redo",
+      "duplicate, copy, paste, and delete a selection",
       "drag node",
       "visibly resize the complete chart object",
       "visibly resize Sankey to its proportional minimum",
@@ -1271,13 +1654,14 @@ try {
       "show Turnstile verification, an actionable creation failure, and retry",
       "open and copy a capability-redacted, view-bound encrypted Build Session handoff",
       "reconnect the hibernating WebSocket without retargeting the session",
-      "deliver two artifacts atomically through the relay script",
+      "show visible install progress while atomically delivering two artifacts through the relay script",
       "reject a bad multi-artifact relay selection without partial persistence",
       "reject an invalid offline bundle with inline feedback",
       "verify the complete dialog at a 667x375 short-landscape viewport",
       "expire the session and remove its browser-visible handoff capabilities",
       "delete and drag a personal artifact back from the shared library",
       "delete and restore a built-in artifact from the library",
+      "close responsive Views and exit responsive presentation without a keyboard",
       "close, reopen, and restore the browser-local workspace",
       "capture screenshot",
     ],

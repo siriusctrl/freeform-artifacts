@@ -880,5 +880,8 @@ test("workspace backups round-trip through export, reset, and import", async ({ 
 
   await page.getByTestId("workspace-file").setInputFiles(backupPath);
   await expect(page.getByTestId("node-node-revenue")).toHaveCount(0);
-  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Saved locally");
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.status)).toBe("Workspace backup restored");
+  await page.reload();
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await expect(page.getByTestId("node-node-revenue")).toHaveCount(0);
 });

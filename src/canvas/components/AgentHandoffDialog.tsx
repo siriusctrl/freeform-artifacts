@@ -5,10 +5,12 @@ import { TurnstileGate } from "../../relay/TurnstileGate";
 import type { ArtifactRelayController } from "../../relay/useArtifactRelaySession";
 
 interface AgentHandoffDialogProps {
+  installBusy: boolean;
   open: boolean;
   viewId: string;
   relay: ArtifactRelayController;
   onClose: () => void;
+  onOpen: () => void;
   onInstallBundle: (file: File) => Promise<string | null>;
 }
 
@@ -19,7 +21,7 @@ function expiryLabel(expiresAt: string) {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(expiresAt));
 }
 
-export function AgentHandoffDialog({ open, viewId, relay, onClose, onInstallBundle }: AgentHandoffDialogProps) {
+export function AgentHandoffDialog({ installBusy, open, viewId, relay, onClose, onOpen, onInstallBundle }: AgentHandoffDialogProps) {
   const dialogRef = useRef<HTMLElement | null>(null);
   const instructionRef = useRef<HTMLPreElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -29,7 +31,8 @@ export function AgentHandoffDialog({ open, viewId, relay, onClose, onInstallBund
   const [feedback, setFeedback] = useState("");
   const [revealCapabilities, setRevealCapabilities] = useState(false);
   onCloseRef.current = onClose;
-  const session = relay.session?.targetViewId === viewId ? relay.session : null;
+  const activeSession = relay.session;
+  const session = activeSession?.targetViewId === relay.request?.targetViewId ? activeSession : null;
   const copiedCurrentInstruction = copied && Boolean(session);
   const completeVerification = relay.completeVerification;
   const handleTurnstileToken = useCallback((token: string) => {
@@ -91,7 +94,7 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
       }
       if (event.key !== "Tab" || !dialogRef.current) return;
       const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        'button:not([disabled]), input:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])',
       )].filter((element) => element.getClientRects().length > 0);
       if (!focusable.length) {
         event.preventDefault();
@@ -123,8 +126,6 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
     }
   }, [relay.status]);
 
-  if (!open) return null;
-
   async function copyInstruction() {
     if (!session) return;
     try {
@@ -141,6 +142,23 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
     relay.status === "reconnecting" ? "Reconnecting" :
       relay.status === "expired" ? "Expired" :
         relay.status === "error" ? "Needs attention" : "Opening session";
+
+  if (!open) {
+    if (!activeSession) return null;
+    return (
+      <aside className={`relay-session-indicator relay-${relay.status}`} data-testid="relay-session-indicator" aria-label="Active Build Session">
+        <span className="relay-status-dot" aria-hidden="true" />
+        <div className="relay-session-indicator-copy" role="status">
+          <strong>{activeSession.targetViewTitle}</strong>
+          <span data-testid={installBusy ? "relay-install-progress" : undefined}>
+            {installBusy ? "Installing delivery…" : `${statusLabel} · until ${expiryLabel(activeSession.expiresAt)}`}
+          </span>
+        </div>
+        <button type="button" className="relay-indicator-action" data-testid="relay-session-reopen" onClick={onOpen}>Open</button>
+        <button type="button" className="relay-indicator-action relay-indicator-end" onClick={() => { void relay.stopSession(); }}>End</button>
+      </aside>
+    );
+  }
 
   return (
     <div
@@ -164,11 +182,15 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
           </button>
         </header>
 
-        <div className={`relay-session-state relay-${relay.status} ${relay.lastMessage.startsWith("Delivery rejected") ? "relay-delivery-rejected" : ""}`} data-testid="relay-session-status" role="status">
+        <div className={`relay-session-state relay-${relay.status} ${relay.deliveryOutcome?.kind === "rejected" ? "relay-delivery-rejected" : ""}`} data-testid="relay-session-status" role="status">
           <span className="relay-status-dot" aria-hidden="true" />
-          <div>
+          <div data-testid="relay-transport-state">
             <strong>{statusLabel}</strong>
-            <span>{relay.request?.targetViewTitle ?? viewId} · {relay.lastMessage || "Session is bound to this view"}</span>
+            <span data-testid={installBusy ? "relay-install-progress" : undefined}>
+              {installBusy
+                ? "Installing delivery… Canvas editing resumes after the atomic commit."
+                : `${relay.request?.targetViewTitle ?? viewId} · ${relay.lastMessage || "Session is bound to this view"}`}
+            </span>
           </div>
           {session ? <time dateTime={session.expiresAt}>until {expiryLabel(session.expiresAt)}</time> : null}
           {relay.status === "verifying" && relay.request?.targetViewId === viewId ? (
@@ -182,6 +204,12 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
             <button type="button" className="relay-retry-action" onClick={relay.retrySession}>
               {relay.status === "expired" ? "Start new session" : session ? "Retry connection" : "Retry verification"}
             </button>
+          ) : null}
+          {relay.deliveryOutcome ? (
+            <div className={`relay-delivery-outcome relay-delivery-${relay.deliveryOutcome.kind}`} data-testid="relay-delivery-outcome">
+              <strong>{relay.deliveryOutcome.summary}</strong>
+              {relay.deliveryOutcome.detail ? <span>{relay.deliveryOutcome.detail}</span> : null}
+            </div>
           ) : null}
         </div>
 
@@ -217,6 +245,8 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
             className="visually-hidden"
             type="file"
             accept="application/json,.json"
+            disabled={installBusy}
+            tabIndex={-1}
             data-testid="artifact-bundle-file"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
@@ -229,9 +259,9 @@ Inspect the resulting cards at default and minimum size in light and dark mode w
               event.currentTarget.value = "";
             }}
           />
-          <button type="button" className="secondary-action install-bundle-action" data-testid="install-bundle" onClick={() => bundleInputRef.current?.click()}>
+          <button type="button" className="secondary-action install-bundle-action" data-testid="install-bundle" disabled={installBusy} onClick={() => bundleInputRef.current?.click()}>
             <PackagePlus size={17} />
-            <span>Install offline bundle</span>
+            <span>{installBusy ? "Installing bundle…" : "Install offline bundle"}</span>
           </button>
           {session ? (
             <button type="button" className="secondary-action relay-end-action" onClick={() => { void relay.stopSession().finally(onClose); }}>

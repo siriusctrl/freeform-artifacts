@@ -38,6 +38,7 @@ export interface RelayDeliveryIdentity {
 
 export interface RelayLiveInstaller {
   viewId: string;
+  refreshArtifacts: () => Promise<void>;
   install: (
     bundles: unknown[],
     placement: RelayPlacementContext,

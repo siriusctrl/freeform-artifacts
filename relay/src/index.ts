@@ -146,6 +146,48 @@ function isAllowedOrigin(request: Request, env: Env) {
   return Boolean(origin && allowedOrigins(env).has(origin));
 }
 
+export function normalizeRateLimitSource(source: string | null) {
+  const candidate = source?.trim().toLowerCase();
+  if (!candidate) return "local";
+  const parseIpv4 = (value: string) => {
+    const parts = value.split(".");
+    if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return null;
+    const octets = parts.map(Number);
+    return octets.every((octet) => octet >= 0 && octet <= 255) ? octets : null;
+  };
+  if (!candidate.includes(":")) {
+    const ipv4 = parseIpv4(candidate);
+    return ipv4 ? ipv4.join(".") : candidate;
+  }
+
+  const unwrapped = candidate.startsWith("[") && candidate.endsWith("]")
+    ? candidate.slice(1, -1)
+    : candidate;
+  const withoutZone = unwrapped.split("%", 1)[0];
+  const dottedTail = withoutZone.match(/(?:^|:)((?:\d{1,3}\.){3}\d{1,3})$/)?.[1];
+  const ipv4Tail = dottedTail ? parseIpv4(dottedTail) : null;
+  if (dottedTail && !ipv4Tail) return candidate;
+  const hexadecimal = ipv4Tail
+    ? `${withoutZone.slice(0, -dottedTail!.length)}${((ipv4Tail[0] << 8) | ipv4Tail[1]).toString(16)}:${((ipv4Tail[2] << 8) | ipv4Tail[3]).toString(16)}`
+    : withoutZone;
+
+  const halves = hexadecimal.split("::");
+  if (halves.length > 2) return candidate;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  if (halves.length === 1 ? left.length !== 8 : left.length + right.length >= 8) return candidate;
+  const groups = halves.length === 2
+    ? [...left, ...Array<string>(8 - left.length - right.length).fill("0"), ...right]
+    : left;
+  if (groups.length !== 8 || groups.some((group) => !/^[0-9a-f]{1,4}$/.test(group))) return candidate;
+  const numeric = groups.map((group) => Number.parseInt(group, 16));
+  const ipv4Mapped = numeric.slice(0, 5).every((group) => group === 0) && numeric[5] === 0xffff;
+  if (ipv4Mapped) {
+    return [numeric[6] >> 8, numeric[6] & 0xff, numeric[7] >> 8, numeric[7] & 0xff].join(".");
+  }
+  return `${numeric.slice(0, 4).map((group) => group.toString(16).padStart(4, "0")).join(":")}::/64`;
+}
+
 export function relayConfigurationReady(env: Env) {
   const environment = String(env.ENVIRONMENT);
   const routingReady = typeof env.RELAY_ROUTING_SECRET === "string" && env.RELAY_ROUTING_SECRET.length >= 32;
@@ -174,10 +216,16 @@ function isLoopbackOrigin(origin: string | null) {
   }
 }
 
-export function developmentTurnstileBypassAllowed(env: Env, origin: string | null, token: string) {
+export function developmentTurnstileBypassAllowed(
+  env: Env,
+  origin: string | null,
+  token: string,
+  requestUrl: string,
+) {
   return String(env.ENVIRONMENT) === "development" &&
     token === DEVELOPMENT_TURNSTILE_TOKEN &&
-    isLoopbackOrigin(origin);
+    isLoopbackOrigin(origin) &&
+    isLoopbackOrigin(new URL(requestUrl).origin);
 }
 
 function corsHeaders(origin: string) {
@@ -237,7 +285,7 @@ async function readJsonBody(request: Request, maximumBytes: number): Promise<unk
 }
 
 async function verifyTurnstile(request: Request, env: Env, token: string) {
-  if (developmentTurnstileBypassAllowed(env, request.headers.get("Origin"), token)) {
+  if (developmentTurnstileBypassAllowed(env, request.headers.get("Origin"), token, request.url)) {
     return { ok: true as const };
   }
 
@@ -599,7 +647,9 @@ export class BuildSession extends DurableObject<Env> {
   }
 
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
-    if (!this.metadata()) {
+    const metadata = this.metadata();
+    if (!metadata || Date.now() >= metadata.expires_at) {
+      if (metadata) this.ctx.waitUntil(this.cleanup("Session expired"));
       socket.close(4000, "Session expired");
       return;
     }
@@ -684,7 +734,7 @@ async function routeRequest(request: Request, env: Env) {
 
   if (request.method === "POST" && url.pathname === "/v1/sessions") {
     if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "origin_not_allowed" }, 403);
-    const remoteIp = request.headers.get("CF-Connecting-IP") ?? "local";
+    const remoteIp = normalizeRateLimitSource(request.headers.get("CF-Connecting-IP"));
     const rateLimit = await env.SESSION_CREATION_LIMITER.limit({ key: `create:${remoteIp}` });
     if (!rateLimit.success) return jsonResponse({ error: "rate_limited" }, 429, origin);
 
@@ -732,7 +782,7 @@ async function routeRequest(request: Request, env: Env) {
 
   if (request.method === "GET" && action === "connect") {
     if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "origin_not_allowed" }, 403);
-    const remoteIp = request.headers.get("CF-Connecting-IP") ?? "local";
+    const remoteIp = normalizeRateLimitSource(request.headers.get("CF-Connecting-IP"));
     const sourceRateLimit = await env.SESSION_UPLOAD_LIMITER.limit({ key: `connect-source:${remoteIp}` });
     if (!sourceRateLimit.success) return jsonResponse({ error: "rate_limited" }, 429, origin);
     const browserToken = parseBrowserWebSocketToken(request);
@@ -750,31 +800,31 @@ async function routeRequest(request: Request, env: Env) {
 
   if (request.method === "POST" && action === "deliveries") {
     if (origin && !allowedOrigins(env).has(origin)) return jsonResponse({ error: "origin_not_allowed" }, 403);
-    const remoteIp = request.headers.get("CF-Connecting-IP") ?? "local";
+    const remoteIp = normalizeRateLimitSource(request.headers.get("CF-Connecting-IP"));
     const sourceRateLimit = await env.SESSION_UPLOAD_LIMITER.limit({ key: `upload-source:${remoteIp}` });
-    if (!sourceRateLimit.success) return jsonResponse({ error: "rate_limited" }, 429);
+    if (!sourceRateLimit.success) return jsonResponse({ error: "rate_limited" }, 429, origin);
     const uploadTokenHash = await hashToken(bearerToken(request));
     const authorization = await stub.authorizeUpload(uploadTokenHash);
-    if (!authorization.ok) return jsonResponse({ error: authorization.code }, authorization.status);
+    if (!authorization.ok) return jsonResponse({ error: authorization.code }, authorization.status, origin);
     const sessionRateLimit = await env.SESSION_UPLOAD_LIMITER.limit({ key: `upload-session:${sessionId}` });
-    if (!sessionRateLimit.success) return jsonResponse({ error: "rate_limited" }, 429);
+    if (!sessionRateLimit.success) return jsonResponse({ error: "rate_limited" }, 429, origin);
     let value: unknown;
     try {
       value = await readJsonBody(request, MAX_UPLOAD_BODY_BYTES);
     } catch (error) {
       const code = error instanceof Error ? error.message : "invalid_json";
-      return jsonResponse({ error: code }, code === "body_too_large" ? 413 : 400);
+      return jsonResponse({ error: code }, code === "body_too_large" ? 413 : 400, origin);
     }
     const parsed = encryptedDeliverySchema.safeParse(value);
-    if (!parsed.success) return jsonResponse({ error: "invalid_delivery" }, 400);
+    if (!parsed.success) return jsonResponse({ error: "invalid_delivery" }, 400, origin);
     const result = await stub.upload(uploadTokenHash, parsed.data, await hashDeliveryEnvelope(parsed.data));
-    if (!result.ok) return jsonResponse({ error: result.code }, result.status);
+    if (!result.ok) return jsonResponse({ error: result.code }, result.status, origin);
     return jsonResponse({
       version: RELAY_PROTOCOL_VERSION,
       deliveryId: parsed.data.deliveryId,
       accepted: true,
       duplicate: result.value?.duplicate ?? false,
-    }, result.status);
+    }, result.status, origin);
   }
 
   if (request.method === "GET" && !action) {

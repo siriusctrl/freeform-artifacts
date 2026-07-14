@@ -33,6 +33,7 @@ export function ArtifactLibrary({
   const [source, setSource] = useState<ArtifactCatalogItem["source"]>("built-in");
   const [query, setQuery] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const libraryRef = useRef<HTMLElement | null>(null);
   const builtInTabRef = useRef<HTMLButtonElement | null>(null);
   const personalTabRef = useRef<HTMLButtonElement | null>(null);
   const items = source === "built-in" ? builtIn : personal;
@@ -64,8 +65,25 @@ export function ArtifactLibrary({
     onAdd(item);
   }
 
+  function trapFocus(event: KeyboardEvent<HTMLElement>) {
+    if (event.key !== "Tab") return;
+    const focusable = [...(libraryRef.current?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    ) ?? [])].filter((element) => !element.closest('[aria-hidden="true"]'));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable.at(-1)!;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   return (
-    <aside className="artifact-library" aria-label="Artifacts" data-testid="artifact-library">
+    <aside ref={libraryRef} className="artifact-library" aria-label="Artifacts" data-testid="artifact-library" onKeyDown={trapFocus}>
       <header>
         <strong>Artifacts</strong>
         <button ref={closeButtonRef} type="button" className="icon-button" title="Close artifacts" onClick={onClose}>

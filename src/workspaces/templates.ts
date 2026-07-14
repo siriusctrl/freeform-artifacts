@@ -42,6 +42,7 @@ export function createWorkspaceFromTemplate(
   const board = template.createBoard();
   return {
     version: 1 as const,
+    revision: 0,
     templateId: options.id ?? template.id,
     title: options.title ?? template.title,
     templateVersion: template.version,

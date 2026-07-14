@@ -46,6 +46,7 @@ function webSocketUrl(session: ActiveRelaySession) {
 
 export interface ArtifactRelayController {
   completeVerification: (turnstileToken: string) => Promise<void>;
+  deliveryOutcome: RelayDeliveryOutcome | null;
   lastMessage: string;
   reportVerificationError: (message: string) => void;
   request: RelaySessionRequest | null;
@@ -54,6 +55,12 @@ export interface ArtifactRelayController {
   session: ActiveRelaySession | null;
   status: RelayConnectionStatus;
   stopSession: () => Promise<void>;
+}
+
+export interface RelayDeliveryOutcome {
+  detail?: string;
+  kind: "installed" | "rejected";
+  summary: string;
 }
 
 export function useArtifactRelaySession(
@@ -68,6 +75,7 @@ export function useArtifactRelaySession(
   const [request, setRequest] = useState<RelaySessionRequest | null>(null);
   const [status, setStatus] = useState<RelayConnectionStatus>("idle");
   const [lastMessage, setLastMessage] = useState("");
+  const [deliveryOutcome, setDeliveryOutcome] = useState<RelayDeliveryOutcome | null>(null);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
   const processingQueue = useRef<Promise<void>>(Promise.resolve());
@@ -102,6 +110,7 @@ export function useArtifactRelaySession(
     setSession(null);
     setStatus("expired");
     setLastMessage("Build Session expired");
+    setDeliveryOutcome(null);
   }, [invalidateSessionWork]);
 
   useEffect(() => {
@@ -222,9 +231,11 @@ export function useArtifactRelaySession(
           );
         } catch (error) {
           if (!connectionIsActive()) return;
-          setLastMessage(error instanceof Error
-            ? `Delivery rejected: ${error.message}. Nothing was installed.`
-            : "Delivery rejected. Nothing was installed.");
+          setDeliveryOutcome({
+            kind: "rejected",
+            summary: "Delivery rejected. Nothing was installed.",
+            detail: error instanceof Error ? error.message : undefined,
+          });
           sendAck(parsed.delivery.deliveryId, "rejected");
           return;
         }
@@ -244,14 +255,18 @@ export function useArtifactRelaySession(
         } catch (error) {
           if (!connectionIsActive()) return;
           if (error instanceof RelayDeliveryRejectedError) {
-            setLastMessage(`Delivery rejected: ${error.message}. Nothing was installed.`);
+            setDeliveryOutcome({
+              kind: "rejected",
+              summary: "Delivery rejected. Nothing was installed.",
+              detail: error.message,
+            });
             sendAck(parsed.delivery.deliveryId, "rejected");
             return;
           }
           setStatus("reconnecting");
           setLastMessage(error instanceof Error
-            ? `Local install interrupted: ${error.message}. The encrypted delivery will retry.`
-            : "Local install interrupted. The encrypted delivery will retry.");
+            ? `Relay interrupted during local install: ${error.message}. Reconnecting safely.`
+            : "Relay interrupted during local install. Reconnecting safely.");
           try {
             socket.close(1011, "Retry delivery after reconnect");
           } catch {
@@ -260,17 +275,18 @@ export function useArtifactRelaySession(
           return;
         }
         if (!connectionIsActive()) return;
-        setLastMessage(
-          `Installed ${result.artifactIds.length} artifact${result.artifactIds.length === 1 ? "" : "s"} into ${session.targetViewTitle}`,
-        );
+        setDeliveryOutcome({
+          kind: "installed",
+          summary: `Installed ${result.artifactIds.length} artifact${result.artifactIds.length === 1 ? "" : "s"} into ${session.targetViewTitle}`,
+        });
         sendAck(parsed.delivery.deliveryId, "installed");
       });
       processingQueue.current = queued.catch((error) => {
         if (!connectionIsActive()) return;
         setStatus("reconnecting");
         setLastMessage(error instanceof Error
-          ? `Delivery processing interrupted: ${error.message}`
-          : "Delivery processing interrupted");
+          ? `Relay interrupted during delivery processing: ${error.message}. Reconnecting safely.`
+          : "Relay interrupted during delivery processing. Reconnecting safely.");
         try {
           socket.close(1011, "Reset delivery queue");
         } catch {
@@ -293,6 +309,7 @@ export function useArtifactRelaySession(
         return;
       }
       setStatus("reconnecting");
+      setLastMessage("Relay connection interrupted; reconnecting safely");
       const delay = Math.min(10_000, 500 * 2 ** Math.min(connectionAttempt, 5));
       reconnectTimer = window.setTimeout(() => setConnectionAttempt((current) => current + 1), delay);
     });
@@ -324,6 +341,7 @@ export function useArtifactRelaySession(
     setRequest(null);
     setStatus("idle");
     setLastMessage("");
+    setDeliveryOutcome(null);
     socketRef.current?.close(1000, "Build Session closed");
     if (!active) return;
     const browserToken = browserCapabilities.get(active);
@@ -350,6 +368,7 @@ export function useArtifactRelaySession(
       return;
     }
     invalidateCreation(false);
+    setDeliveryOutcome(null);
     setStatus("verifying");
     setLastMessage("Verifying this Build Session");
   }, [invalidateCreation, session]);
@@ -465,6 +484,7 @@ export function useArtifactRelaySession(
 
   return {
     completeVerification,
+    deliveryOutcome,
     lastMessage,
     reportVerificationError,
     request,

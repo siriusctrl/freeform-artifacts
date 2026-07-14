@@ -26,6 +26,10 @@
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent), transparent 42%);
 }
 
+.canvas-stage.presentation {
+  cursor: default;
+}
+
 .grid-plane {
   position: absolute;
   inset: 0;
@@ -66,6 +70,15 @@
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--accent), transparent 78%),
     0 22px 48px var(--shadow);
+}
+
+.canvas-node.presenting {
+  grid-template-rows: minmax(0, 1fr);
+  cursor: default;
+}
+
+.canvas-node.presenting .node-chrome {
+  display: none;
 }
 
 .resize-handle {
@@ -135,6 +148,127 @@
 .node-body {
   min-height: 0;
 }
+
+.selection-marquee {
+  position: absolute;
+  z-index: 24;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent), transparent 88%);
+  border: 1px solid color-mix(in srgb, var(--accent), transparent 16%);
+  border-radius: 3px;
+}
+
+.selection-toolbar {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  z-index: 26;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  color: var(--text);
+  background: var(--panel-glass);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 14px 34px var(--shadow);
+  backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+}
+
+.selection-count {
+  min-width: 72px;
+  padding: 0 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 620;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.selection-toolbar button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.selection-toolbar button:hover {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.selection-toolbar button.danger:hover {
+  color: var(--alert);
+  background: var(--alert-soft);
+}
+
+.selection-toolbar button:disabled {
+  cursor: default;
+  opacity: 0.34;
+}
+
+.selection-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 3px;
+  background: var(--line);
+}
+
+.presentation-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  z-index: 28;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  color: var(--text);
+  background: var(--panel-glass);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 14px 34px var(--shadow);
+  backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+}
+
+.presentation-controls button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.presentation-controls button:hover,
+.presentation-controls button:focus-visible {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.presentation-controls button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.presentation-controls button:disabled {
+  cursor: default;
+  opacity: 0.32;
+}
 .zoom-controls {
   position: absolute;
   left: 30px;
@@ -166,8 +300,8 @@
   .canvas-sidebar-slot {
     position: fixed;
     inset: 0 auto 0 0;
-    width: min(280px, calc(100vw - 56px));
-    overflow: visible;
+    width: 100vw;
+    overflow: hidden;
     opacity: 1;
     transform: translateX(-100%);
     transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -181,6 +315,21 @@
     width: min(280px, calc(100vw - 56px));
     box-shadow: 18px 0 48px var(--shadow);
     transform: none;
+  }
+
+  .sidebar-backdrop {
+    position: absolute;
+    inset: 0;
+    display: block;
+    padding: 0;
+    background: rgb(12 18 20 / 22%);
+    border: 0;
+    border-radius: 0;
+    cursor: default;
+  }
+
+  .sidebar-close {
+    display: grid;
   }
 
   .artifact-library-slot {
@@ -249,9 +398,33 @@
     right: 12px;
     bottom: 14px;
   }
+
+  .presentation-controls button {
+    width: 42px;
+    height: 40px;
+  }
 }
 
 @media (max-width: 560px) {
+  .selection-toolbar {
+    max-width: calc(100% - 20px);
+    gap: 1px;
+    padding: 3px;
+  }
+
+  .selection-toolbar button {
+    width: 26px;
+    height: 28px;
+  }
+
+  .selection-count {
+    display: none;
+  }
+
+  .selection-toolbar-divider {
+    margin: 0 1px;
+  }
+
   .canvas-title-slot button,
   .canvas-title-slot input {
     width: min(132px, 34vw);

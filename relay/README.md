@@ -29,7 +29,8 @@ version and the same hard limits guard both sides.
 
 Uploader requests intentionally work without an `Origin` because the agent
 script is not a browser. If an Origin header is present, it must still be in the
-allowlist. Browser routes always require an allowed Origin.
+allowlist, and every success or error response returns that exact origin's CORS
+headers. Browser routes always require an allowed Origin.
 
 ## Local verification
 
@@ -40,9 +41,10 @@ npm run relay:test
 npm run relay:dev:test
 ```
 
-Only the exact `development` environment from a loopback origin accepts
-`test-turnstile-pass`; production, preview, and misspelled environments never
-do. Local development needs no Turnstile secret. `TURNSTILE_SECRET` and
+Only the exact `development` environment accepts `test-turnstile-pass`, and
+both the browser origin and the Worker's actual request URL must be loopback.
+Production, preview, misspelled environments, and public preview URLs never do.
+Local development needs no Turnstile secret. `TURNSTILE_SECRET` and
 `RELAY_ROUTING_SECRET` exist only as deployed Worker secrets.
 
 ## Production
@@ -72,8 +74,17 @@ with its metadata mutation. Delivery ids are bound to an envelope digest, so a
 changed ciphertext retry returns `409 delivery_id_conflict`. Schema version 2
 adds that digest; an exact pending schema-v1 envelope is compared and backfilled,
 while an already-ACKed legacy row without ciphertext fails conservatively. At
-expiry, access is rejected immediately; the alarm removes all SQL
-tables and ciphertext without recreating an empty object.
+expiry, every HTTP route and hibernating WebSocket message rejects access
+immediately; the alarm removes all SQL tables and ciphertext without recreating
+an empty object.
+
+Source rate-limit keys preserve IPv4 addresses and normalize IPv6 clients to a
+/64, reducing trivial privacy-address rotation. Equivalent IPv4-mapped IPv6
+forms join the IPv4 bucket; dotted-tail NAT64 addresses remain in their IPv6
+/64. Decoded ciphertext is capped at
+1.4 MB so its base64url TEXT plus row metadata remains below Durable Object
+SQLite's 2 MB value/row limit; the agent script enforces the same boundary
+before upload.
 
 `/health` reports ready only when the routing secret, the required real
 Turnstile secret, and at least one syntactically valid origin are configured.

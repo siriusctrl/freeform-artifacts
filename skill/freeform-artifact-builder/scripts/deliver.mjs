@@ -8,6 +8,7 @@ import path from "node:path";
 const PROTOCOL_VERSION = 1;
 const MAX_ARTIFACTS = 12;
 const MAX_MODULE_SOURCE_LENGTH = 500_000;
+const MAX_CIPHERTEXT_BYTES = 1_400_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CAPABILITY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const ARTIFACT_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -376,6 +377,9 @@ function encryptDelivery({ bundles, deliveryId, encryptionKey, sessionId, viewId
   cipher.setAAD(Buffer.from(`${PROTOCOL_VERSION}\0${sessionId}\0${viewId}\0${deliveryId}`, "utf8"));
   const plaintext = Buffer.from(JSON.stringify({ version: PROTOCOL_VERSION, deliveryId, bundles }), "utf8");
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final(), cipher.getAuthTag()]);
+  if (ciphertext.byteLength > MAX_CIPHERTEXT_BYTES) {
+    fail(`Encrypted delivery exceeds the ${MAX_CIPHERTEXT_BYTES}-byte relay limit; split it into smaller deliveries`);
+  }
   return {
     version: PROTOCOL_VERSION,
     deliveryId,
@@ -500,6 +504,8 @@ async function main() {
   process.stdout.write(`${JSON.stringify({
     version: PROTOCOL_VERSION,
     accepted: true,
+    outcome: "relay_accepted",
+    browserInstalled: false,
     duplicate: response.duplicate === true,
     deliveryId,
     artifactIds: bundles.map((bundle) => bundle.artifactId),

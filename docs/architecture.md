@@ -75,13 +75,39 @@ to the first browser-local view. Additional named views use unique ids while
 retaining the historical `templateId` field as their IndexedDB key. Navigation
 summaries retain only node geometry and artifact ids for page previews; they do
 not cache screenshots or mount artifact renderers a second time. IndexedDB is
-the primary store. Interaction-driven saves are debounced and serialized per
-view; `pagehide` synchronously writes the latest localStorage recovery mirror if
-a page closes before the next IndexedDB transaction. The persisted board
+the primary store. Every workspace carries a monotonic revision.
+Interaction-driven saves are debounced, single-flight per mounted view, and
+committed with an IndexedDB compare-and-swap so a stale tab cannot overwrite a
+newer board. A later edit made while a save is in flight is rebased onto that
+tab's returned revision; a genuinely external revision reports a conflict.
+`pagehide` synchronously writes a monotonic localStorage recovery mirror if a
+page closes before the next IndexedDB transaction; an older tab cannot replace
+a newer mirror, and a newer fallback revision is promoted when IndexedDB
+recovers. The persisted board
 includes nodes, viewport, selected node, theme mode, and the snap-to-grid
 preference. Node positions can be snapped to the 38px world-coordinate grid by
 the canvas shell. Resize remains aspect-locked and independent of grid snapping;
 artifacts do not own placement behavior.
+
+View order is lightweight origin-local navigation metadata stored separately
+from workspace records. Duplicating a view clones its serializable board while
+continuing to reference the same origin-wide artifact package ids. Deleting a
+view removes its workspace records but keeps packages; the UI retains the
+deleted workspace briefly so Undo can restore it at the previous list position.
+Active-view duplicate and delete operations receive the live in-memory snapshot
+so the 400 ms autosave window cannot discard a just-finished edit. Every delete
+writes a fresh per-View generation UUID, which remains the authoritative logical
+deletion when IndexedDB is temporarily unavailable. Restore is a conditional
+one-time write that requires both the current deletion generation and matching
+deleted revision before clearing it, so an older Undo cannot be mistaken for a
+later deletion after another tab restores, edits, and deletes the View again.
+
+Node editing uses a bounded in-memory document history. Discrete commands store
+one before-snapshot, while drag and resize open a transaction on pointer down and
+commit one entry on pointer up regardless of pointer-move count. Node arrays and
+selection are restored together. Viewport pan/zoom, theme, panel state, and
+selection-only changes are intentionally outside history, and history does not
+survive a reload or View switch.
 
 This is browser-profile isolation, not account identity. The static app has no
 shared board backend, so separate browser contexts cannot see each other's
@@ -113,6 +139,18 @@ capability hashes to the relay, and copies the uploader capability and key into
 the agent handoff. The Worker therefore sees routing metadata, artifact count,
 ciphertext size, and encrypted payloads, but never bundle source, node data, or
 the decryption key.
+
+The modal keeps transport health separate from the most recent delivery
+outcome, so reconnecting cannot be presented as a successful install and a
+rejection can state that nothing was installed without truncation. Closing the
+modal does not revoke session-level consent: a compact active-session strip
+keeps the fixed target, connection state, expiry, reopen action, and End action
+visible until the session ends. A slow atomic install changes that strip or the
+dialog detail to **Installing delivery…** while transport health remains
+separate. On phone-width overlays, the canvas background is inert, focus is
+contained inside Views or Artifacts, and closing Build with AI, switching,
+deleting, or exiting presentation restores focus to a visible control; if its
+drawer opener became inert, focus returns to the visible Artifacts toggle.
 
 ```mermaid
 sequenceDiagram
@@ -155,6 +193,22 @@ workspace, or receipt fragment. The transaction reads the latest persisted
 workspace, merges delivered nodes, and returns that exact committed record to
 the live tab; the tab skips its otherwise redundant autosave so a same-view edit
 saved by another tab is not overwritten by a stale pre-delivery snapshot.
+Before a live delivery commits, the mounted view flushes any edit still inside
+the autosave window. From that flush through applying the atomic commit, the
+mounted editing surfaces are inert and any active drag is ended, so a new edit
+cannot enter between the chosen snapshot and the committed result. Build
+Session controls stay available so the user can end and abort the operation.
+The delivered node set is then recorded as one Undo step;
+external sibling-tab node changes are rebased through older history snapshots
+so undoing the delivery does not erase either the sibling change or earlier
+local Undo entries.
+The same serialized boundary checks browser-local deletion tombstones before
+and during the transaction. If the session's target view was deleted while a
+module was preparing, the browser sends a terminal rejected ACK and writes no
+package, workspace, or receipt; the relay path never clears the tombstone.
+When the target is not the mounted View, a successful commit also refreshes the
+mounted origin-wide artifact runtime so **Artifacts > Yours** and package-aware
+imports see the new package without navigation or reload.
 
 Browser-only capability material stays in module-private page memory and is not
 written to Web Storage. Reloading therefore ends the browser side of a Build
@@ -166,19 +220,26 @@ Placement stays host-owned. The session captures its target view and stage size;
 navigation never retargets it. Installation uses that view's current or last
 persisted viewport, snaps the candidate to the 38px grid, searches outward from
 the center for the nearest fully visible non-overlapping position, and assigns
-successively highest z-indices. If no complete position exists, the first card
-stays centered on top and additional cards offset diagonally by one grid step.
+successively highest z-indices. If the viewport has no complete opening, the
+search expands into the neighboring world grid and chooses the nearest free
+position for each card, including cards already added by the same delivery as
+blockers; it never accepts an overlapping center fallback.
 
 Session creation requires a strict allowed browser origin and Turnstile. The
 Worker applies an IP creation limit and a per-source upload limit. Only a
 request whose upload capability the Durable Object has authenticated consumes
 the per-session upload budget. Additional limits include 24 delivery ids,
-2 MB ciphertext per delivery, and 8 MB pending ciphertext
+1.4 MB decoded ciphertext per delivery (leaving room for base64 and SQLite row overhead), and 8 MB pending ciphertext
 per session. Browser WebSocket and agent upload capabilities cannot substitute
 for one another. The fixed Turnstile test token is accepted only in the exact
-`development` environment from a loopback origin; every other environment
+`development` environment when both browser origin and the Worker's actual
+request URL are loopback; every other environment and any public request URL
 fails closed without a real secret. `RELAY_ENABLED` is the operational kill switch. The existing
 file installer and direct same-browser Agent API remain offline/local fallbacks.
+Allowlisted browser-origin delivery responses include strict CORS headers on
+both success and error, while command-line uploads need no `Origin`. IPv6
+rate-limit sources use canonical /64 buckets; genuine IPv4-mapped forms share
+their IPv4 bucket and NAT64 addresses remain IPv6.
 
 The Artifact Library projects two sources into one placement UI:
 
@@ -208,8 +269,20 @@ previews, which remain renderer-free geometry summaries of complete boards.
 
 Canvas-level keyboard commands live in one guarded hook. `Cmd/Ctrl+B` toggles
 Views, `Shift+Cmd/Ctrl+A` toggles Artifacts, `Cmd/Ctrl+0` resets the viewport,
-`+`/`-` zoom, and `Escape` dismisses the active panel or selection. Editable
-targets and the modal AI handoff are excluded from global handling.
+`Cmd/Ctrl+Z` / `Shift+Cmd/Ctrl+Z` traverse session history, `Cmd/Ctrl+A`
+selects all, `Cmd/Ctrl+D` duplicates, `Cmd/Ctrl+C` / `V` use the in-session
+canvas clipboard, `+`/`-` zoom, and `Escape` dismisses the active panel or
+selection. Editable targets and the modal AI handoff are excluded from global
+handling. Ordinary blank-stage drag remains pan; `Shift+drag` creates an
+additive marquee, and dragging any selected node moves the full selection with
+one shared snapped delta.
+
+Presentation mode is a renderer state, not a board mutation. It hides editing
+chrome and derives a Fit All viewport from current node bounds and live stage
+dimensions. The persisted viewport remains untouched, so exiting restores the
+exact editing frame. Left/Right switches browser-local Views while App-level
+presentation state survives the workspace remount. `Escape` exits, while a
+minimal pointer-accessible control strip keeps touch users from being trapped.
 
 ## Artifact Registry
 
@@ -399,7 +472,12 @@ Canvas runtime behavior lives under `src/canvas/`:
 
 - `components/` renders the toolbar, board, canvas nodes, and zoom controls.
 - `hooks/useCanvasInteractions.ts` owns pointer drag, resize, wheel pan, pinch
-  zoom, toolbar zoom, z-order bumping, and snap-to-grid math.
+  zoom, toolbar zoom, marquee selection, group movement, z-order bumping, and
+  snap-to-grid math.
+- `hooks/useCanvasDocumentHistory.ts` owns bounded session snapshots and gesture
+  transactions; `hooks/useCanvasSelectionActions.ts` owns document commands.
+- `selection.ts` keeps selection geometry, layout, cloning, and presentation
+  framing pure and independently reviewable.
 - `debugState.ts` is the only place that writes `window.__FREEFORM_STATE__`.
 - `src/relay/` owns browser session consent, capabilities, encryption,
   reconnect/replay, atomic multi-bundle preparation, and placement.

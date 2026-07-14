@@ -85,9 +85,52 @@ All notable user-facing changes to this project should be documented here.
   cards when an acknowledgement is lost.
 - Worker/DO emulator adversarial tests and real-browser relay journeys covering
   reconnect, expiry, bad bundle rollback, view binding, placement, and replay.
+- Transactional session Undo/Redo, marquee and additive multi-selection, group
+  movement, alignment/distribution, duplicate, and in-session copy/paste.
+- View duplication, persistent drag ordering, delete with short-lived Undo, and
+  clean Fit All presentation with keyboard View navigation.
+- Pointer-accessible responsive drawer/presentation exits and menu-based View
+  ordering for touch and keyboard workflows.
+- Visible active Build Session controls after closing the handoff, separate
+  transport/delivery status, and phone-width focus containment for Views and
+  Artifacts.
+- Worktree-safe Playwright port selection through `FREEFORM_TEST_PORT`.
 
 ### Fixed
 
+- Prevented delivered cards from overlapping existing or same-delivery cards
+  when the visible viewport has no complete opening.
+- Preserved autosave-window edits, cross-tab revisions, prior Undo history, and
+  the latest deletion-generation snapshot across relay installation and
+  repeated delete/restore races.
+- Locked mounted editing surfaces only during the atomic artifact-install
+  critical section so a late local edit cannot be overwritten by its result.
+- Separated relay transport state from delivery outcome and kept active session
+  controls and visible install progress after the Build with AI dialog closes;
+  mobile dialog close now returns focus to a visible opener.
+- Refreshed **Artifacts > Yours** immediately after a delivery to a background
+  View and returned strict CORS on allowlisted browser uploads.
+- Canonicalized equivalent IPv6 rate-limit sources without collapsing NAT64
+  addresses into bare IPv4 buckets.
+- Restricted the development Turnstile bypass to loopback browser origins and
+  loopback Worker request URLs, including for accidentally public previews.
+
+- Prevented stale tabs, overlapping autosaves, recovery mirrors, and stale View
+  Undo from overwriting newer browser-local workspace revisions.
+- Preserved edits still inside the autosave window during relay/offline install,
+  and kept each relay delivery undoable without clearing earlier history.
+- Replaced relay's occupied-center fallback with nearest non-overlapping world
+  grid placement for every artifact in a multi-item delivery.
+- Prevented an in-flight relay delivery from resurrecting a View deleted during
+  module preparation; the browser now rejects it and preserves the tombstone.
+- Kept presentation framing derived from live node bounds so entering and
+  leaving presentation never overwrites the user's editable viewport.
+- Prevented parallel Playwright runs from silently testing a different
+  worktree's already-running Vite server.
+- Preserved unsaved active-View edits across duplicate and delete Undo, kept
+  failed IndexedDB deletions hidden with local tombstones, fixed downward View
+  ordering, equalized visible distribution gaps, and kept click-only selection
+  out of Undo history.
 - Made Artifact Library arrow-key tab focus move synchronously with selection,
   avoiding stale-focus reversals under a busy browser event loop.
 - Kept click-added artifacts inside the current visible canvas and placed them
