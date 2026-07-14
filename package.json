@@ -18,6 +18,7 @@
     "relay:deploy": "wrangler deploy --config relay/wrangler.jsonc --install-skills=false",
     "verify:preview": "node scripts/verify-preview.mjs",
     "verify:relay:production": "node scripts/verify-relay-production.mjs",
+    "verify:relay:production:security": "node scripts/verify-relay-production.mjs --security-smoke",
     "setup:browsers": "playwright install chromium",
     "verify:ui": "playwright test",
     "verify:proof": "node scripts/record-proof.mjs"

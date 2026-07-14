@@ -287,7 +287,16 @@ Wrangler vars or repository files:
 npx wrangler secret put TURNSTILE_SECRET --config relay/wrangler.jsonc
 npx wrangler secret put RELAY_ROUTING_SECRET --config relay/wrangler.jsonc
 npm run relay:deploy
+npm run verify:relay:production:security
 ```
+
+The production smoke uses the real widget without bypassing it: automation
+checks widget startup, protocol-v2 health, strict CORS, and the pre-token
+fail-closed UI. Because Turnstile intentionally detects automated browsers, a
+full live delivery requires an operator to run the same command with
+`FREEFORM_HEADLESS=false npm run verify:relay:production` and complete the
+widget. The emulator and browser CI use Cloudflare's official test-key pair
+for deterministic end-to-end delivery; those keys never belong in production.
 
 `RELAY_ENABLED` is the kill switch. The committed production allowlist contains
 only the GitHub Pages origin; local origins are explicit command-line overrides

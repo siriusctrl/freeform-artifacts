@@ -8,9 +8,78 @@ const root = process.cwd();
 const appUrl = process.env.FREEFORM_PRODUCTION_URL ?? "https://siriusctrl.github.io/freeform-artifacts/";
 const expectedRelay = "https://freeform-artifact-relay.morryniu123.workers.dev";
 const artifactId = "production-relay-smoke";
+const securitySmokeOnly = process.argv.includes("--security-smoke");
 const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "freeform-relay-smoke-"));
 const bundlePath = path.join(temporaryDirectory, `${artifactId}.freeform-artifact.json`);
 let browser;
+let context;
+let page;
+let liveSessionMayExist = false;
+
+async function waitFor(predicate, timeoutMs, failureMessage) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(failureMessage);
+}
+
+async function verifyRelayEdgeSecurity() {
+  const productionOrigin = new URL(appUrl).origin;
+  const healthResponse = await fetch(`${expectedRelay}/health?probe=${Date.now()}`, {
+    headers: { "Cache-Control": "no-cache" },
+  });
+  const health = await healthResponse.json();
+  if (!healthResponse.ok || !health.ok || !health.ready || health.version !== 2 || health.enabled !== true) {
+    throw new Error(`Relay health check failed: ${JSON.stringify(health)}`);
+  }
+
+  const allowedPreflight = await fetch(`${expectedRelay}/v1/sessions`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: productionOrigin,
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type",
+    },
+  });
+  if (allowedPreflight.status !== 204 || allowedPreflight.headers.get("Access-Control-Allow-Origin") !== productionOrigin) {
+    throw new Error("Relay did not allow the production Pages origin");
+  }
+  const allowedMethods = allowedPreflight.headers.get("Access-Control-Allow-Methods")
+    ?.split(",").map((value) => value.trim().toUpperCase()) ?? [];
+  const allowedHeaders = allowedPreflight.headers.get("Access-Control-Allow-Headers")
+    ?.split(",").map((value) => value.trim().toLowerCase()) ?? [];
+  const variedHeaders = allowedPreflight.headers.get("Vary")
+    ?.split(",").map((value) => value.trim().toLowerCase()) ?? [];
+  if (!allowedMethods.includes("POST") || !allowedHeaders.includes("content-type") || !variedHeaders.includes("origin")) {
+    throw new Error("Relay production CORS preflight omitted required method, header, or cache variance");
+  }
+
+  const deniedPreflight = await fetch(`${expectedRelay}/v1/sessions`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://relay-smoke.invalid",
+      "Access-Control-Request-Method": "POST",
+    },
+  });
+  if (deniedPreflight.status !== 403 || deniedPreflight.headers.has("Access-Control-Allow-Origin")) {
+    throw new Error("Relay did not fail closed for a foreign origin");
+  }
+  const deniedPost = await fetch(`${expectedRelay}/v1/sessions`, {
+    method: "POST",
+    headers: {
+      Origin: "https://relay-smoke.invalid",
+      "Content-Type": "application/json",
+    },
+    body: "{}",
+  });
+  if (deniedPost.status !== 403 || deniedPost.headers.has("Access-Control-Allow-Origin")) {
+    throw new Error("Relay accepted or exposed a foreign-origin session request");
+  }
+
+  return health;
+}
 
 function parseRelayHandoff(handoff) {
   const option = (name) => handoff.match(new RegExp(`--${name}\\s+"([^"]+)"`))?.[1];
@@ -51,11 +120,26 @@ function runDelivery(session) {
   });
 }
 
+async function endLiveSession() {
+  if (!page || !liveSessionMayExist) return;
+  const endButton = page.getByRole("button", { name: "End session", exact: true });
+  await endButton.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {
+    throw new Error("Production session could not be ended explicitly");
+  });
+  const deletion = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === "DELETE" &&
+      url.origin === expectedRelay &&
+      /^\/v1\/sessions\/[^/]+$/.test(url.pathname);
+  }, { timeout: 15_000 });
+  await endButton.click();
+  const response = await deletion;
+  if (response.status() !== 204) throw new Error(`Production session cleanup failed with ${response.status()}`);
+  liveSessionMayExist = false;
+}
+
 try {
-  const health = await fetch(`${expectedRelay}/health`).then((response) => response.json());
-  if (!health.ok || health.version !== 2 || health.enabled !== true) {
-    throw new Error(`Relay health check failed: ${JSON.stringify(health)}`);
-  }
+  const health = await verifyRelayEdgeSecurity();
 
   await writeFile(bundlePath, JSON.stringify({
     version: 1,
@@ -75,56 +159,126 @@ try {
   }), "utf8");
 
   browser = await chromium.launch({ headless: process.env.FREEFORM_HEADLESS !== "false" });
-  const context = await browser.newContext();
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(appUrl).origin });
-  const page = await context.newPage();
+  context = await browser.newContext();
+  page = await context.newPage();
+  await page.addInitScript(() => {
+    let clipboardText = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        readText: async () => clipboardText,
+        writeText: async (value) => { clipboardText = String(value); },
+      },
+    });
+  });
+  const turnstileEvidence = {
+    apiScriptLoaded: false,
+    challengeStarted: false,
+    frameObserved: false,
+  };
+  let sessionCreationRequests = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url() === `${expectedRelay}/v1/sessions`) {
+      sessionCreationRequests += 1;
+    }
+  });
+  page.on("response", (response) => {
+    const url = new URL(response.url());
+    if (
+      response.request().method() === "POST" &&
+      response.url() === `${expectedRelay}/v1/sessions` &&
+      response.status() === 201
+    ) {
+      liveSessionMayExist = true;
+    }
+    if (url.hostname !== "challenges.cloudflare.com" || !response.ok()) return;
+    if (url.pathname.includes("/turnstile/") && url.pathname.endsWith("/api.js")) {
+      turnstileEvidence.apiScriptLoaded = true;
+    }
+    if (url.pathname.includes("/cdn-cgi/challenge-platform/")) {
+      turnstileEvidence.challengeStarted = true;
+    }
+  });
+  page.on("framenavigated", (frame) => {
+    try {
+      if (new URL(frame.url()).hostname === "challenges.cloudflare.com") {
+        turnstileEvidence.frameObserved = true;
+      }
+    } catch {
+      // Initial about:blank frames are not URL evidence.
+    }
+  });
   await page.goto(appUrl, { waitUntil: "networkidle" });
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.getByTestId("build-artifact").click();
-  try {
-    await page.getByTestId("relay-session-status").getByText("Relay connected", { exact: true }).waitFor({
+  await waitFor(
+    () => turnstileEvidence.apiScriptLoaded && (turnstileEvidence.challengeStarted || turnstileEvidence.frameObserved),
+    20_000,
+    "The production Turnstile widget did not start",
+  );
+
+  if (securitySmokeOnly) {
+    const copyDisabled = await page.getByTestId("copy-agent-instruction").isDisabled();
+    const status = await page.getByTestId("relay-session-status").innerText();
+    if (!copyDisabled || sessionCreationRequests !== 0 || !status.includes("Verifying this Build Session")) {
+      throw new Error("The production client did not remain fail-closed before human verification");
+    }
+    console.log(JSON.stringify({
+      ok: true,
+      mode: "automated-security-smoke",
+      appUrl,
+      relayUrl: expectedRelay,
+      relayVersion: health.version,
+      turnstile: "started; human verification required for a full delivery",
+      sessionCreationRequests,
+    }, null, 2));
+  } else {
+    try {
+      await page.getByTestId("relay-session-status").getByText("Relay connected", { exact: true }).waitFor({
+        state: "visible",
+        timeout: 180_000,
+      });
+    } catch (error) {
+      const status = await page.getByTestId("relay-session-status").innerText().catch(() => "missing status");
+      throw new Error(`Human-verified production Build Session did not become ready. Status: ${status}. ${error instanceof Error ? error.message : ""}`);
+    }
+    await page.getByTestId("copy-agent-instruction").click();
+    const session = parseRelayHandoff(await page.evaluate(() => navigator.clipboard.readText()));
+    if (
+      !session ||
+      session.endpoint !== expectedRelay ||
+      session.targetViewId !== "market-overview" ||
+      !session.targetViewIncarnationId
+    ) {
+      throw new Error("Production Build Session did not bind the expected relay and view");
+    }
+
+    const delivery = await runDelivery(session);
+    if (!delivery.accepted || delivery.artifactIds?.[0] !== artifactId) {
+      throw new Error("Production relay did not accept the smoke artifact");
+    }
+    await page.getByTestId("relay-session-status").getByText("Installed 1 artifact", { exact: false }).waitFor({
       state: "visible",
-      timeout: 60_000,
+      timeout: 30_000,
     });
-  } catch (error) {
-    const status = await page.getByTestId("relay-session-status").innerText().catch(() => "missing status");
-    const turnstileFrames = page.frames().filter((frame) => frame.url().includes("challenges.cloudflare.com")).length;
-    throw new Error(`Production Build Session did not become ready. Status: ${status}. Turnstile frames: ${turnstileFrames}. ${error instanceof Error ? error.message : ""}`);
-  }
-  await page.getByTestId("copy-agent-instruction").click();
-  const session = parseRelayHandoff(await page.evaluate(() => navigator.clipboard.readText()));
-  if (
-    !session ||
-    session.endpoint !== expectedRelay ||
-    session.targetViewId !== "market-overview" ||
-    !session.targetViewIncarnationId
-  ) {
-    throw new Error("Production Build Session did not bind the expected relay and view");
-  }
+    await endLiveSession();
+    await page.getByText("Real Turnstile and workers.dev delivery").waitFor({ state: "visible" });
+    const installed = await page.evaluate((id) => window.__FREEFORM_STATE__?.artifactIds.includes(id), artifactId);
+    if (!installed) throw new Error("Production browser did not persist the relay artifact");
 
-  const delivery = await runDelivery(session);
-  if (!delivery.accepted || delivery.artifactIds?.[0] !== artifactId) {
-    throw new Error("Production relay did not accept the smoke artifact");
+    console.log(JSON.stringify({
+      ok: true,
+      mode: "human-verified-full-journey",
+      appUrl,
+      relayUrl: expectedRelay,
+      targetViewId: session.targetViewId,
+      artifactId,
+      deliveryId: delivery.deliveryId,
+    }, null, 2));
   }
-  await page.getByTestId("relay-session-status").getByText("Installed 1 artifact", { exact: false }).waitFor({
-    state: "visible",
-    timeout: 30_000,
-  });
-  await page.getByTitle("Close", { exact: true }).click();
-  await page.getByText("Real Turnstile and workers.dev delivery").waitFor({ state: "visible" });
-  const installed = await page.evaluate((id) => window.__FREEFORM_STATE__?.artifactIds.includes(id), artifactId);
-  if (!installed) throw new Error("Production browser did not persist the relay artifact");
-
-  console.log(JSON.stringify({
-    ok: true,
-    appUrl,
-    relayUrl: expectedRelay,
-    targetViewId: session.targetViewId,
-    artifactId,
-    deliveryId: delivery.deliveryId,
-  }, null, 2));
-  await context.close();
 } finally {
+  if (liveSessionMayExist) await endLiveSession().catch(() => undefined);
+  await context?.close().catch(() => undefined);
   await browser?.close();
   await rm(temporaryDirectory, { recursive: true, force: true });
 }
