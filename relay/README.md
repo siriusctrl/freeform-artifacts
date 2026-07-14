@@ -78,6 +78,15 @@ leaving `/health` available. Wrangler migration tags manage Durable Object
 classes, not SQL tables. Evolve the in-object schema explicitly through
 `schema_metadata`; never edit or reuse an applied Wrangler migration tag.
 
+After deployment, `npm run verify:relay:production:security` performs a
+non-bypassing production security smoke: protocol/health, production and
+foreign-origin CORS, real widget startup, and pre-token fail-closed behavior.
+Cloudflare documents that real Turnstile keys may reject browser automation, so
+deterministic full delivery stays on the isolated emulator with the official
+test-key pair. For a live full journey, use a visible browser with
+`FREEFORM_HEADLESS=false npm run verify:relay:production` and have a human
+complete the widget; never add a production test-token bypass.
+
 Session locators contain a truncated HMAC so forged UUIDs are rejected before a
 Durable Object lookup. The Worker hashes bearer capabilities before invoking the
 object and strips the raw browser capability from the internal WebSocket

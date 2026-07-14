@@ -415,11 +415,42 @@ test("freeform canvas supports spatial editing, AI handoff, and deletion", async
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.storageMode)).toBe("indexeddb");
 });
 
-test("silent Turnstile widgets time out into a retryable verification error", async ({ page }) => {
+test("Turnstile timeout callbacks become retryable verification errors", async ({ page }) => {
+  await page.addInitScript(() => {
+    const probe = window as typeof window & { __turnstileExecuteCount?: number };
+    probe.__turnstileExecuteCount = 0;
+    let timeoutCallback: (() => void) | undefined;
+    window.turnstile = {
+      render: (_container, options) => {
+        timeoutCallback = options["timeout-callback"];
+        return "timed-out-turnstile";
+      },
+      execute: () => {
+        probe.__turnstileExecuteCount = (probe.__turnstileExecuteCount ?? 0) + 1;
+        window.setTimeout(() => timeoutCallback?.(), 40);
+      },
+      remove: () => { timeoutCallback = undefined; },
+    };
+  });
+  await page.goto("/");
+  await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
+  await page.getByTestId("build-artifact").click();
+  const sessionStatus = page.getByTestId("relay-session-status");
+  await expect(sessionStatus).toContainText("Needs attention");
+  await expect(sessionStatus).toContainText("Secure session verification timed out; retry verification");
+  await expect.poll(async () => page.evaluate(() =>
+    (window as typeof window & { __turnstileExecuteCount?: number }).__turnstileExecuteCount)).toBe(1);
+  await page.getByRole("button", { name: "Retry verification" }).click();
+  await expect.poll(async () => page.evaluate(() =>
+    (window as typeof window & { __turnstileExecuteCount?: number }).__turnstileExecuteCount)).toBe(2);
+  await expect(sessionStatus).toContainText("Needs attention");
+});
+
+test("silent Turnstile widgets fall back to a retryable verification timeout", async ({ page }) => {
   await page.addInitScript(() => {
     const nativeSetTimeout = window.setTimeout.bind(window);
     window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) =>
-      nativeSetTimeout(handler, timeout === 17_000 ? 40 : timeout, ...args)) as typeof window.setTimeout;
+      nativeSetTimeout(handler, timeout === 120_000 ? 40 : timeout, ...args)) as typeof window.setTimeout;
     const probe = window as typeof window & { __turnstileExecuteCount?: number };
     probe.__turnstileExecuteCount = 0;
     window.turnstile = {

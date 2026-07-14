@@ -3,7 +3,7 @@ import { RELAY_TURNSTILE_ACTION } from "./config";
 
 const TURNSTILE_SCRIPT_ID = "freeform-turnstile-script";
 const TURNSTILE_SCRIPT_URL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-const TURNSTILE_CALLBACK_TIMEOUT_MS = 17_000;
+const TURNSTILE_FALLBACK_TIMEOUT_MS = 120_000;
 
 function loadTurnstile() {
   if (window.turnstile) return Promise.resolve(window.turnstile);
@@ -50,11 +50,11 @@ export function TurnstileGate({ siteKey, onError, onToken }: TurnstileGateProps)
     let cancelled = false;
     let settled = false;
     let widgetId: string | undefined;
-    let callbackWatchdog: number | undefined;
+    let fallbackTimeout: number | undefined;
     const finish = (callback: () => void) => {
       if (cancelled || settled) return;
       settled = true;
-      if (callbackWatchdog !== undefined) window.clearTimeout(callbackWatchdog);
+      if (fallbackTimeout !== undefined) window.clearTimeout(fallbackTimeout);
       callback();
     };
     void loadTurnstile()
@@ -68,18 +68,19 @@ export function TurnstileGate({ siteKey, onError, onToken }: TurnstileGateProps)
           callback: (token) => finish(() => onToken(token)),
           "error-callback": () => finish(() => onError("Secure session verification failed; try Build with AI again")),
           "expired-callback": () => finish(() => onError("Secure session verification expired; try Build with AI again")),
+          "timeout-callback": () => finish(() => onError("Secure session verification timed out; retry verification")),
         });
         turnstile.execute(widgetId);
         if (!settled) {
-          callbackWatchdog = window.setTimeout(() => {
+          fallbackTimeout = window.setTimeout(() => {
             finish(() => onError("Secure session verification timed out; retry verification"));
-          }, TURNSTILE_CALLBACK_TIMEOUT_MS);
+          }, TURNSTILE_FALLBACK_TIMEOUT_MS);
         }
       })
       .catch((error) => finish(() => onError(error instanceof Error ? error.message : "Unable to start secure verification")));
     return () => {
       cancelled = true;
-      if (callbackWatchdog !== undefined) window.clearTimeout(callbackWatchdog);
+      if (fallbackTimeout !== undefined) window.clearTimeout(fallbackTimeout);
       if (widgetId && window.turnstile) window.turnstile.remove(widgetId);
     };
   }, [onError, onToken, siteKey]);
@@ -97,6 +98,7 @@ declare global {
       callback: (token: string) => void;
       "error-callback": () => void;
       "expired-callback": () => void;
+      "timeout-callback": () => void;
     }) => string;
     execute: (widget: string | HTMLElement) => void;
     remove: (widgetId: string) => void;

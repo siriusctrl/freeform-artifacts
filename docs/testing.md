@@ -155,7 +155,10 @@ bundle/migration can be produced with `wrangler deploy --dry-run`.
 
 `tests/relay.spec.ts` launches the same local Worker/DO emulator and a real
 Chromium page. Its Turnstile stub uses Cloudflare's documented development test
-key/token only; production verification must use the real widget and siteverify.
+key/token only. Cloudflare documents that real Turnstile widgets can identify
+Playwright as automation and return unpredictable failures, so a production
+widget is never replaced with a test key or bypass merely to make a release
+gate pass.
 The browser suite also covers rapid deliveries across current persisted state,
 same-view multi-tab edits during a relay commit, strict revision CAS with
 re-placement on a newer board, current-tab edits inside the autosave window,
@@ -193,6 +196,34 @@ losing the newest edit, random commit identities reject a same-timestamp foreign
 winner, and an ambiguous v1 journal cannot become a fallback baseline during an
 IndexedDB outage. The relay browser suite confirms browsers without Web Locks
 make no session-creation request and retain file install as the fallback.
+
+After Pages and the Worker are deployed, run:
+
+```sh
+npm run verify:relay:production:security
+```
+
+The automated production security smoke is intentionally non-bypassing. It verifies the
+live Pages app, protocol-v2 `/health`, the exact production-origin CORS allow,
+foreign-origin denial, real Turnstile script/challenge startup, and that the
+handoff remains disabled before a human token exists. It reports
+`automated-security-smoke`; it does not claim that a bot completed Turnstile.
+It therefore cannot prove that the public sitekey and deployed secret are a
+working pair; only the human-verified command below makes that claim.
+The blocking full-delivery journey remains the emulator/browser suite with the
+documented test-key pair. A release operator can run a human-verified live
+delivery with a visible browser:
+
+```sh
+FREEFORM_HEADLESS=false npm run verify:relay:production
+```
+
+Complete the real widget in that browser. The script then copies the handoff
+only in page memory, uploads one encrypted bundle through the production Worker,
+explicitly ends the session, and asserts the atomic browser install.
+Capabilities never reach the system clipboard or logs. Keep real
+keys in production and test keys in isolated development or preview systems;
+production must not gain a test-token exception.
 
 If Chromium is missing, run:
 
