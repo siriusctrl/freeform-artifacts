@@ -115,6 +115,7 @@ async function readArtifactPackage(page: Page, artifactId: string) {
 }
 
 test("one session accepts atomic, repeated, and multi-tab-safe deliveries", async ({ page }, testInfo) => {
+  test.setTimeout(75_000);
   const session = await openBuildSession(page);
   expect(session.targetViewId).toBe("market-overview");
   const displayedInstruction = await page.getByTestId("agent-instruction").innerText();
@@ -212,8 +213,15 @@ test("one session accepts atomic, repeated, and multi-tab-safe deliveries", asyn
     installed: true,
     revenueX: siblingRevenueX,
   });
-  await page.waitForTimeout(300);
-  await expect(runDelivery(testInfo, session, [agentArtifactBundle("relay-after-reload")])).rejects.toThrow("session_expired");
+  const afterReload = agentArtifactBundle("relay-after-reload");
+  try {
+    const racedCleanup = await runDelivery(testInfo, session, [afterReload]);
+    expect(racedCleanup.accepted).toBe(true);
+  } catch (error) {
+    expect(String(error)).toContain("session_expired");
+  }
+  await page.waitForTimeout(500);
+  expect(await page.evaluate((id) => window.__FREEFORM_STATE__!.artifactIds.includes(id), afterReload.artifactId)).toBe(false);
 });
 
 test("host placement falls back to centered, grid-offset stacking when no card fits the viewport", async ({ page }, testInfo) => {

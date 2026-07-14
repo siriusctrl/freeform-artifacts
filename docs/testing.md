@@ -145,7 +145,13 @@ The browser suite also covers rapid deliveries across current persisted state,
 same-view multi-tab edits during a relay commit, page-memory-only capabilities,
 cancellation during module preparation, stale view creation responses,
 authenticated byte-identical uploader retry caching, and ambiguous network
-outcomes that preserve the original delivery id.
+outcomes that preserve the original delivery id. CI gives each independent
+browser page a documentation-range source IP because every context otherwise
+shares one loopback address; the Worker suite separately exercises shared-IP
+rate-limit exhaustion against the production binding limits. A reload removes
+the browser capability synchronously; its `pagehide` DELETE may race one last
+upload, so browser tests require that such ciphertext can never install while
+the server's synchronous TTL and alarm remain the final cleanup boundary.
 
 If Chromium is missing, run:
 
