@@ -161,6 +161,7 @@ export function CanvasToolbar({
             className="visually-hidden"
             type="file"
             accept="application/json,.json"
+            tabIndex={-1}
             data-testid="workspace-file"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
@@ -235,7 +236,7 @@ export function CanvasToolbar({
             <LibraryBig size={18} />
             <span>Artifacts</span>
           </button>
-          <button type="button" className="primary-action" onClick={onBuildArtifact} data-testid="build-artifact">
+          <button type="button" className="primary-action" onClick={onBuildArtifact} data-testid="build-artifact" title="Start a private 30-minute Build Session for this view">
             <Sparkles size={17} /><span>Build with AI</span>
           </button>
         </div>

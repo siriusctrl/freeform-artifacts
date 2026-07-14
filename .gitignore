@@ -4,5 +4,7 @@ playwright-report/
 test-results/
 artifacts/verification/
 .vite/
+relay/.dev.vars
+relay/.wrangler/
 .DS_Store
 *.log

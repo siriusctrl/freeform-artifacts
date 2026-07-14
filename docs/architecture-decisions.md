@@ -1131,9 +1131,11 @@ locations, but one skill workflow did not make that distinction prominent.
 - Add non-persisting `validateArtifact()` checks across default/minimum sizes and
   both themes before a browser bundle can be installed.
 - Split skill delivery into Browser View Bundle and Self-Deployed Repo modes.
-  In-product Build with AI always selects the former and forbids repository
-  source changes; self-deployed artifacts live under
-  `src/artifacts/generated/*.artifact.tsx`.
+  In-product Build with AI selects the browser-local bundle boundary and forbids
+  repository source changes; self-deployed artifacts live under
+  `src/artifacts/generated/*.artifact.tsx`. ADR-0025 later adds Browser Relay as
+  the automatic transport for the same bundle boundary while retaining the
+  manual Browser View Bundle fallback.
 
 ### Tradeoffs
 
@@ -1201,7 +1203,7 @@ package metadata editing, explicit uninstall, or cross-device package sync.
 
 ## ADR-0025: Deliver browser-local artifacts through a short-lived relay
 
-Status: Proposed
+Status: Accepted
 
 Date: 2026-07-13
 
@@ -1219,33 +1221,84 @@ conversation without requiring browser automation, repository changes, or a
 separate manual upload for every artifact. Long-term canvas and package state
 must remain in the user's browser.
 
-### Proposed decision
+### Decision
 
 - Add an ephemeral HTTPS relay, initially deployed as a Cloudflare Worker with
   one SQLite-backed Durable Object per Build Session.
 - Treat a Build Session as a temporary delivery channel rather than a single
   artifact. A session may receive multiple deliveries, and one delivery may
   contain one or more independently validated artifact bundles.
-- Let the browser create the session and maintain a hibernating WebSocket. Give
-  the trusted agent a separate one-time, capability-scoped upload credential in
-  the copied Build with AI instruction.
-- Keep the relay transport-only. Store encrypted pending payloads for at most 30
-  minutes, delete them after acknowledgement or expiry, and never store canvas
-  workspaces or browser package registries there.
+- A click on **Build with AI** is explicit session-level consent. Let the browser
+  create a target-view-bound session and maintain a hibernating WebSocket. Give
+  the trusted agent a separate capability-scoped upload credential in the
+  copied instruction. “One-time” means a credential exists only for one
+  short-lived Build Session, not one upload: it may submit several deliveries
+  until expiry, while every delivery has a unique idempotency UUID.
+- Keep the relay transport-only. Refuse all access at the 30-minute expiry,
+  delete acknowledged payloads immediately, and use the expiry alarm to delete
+  every SQL table and remaining ciphertext. Never store canvas workspaces or
+  browser package registries there.
+- Generate an AES-256-GCM key in the browser and include it only in the agent
+  handoff. Bind ciphertext authentication to protocol version, session id,
+  target view id, and delivery id. Store only SHA-256 capability hashes in the
+  Durable Object; the relay never receives the plaintext encryption key.
+- Keep the browser capability in module-private page memory, never Web Storage
+  or the agent handoff. Reloading ends the browser side of the session. Visually
+  mask the uploader capability and encryption key; copy them only in the handoff
+  and pass them to the delivery script over stdin rather than process arguments.
 - Validate every artifact in the browser before installation. For a multi-item
   delivery, validate the complete selection before committing package and view
   writes so a failed item cannot leave an accidental partial dashboard.
 - Place delivered artifacts using host-owned layout knowledge. Search the
   current target-view viewport for a complete non-overlapping position nearest
-  its center, snap it to the grid, and append it at the highest z-index. If no
-  complete position exists, place it at the viewport center; offset additional
-  fallback items by one grid step so they do not become perfectly hidden.
+  its center, snap it to the grid, and append it at the highest z-index. If the
+  viewport has no complete opening, continue the same center-out search across
+  the neighboring world grid until every item has its own non-overlapping
+  position; never stack a fallback at the occupied viewport center.
 - Keep the existing file installer as the offline fallback. Do not require an
   npm-published delivery CLI initially; the project skill may invoke a bundled
   script or the relay HTTP contract directly.
-- Bound abuse from the first deployment: limit bundle and session payload size,
-  artifacts per session, session creation by source, token lifetime, and active
-  sessions; retain an operational kill switch.
+- Persist a successful browser delivery receipt in the same IndexedDB
+  transaction as its packages and target workspace. If an ACK is lost, replay
+  returns the receipt and sends another ACK without placing duplicate nodes.
+- Give every browser-local workspace a monotonic revision. Flush current-tab
+  dirty state before a live install, compare-and-swap ordinary saves, and merge
+  relay nodes into the transaction's latest revision. Rebase external node
+  changes through bounded in-memory history and record the delivery as one Undo
+  step instead of clearing prior Undo entries.
+- Make mounted editing surfaces inert for the short validation-and-commit
+  critical section and cancel any active drag when it begins. This prevents a
+  new local mutation from being accepted after the flushed snapshot but before
+  the committed workspace is applied; session controls remain available so the
+  user can still end an in-flight session.
+- Treat a deleted target view as a terminal delivery rejection. Check its
+  browser-local tombstone at the serialized write boundary and inside the
+  IndexedDB transaction; never clear that tombstone from the relay path or
+  recreate the view from an in-flight snapshot.
+- Store deletion as an independent per-View tombstone with a fresh generation
+  UUID, and make restore a one-time conditional write against both that
+  generation and the deleted revision. Recovery mirrors are monotonic, so
+  stale pagehide and stale Undo paths cannot resurrect or overwrite a newer
+  View, including after restore, edit, and a later deletion.
+- Bind each idempotency UUID to a digest of its complete encrypted envelope.
+  Reject the same id with changed ciphertext. Let the uploader retain only that
+  envelope and a payload digest in a private, mode-0600 OS cache only while an
+  outcome is ambiguous, so a retry from a later process is byte-identical
+  without persisting a capability, key, or plaintext bundle. Delete definitive
+  results and opportunistically prune owned ambiguous entries after 24 hours.
+- Bound abuse from the first deployment with strict production/dev origin
+  allowlists, Turnstile on session creation, signed session locators, IP
+  session-creation rate limiting, per-source and authenticated per-session
+  upload and WebSocket-connect rate limiting, 12 artifacts per delivery, 24 deliveries per
+  session, 1.4 MB decoded ciphertext per delivery (so its base64url TEXT and row
+  metadata remain below Durable Object SQLite's 2 MB limit), 8 MB pending ciphertext per session,
+  body limits, a 30-minute alarm, and an operational kill switch.
+- Return strict CORS headers for every allowlisted browser-origin upload result,
+  including errors, and canonicalize IPv6 limit keys by /64 while mapping only
+  genuine IPv4-mapped IPv6 addresses into IPv4 buckets.
+- Deploy the personal demo on `workers.dev`. Do not add D1, KV, or R2: the
+  SQLite-backed Durable Object is sufficient for the session's bounded pending
+  ciphertext and idempotency rows.
 
 ### Tradeoffs
 
@@ -1253,21 +1306,46 @@ must remain in the user's browser.
   external availability dependency even though durable user state remains
   browser-local.
 - Capability tokens authorize delivery of executable trusted code. Short
-  lifetimes, narrow session scope, browser validation, and an explicit install
-  confirmation remain necessary boundaries.
+  lifetimes, narrow session scope, capability separation, local encryption, and
+  complete browser validation are necessary boundaries. The Build Session click
+  is the explicit consent boundary; repeating a confirmation for every artifact
+  would break the intended conversational workflow without adding a distinct
+  trust decision.
+- Installed artifact modules execute inside the application origin because this
+  feature deliberately accepts trusted code, not sandboxed third-party code.
+  Keeping the browser capability out of storage and the React-visible session
+  object preserves the server-side capability split, but does not turn artifact
+  modules into an untrusted-code sandbox.
+- Durable Object alarms are at-least-once and may run after their scheduled
+  time. Every route and hibernating WebSocket message enforces the expiry
+  timestamp synchronously, so ciphertext becomes inaccessible at 30 minutes
+  even if physical deletion is delayed until the alarm retry.
+- The SQL schema-v2 upgrade adds envelope digests. An exact retry of still-
+  pending schema-v1 ciphertext is compared field-by-field and backfills its
+  digest. A terminal schema-v1 delivery whose ciphertext was already deleted is
+  conservatively rejected as unverifiable; sessions last only 30 minutes.
 - Free service quotas are ample for a personal demo only if the browser uses a
   hibernating WebSocket rather than periodic polling. Public deployment still
   needs rate limits to avoid quota exhaustion.
 - A session bound to another view uses that view's last persisted viewport for
   placement; it must not silently retarget itself when the user navigates.
+- The mounted canvas is briefly read-only while a delivery validates and
+  commits. Normal bundles make this nearly invisible, but a slow trusted module
+  can make the busy interval noticeable.
+- Deleting the bound view invalidates future installation into it. A delivery
+  already in module preparation receives a rejected ACK rather than reviving
+  the view or retrying until session expiry.
 
-### Prerequisite and resume point
+### Implemented boundary
 
-Implementation is intentionally deferred until a Cloudflare account and
-`workers.dev` subdomain are available. Resume by implementing and testing the
-versioned delivery protocol, local Worker/Durable Object emulator, browser
-session client, agent delivery command, reconnect/expiry behavior, and
-adversarial quota controls before enabling the production endpoint.
+`relay/` contains the Worker, initial SQLite-backed Durable Object class
+migration, explicit version-2 in-object SQL schema, limits, and local
+emulator tests. `src/relay/` owns browser capabilities, encryption, WebSocket
+reconnect, delivery receipts, atomic installation, and host placement.
+`skill/freeform-artifact-builder/scripts/deliver.mjs` is the dependency-free
+agent uploader. The endpoint is deployed independently from the GitHub Pages
+frontend so relay availability can be disabled without changing browser-local
+canvas or package state.
 
 ## ADR-0026: Use contained live renderers for Artifact Library previews
 

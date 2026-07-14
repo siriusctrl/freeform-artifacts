@@ -18,6 +18,7 @@ Read these when the task matches:
   - artifact registry
   - data transform pipeline
   - AI artifact contract
+  - encrypted Artifact Delivery Relay and browser atomicity
   - renderer lifecycle
 - `docs/architecture-decisions.md`
   - accepted technical decisions
@@ -37,6 +38,7 @@ Read these when the task matches:
   - project-local skill for creating, registering, laying out, and verifying
     canvas artifacts
   - handoff evidence format
+  - Browser Relay, offline bundle, and self-deployed delivery modes
 
 Code orientation:
 
@@ -64,6 +66,10 @@ Code orientation:
   fallback, and portable workspace bundles.
 - `src/workspaces/preview.ts` creates lightweight geometry summaries for the
   Views sidebar without mounting artifact renderers.
+- `src/relay/` owns the browser Build Session, encryption, reconnect/replay,
+  delivery receipts, multi-bundle installation, and host placement.
+- `relay/` contains the Cloudflare Worker, SQLite Durable Object, security
+  limits, Wrangler bindings/migration, and emulator tests.
 - `src/lib/geometry.ts` owns viewport math and screen/world coordinate
   conversion.
 - `src/artifacts/types.ts` defines the artifact, canvas node, viewport, event,
@@ -90,6 +96,10 @@ Code orientation:
   canvas interactions.
 - `tests/artifact-library.spec.ts` verifies shortcuts, click/drag placement,
   cross-view package reuse, reload, and browser-profile isolation.
+- `tests/relay.spec.ts` verifies encrypted script delivery, atomicity,
+  idempotency, view binding, placement, and WebSocket reconnect in Chromium.
+- `tests/persistence.spec.ts` stresses multi-tab revision, fallback recovery,
+  delete/Undo, and symmetric deletion races in Chromium.
 - `scripts/record-proof.mjs` records the browser proof WebM, converts it to
   GIF, asserts a complete UX journey, and writes manifest, screenshot,
   contact-sheet, UX-check, frame-check, and inspection artifacts.
@@ -101,6 +111,8 @@ Code orientation:
   references for future artifact-building agents.
 - `skill/freeform-artifact-builder/references/artifact-bundle.md` defines the
   no-commit personal bundle contract and installation routes.
+- `skill/freeform-artifact-builder/references/browser-relay.md` defines the
+  remote encrypted delivery command, session rules, and reporting boundary.
 - `skill/freeform-artifact-builder/references/chart-kit.md` defines the managed
   chart contract, capabilities, and raw ECharts escape hatch.
 - `skill/freeform-artifact-builder/references/visual-style-guide.md` defines

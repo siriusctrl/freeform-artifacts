@@ -3,6 +3,11 @@
 Use a bundle when an AI-created artifact belongs to a user's local canvas view
 and should not change or redeploy the application repository.
 
+For a copied `Delivery mode: BROWSER_RELAY` handoff, deliver one or more bundles
+with `../scripts/deliver.mjs` as described in
+[browser-relay.md](browser-relay.md). The manual **Install offline bundle** action below
+remains the offline fallback.
+
 ```json
 {
   "version": 1,
@@ -57,6 +62,6 @@ await page.evaluate(
 ```
 
 Use `window.__FREEFORM_AGENT__.listViews()` to resolve a target id. If the agent
-cannot control the same browser profile, return a `.freeform-artifact.json` file
-for the dialog's **Install bundle** action. Never commit a personal-view bundle
-to the application branch.
+cannot control the same browser profile and no Browser Relay session was
+provided, return a `.freeform-artifact.json` file for the dialog's **Install
+bundle** action. Never commit a personal-view bundle to the application branch.

@@ -75,9 +75,15 @@ to the first browser-local view. Additional named views use unique ids while
 retaining the historical `templateId` field as their IndexedDB key. Navigation
 summaries retain only node geometry and artifact ids for page previews; they do
 not cache screenshots or mount artifact renderers a second time. IndexedDB is
-the primary store. Interaction-driven saves are debounced and serialized per
-view; `pagehide` synchronously writes the latest localStorage recovery mirror if
-a page closes before the next IndexedDB transaction. The persisted board
+the primary store. Every workspace carries a monotonic revision.
+Interaction-driven saves are debounced, single-flight per mounted view, and
+committed with an IndexedDB compare-and-swap so a stale tab cannot overwrite a
+newer board. A later edit made while a save is in flight is rebased onto that
+tab's returned revision; a genuinely external revision reports a conflict.
+`pagehide` synchronously writes a monotonic localStorage recovery mirror if a
+page closes before the next IndexedDB transaction; an older tab cannot replace
+a newer mirror, and a newer fallback revision is promoted when IndexedDB
+recovers. The persisted board
 includes nodes, viewport, selected node, theme mode, and the snap-to-grid
 preference. Node positions can be snapped to the 38px world-coordinate grid by
 the canvas shell. Resize remains aspect-locked and independent of grid snapping;
@@ -89,9 +95,12 @@ continuing to reference the same origin-wide artifact package ids. Deleting a
 view removes its workspace records but keeps packages; the UI retains the
 deleted workspace briefly so Undo can restore it at the previous list position.
 Active-view duplicate and delete operations receive the live in-memory snapshot
-so the 400 ms autosave window cannot discard a just-finished edit. A small
-localStorage tombstone set provides logical deletion when IndexedDB is
-temporarily unavailable and is cleared when a View is restored.
+so the 400 ms autosave window cannot discard a just-finished edit. Every delete
+writes a fresh per-View generation UUID, which remains the authoritative logical
+deletion when IndexedDB is temporarily unavailable. Restore is a conditional
+one-time write that requires both the current deletion generation and matching
+deleted revision before clearing it, so an older Undo cannot be mistaken for a
+later deletion after another tab restores, edits, and deletes the View again.
 
 Node editing uses a bounded in-memory document history. Discrete commands store
 one before-snapshot, while drag and resize open a transaction on pointer down and
@@ -120,6 +129,117 @@ Package ids are browser-origin-wide immutable identities, while nodes remain
 view-scoped. Package and target workspace writes share one IndexedDB transaction;
 invalid targets and payloads are rejected before persistence. Loader failures
 are quarantined per source/package, and renderer errors are isolated per card.
+
+## Artifact Delivery Relay
+
+**Build with AI** opens a roughly 30-minute, view-bound delivery session. It does
+not move durable workspace state to a backend. The browser creates separate
+browser and uploader capabilities plus a 256-bit AES-GCM key, sends only
+capability hashes to the relay, and copies the uploader capability and key into
+the agent handoff. The Worker therefore sees routing metadata, artifact count,
+ciphertext size, and encrypted payloads, but never bundle source, node data, or
+the decryption key.
+
+The modal keeps transport health separate from the most recent delivery
+outcome, so reconnecting cannot be presented as a successful install and a
+rejection can state that nothing was installed without truncation. Closing the
+modal does not revoke session-level consent: a compact active-session strip
+keeps the fixed target, connection state, expiry, reopen action, and End action
+visible until the session ends. A slow atomic install changes that strip or the
+dialog detail to **Installing delivery…** while transport health remains
+separate. On phone-width overlays, the canvas background is inert, focus is
+contained inside Views or Artifacts, and closing Build with AI, switching,
+deleting, or exiting presentation restores focus to a visible control; if its
+drawer opener became inert, focus returns to the visible Artifacts toggle.
+
+```mermaid
+sequenceDiagram
+    participant B as "Browser-local view"
+    participant R as "Relay Worker and session DO"
+    participant A as "Remote agent delivery script"
+    B->>R: "Turnstile-verified session plus token hashes"
+    B->>R: "Hibernating WebSocket with browser capability"
+    A->>R: "AES-GCM ciphertext plus upload capability"
+    R-->>B: "Pending delivery over WebSocket"
+    B->>B: "Decrypt and validate every bundle"
+    B->>B: "Atomic packages, workspace, and receipt commit"
+    B->>R: "Installed or rejected ACK"
+    R->>R: "Delete pending ciphertext"
+```
+
+The version 1 transport lives under `relay/` and uses one SQLite-backed Durable
+Object per session. Access ends at the 30-minute expiry timestamp; its alarm
+then deletes the SQL tables and ciphertext. Hibernating
+WebSockets avoid polling and allow an idle session to release Worker memory.
+The Durable Object stores session metadata, SHA-256 capability hashes,
+idempotency outcomes, and bounded pending ciphertext. It does not use D1, KV, or
+R2 and never stores canvases or artifact registries.
+
+One session accepts several deliveries; one delivery contains 1–12 bundles.
+The uploader capability is reusable only within that session, while every
+delivery uses a UUID plus an envelope digest that cannot represent different
+ciphertext on retry. The delivery script keeps the encrypted envelope (never
+the key or upload capability) in a private OS cache only while an outcome is
+ambiguous so a later process can make a byte-identical retry. Definitive results
+delete it; later runs opportunistically prune owned entries older than 24 hours.
+A changed payload, unauthenticated cache entry, or missing retry cache fails
+locally. The browser serializes processing. It validates the complete decrypted
+selection,
+then writes all packages, the target workspace, and a delivery receipt in one
+IndexedDB transaction. If the network drops after that commit but before ACK,
+the Durable Object replays the ciphertext and the browser uses the receipt to
+ACK without adding duplicate nodes. Rejected selections leave no package,
+workspace, or receipt fragment. The transaction reads the latest persisted
+workspace, merges delivered nodes, and returns that exact committed record to
+the live tab; the tab skips its otherwise redundant autosave so a same-view edit
+saved by another tab is not overwritten by a stale pre-delivery snapshot.
+Before a live delivery commits, the mounted view flushes any edit still inside
+the autosave window. From that flush through applying the atomic commit, the
+mounted editing surfaces are inert and any active drag is ended, so a new edit
+cannot enter between the chosen snapshot and the committed result. Build
+Session controls stay available so the user can end and abort the operation.
+The delivered node set is then recorded as one Undo step;
+external sibling-tab node changes are rebased through older history snapshots
+so undoing the delivery does not erase either the sibling change or earlier
+local Undo entries.
+The same serialized boundary checks browser-local deletion tombstones before
+and during the transaction. If the session's target view was deleted while a
+module was preparing, the browser sends a terminal rejected ACK and writes no
+package, workspace, or receipt; the relay path never clears the tombstone.
+When the target is not the mounted View, a successful commit also refreshes the
+mounted origin-wide artifact runtime so **Artifacts > Yours** and package-aware
+imports see the new package without navigation or reload.
+
+Browser-only capability material stays in module-private page memory and is not
+written to Web Storage. Reloading therefore ends the browser side of a Build
+Session. The upload capability and encryption key appear only in the copied
+agent handoff, are visually masked in the dialog, and enter the uploader over
+stdin rather than process arguments.
+
+Placement stays host-owned. The session captures its target view and stage size;
+navigation never retargets it. Installation uses that view's current or last
+persisted viewport, snaps the candidate to the 38px grid, searches outward from
+the center for the nearest fully visible non-overlapping position, and assigns
+successively highest z-indices. If the viewport has no complete opening, the
+search expands into the neighboring world grid and chooses the nearest free
+position for each card, including cards already added by the same delivery as
+blockers; it never accepts an overlapping center fallback.
+
+Session creation requires a strict allowed browser origin and Turnstile. The
+Worker applies an IP creation limit and a per-source upload limit. Only a
+request whose upload capability the Durable Object has authenticated consumes
+the per-session upload budget. Additional limits include 24 delivery ids,
+1.4 MB decoded ciphertext per delivery (leaving room for base64 and SQLite row overhead), and 8 MB pending ciphertext
+per session. Browser WebSocket and agent upload capabilities cannot substitute
+for one another. The fixed Turnstile test token is accepted only in the exact
+`development` environment when both browser origin and the Worker's actual
+request URL are loopback; every other environment and any public request URL
+fails closed without a real secret. `RELAY_ENABLED` is the operational kill switch. The existing
+file installer and direct same-browser Agent API remain offline/local fallbacks.
+Allowlisted browser-origin delivery responses include strict CORS headers on
+both success and error, while command-line uploads need no `Origin`. IPv6
+rate-limit sources use canonical /64 buckets; genuine IPv4-mapped forms share
+their IPv4 bucket and NAT64 addresses remain IPv6.
 
 The Artifact Library projects two sources into one placement UI:
 
@@ -334,16 +454,19 @@ ink, geometric shapes, or extremely large visual primitive counts.
 
 ## Runtime Module Boundaries
 
-`src/App.tsx` is the view-bootstrap boundary: it opens, creates, and switches
-browser-local views. `src/canvas/CanvasWorkspace.tsx` composes the active canvas,
-while focused runtime and autosave hooks load artifacts and persist board state.
+`src/App.tsx` is the view-bootstrap and relay-routing boundary: it opens,
+creates, and switches browser-local views, and routes a delivery to the active
+installer or the stored target view without retargeting it.
+`src/canvas/CanvasWorkspace.tsx` composes the active canvas, while focused
+runtime and autosave hooks load artifacts and persist board state.
 The workspace publishes Playwright debug state and wires product actions such as
 import/export, theme switching, snap preference, deletion, and the AI handoff dialog. Personal
-artifact creation is bundle-first: an agent installs a trusted ESM bundle into
-one browser-local view through `window.__FREEFORM_AGENT__`, or the user imports
-the same bundle file. Neither path requires an application commit or deploy.
-The copyable handoff is agent-neutral: it installs the project skill, then asks
-the agent to question the user about the artifact before authoring the bundle.
+artifact creation is bundle-first: a remote agent delivers encrypted bundles
+through `src/relay/`, a same-browser agent uses `window.__FREEFORM_AGENT__`, or
+the user imports the same bundle file. None requires an application commit or
+deploy. The copyable handoff is agent-neutral: it installs the project skill,
+then asks the agent to question the user before authoring and delivering one or
+more bundles.
 
 Canvas runtime behavior lives under `src/canvas/`:
 
@@ -356,6 +479,10 @@ Canvas runtime behavior lives under `src/canvas/`:
 - `selection.ts` keeps selection geometry, layout, cloning, and presentation
   framing pure and independently reviewable.
 - `debugState.ts` is the only place that writes `window.__FREEFORM_STATE__`.
+- `src/relay/` owns browser session consent, capabilities, encryption,
+  reconnect/replay, atomic multi-bundle preparation, and placement.
+- `relay/` is the independently deployable transport Worker and Durable Object;
+  it must remain unable to decrypt artifact source or own durable product state.
 
 Styles are also split by domain under `src/styles/` and imported through
 `src/styles.css`. Keep new visual rules near the surface they style instead of

@@ -1,24 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  loadInstalledArtifacts,
   parseArtifactBundle,
   prepareArtifactBundle,
 } from "../artifacts/generated/bundles";
+import { validatePreparedArtifact } from "../artifacts/generated/preflight";
 import { artifactRegistry } from "../artifacts/registry";
 import { createArtifactCatalog, type ArtifactCatalogItem } from "./artifactCatalog";
-import { assertSupportedRawEChartsOption, buildChartKitOption, CHART_KIT_CAPABILITIES } from "../artifacts/chartKit";
+import { CHART_KIT_CAPABILITIES } from "../artifacts/chartKit";
 import type { RegisteredArtifact } from "../artifacts/registryTypes";
 import type { CanvasNode, CanvasViewport } from "../artifacts/types";
 import { useArtifactRuntime } from "../artifacts/useArtifactRuntime";
-import { validateArtifactPayload } from "../artifacts/validation";
 import { importedRevenueRows } from "../data/transformFixtures";
 import { revenueSummaryTransform, revenueTableTransform, runTransform } from "../data/transforms";
 import { CANVAS_GRID_SIZE, clientToStage, screenToWorld, snapToGrid as snapWorldToGrid } from "../lib/geometry";
 import { downloadWorkspace, parseWorkspace } from "../workspaces/bundle";
 import {
+  commitWorkspaceWithArtifactPackages,
   commitWorkspaceWithArtifactPackage,
   listWorkspaces,
   loadWorkspaceById,
+  relayReceiptId,
   saveWorkspace,
+  WorkspaceDeletedError,
 } from "../workspaces/storage";
 import { useWorkspaceAutosave } from "../workspaces/useWorkspaceAutosave";
 import { createWorkspaceFromTemplate } from "../workspaces/templates";
@@ -38,6 +42,13 @@ import { useCanvasSelectionActions } from "./hooks/useCanvasSelectionActions";
 import { useCanvasShortcuts } from "./hooks/useCanvasShortcuts";
 import { createArtifactNode, createBundleNode, moveNodeToNearestOpenPosition } from "./nodeFactory";
 import { clampNodesToArtifactMinimums } from "./nodeSize";
+import {
+  prepareRelayDelivery,
+  RelayDeliveryRejectedError,
+  type RelayPlacementContext,
+} from "../relay/installDelivery";
+import type { RelayDeliveryIdentity, RelayLiveInstaller } from "../relay/types";
+import type { ArtifactRelayController } from "../relay/useArtifactRelaySession";
 import { fitNodesToViewport } from "./selection";
 
 interface CanvasWorkspaceProps {
@@ -47,6 +58,7 @@ interface CanvasWorkspaceProps {
   template: WorkspaceTemplate;
   views: WorkspaceSummary[];
   sidebarOpen: boolean;
+  relay: ArtifactRelayController;
   presentationMode: boolean;
   onCreateView: () => void;
   onDeleteView: (id: string, currentWorkspace?: WorkspaceRecord) => Promise<void>;
@@ -59,6 +71,7 @@ interface CanvasWorkspaceProps {
   onSelectView: (id: string) => void;
   onToggleSidebar: () => void;
   onViewTitleChange: (id: string, title: string) => void;
+  onRegisterRelayInstaller: (installer: RelayLiveInstaller | null) => void;
 }
 
 export function CanvasWorkspace({
@@ -68,6 +81,7 @@ export function CanvasWorkspace({
   template,
   views,
   sidebarOpen,
+  relay,
   presentationMode,
   onCreateView,
   onDeleteView,
@@ -80,6 +94,7 @@ export function CanvasWorkspace({
   onSelectView,
   onToggleSidebar,
   onViewTitleChange,
+  onRegisterRelayInstaller,
 }: CanvasWorkspaceProps) {
   const normalizedInitialNodes = useMemo(
     () => clampNodesToArtifactMinimums(initialWorkspace.board.nodes, artifactRegistry),
@@ -93,6 +108,7 @@ export function CanvasWorkspace({
     canRedo,
     canUndo,
     commitDocument,
+    commitExternalDocument,
     commitTransaction,
     nodes,
     redo,
@@ -107,11 +123,26 @@ export function CanvasWorkspace({
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialWorkspace.board.themeMode);
   const [snapToGrid, setSnapToGrid] = useState(initialWorkspace.board.snapToGrid);
   const [viewTitle, setViewTitle] = useState(initialWorkspace.title);
+  const [workspaceRevision, setWorkspaceRevision] = useState(initialWorkspace.revision);
   const [status, setStatus] = useState(initialStatus);
   const [storageMode, setStorageMode] = useState<WorkspaceLoadResult["storage"]>(initialStorage);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
+  const agentDialogReturnFocusRef = useRef<HTMLElement | null>(null);
   const [artifactLibraryOpen, setArtifactLibraryOpen] = useState(false);
+  const [compactOverlay, setCompactOverlay] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   const [draggingCatalogItemId, setDraggingCatalogItemId] = useState("");
+  const [artifactInstallBusy, setArtifactInstallBusy] = useState(false);
+  const artifactInstallBusyRef = useRef(false);
+  const beginArtifactInstall = useCallback(() => {
+    if (artifactInstallBusyRef.current) return false;
+    artifactInstallBusyRef.current = true;
+    setArtifactInstallBusy(true);
+    return true;
+  }, []);
+  const finishArtifactInstall = useCallback(() => {
+    artifactInstallBusyRef.current = false;
+    setArtifactInstallBusy(false);
+  }, []);
   const selectedNodeId = selectedNodeIds.at(-1) ?? "";
   const {
     applySelectionLayout,
@@ -150,7 +181,7 @@ export function CanvasWorkspace({
   );
   const canvasInteractions = useCanvasInteractions({
     artifactRegistry: runtimeArtifactRegistry,
-    disabled: presentationMode,
+    disabled: presentationMode || artifactInstallBusy,
     nodes,
     onMutationCommit: commitTransaction,
     onMutationStart: beginTransaction,
@@ -166,23 +197,43 @@ export function CanvasWorkspace({
   const workspaceSnapshot = useMemo<WorkspaceRecord>(
     () => ({
       version: 1,
+      revision: workspaceRevision,
       templateId: initialWorkspace.templateId,
       title: viewTitle,
       templateVersion: template.version,
       updatedAt: new Date().toISOString(),
       board: createBoardState({ nodes, viewport, selectedNodeId, themeMode, snapToGrid }),
     }),
-    [initialWorkspace.templateId, nodes, selectedNodeId, snapToGrid, template.version, themeMode, viewTitle, viewport],
+    [initialWorkspace.templateId, nodes, selectedNodeId, snapToGrid, template.version, themeMode, viewTitle, viewport, workspaceRevision],
   );
+  const workspaceSnapshotRef = useRef(workspaceSnapshot);
+  const runtimeArtifactRegistryRef = useRef(runtimeArtifactRegistry);
+  workspaceSnapshotRef.current = workspaceSnapshot;
+  runtimeArtifactRegistryRef.current = runtimeArtifactRegistry;
 
-  function applyWorkspace(workspace: WorkspaceRecord) {
+  const refreshInstalledArtifactRuntime = useCallback(async () => {
+    const installed = await loadInstalledArtifacts();
+    runtimeArtifactRegistryRef.current = {
+      ...runtimeArtifactRegistryRef.current,
+      ...installed.registry,
+    };
+    setRuntimeArtifactRegistry((current) => ({ ...current, ...installed.registry }));
+    setPersonalBundles(installed.bundles);
+  }, [setPersonalBundles, setRuntimeArtifactRegistry]);
+
+  function applyWorkspace(
+    workspace: WorkspaceRecord,
+    registry: Record<string, RegisteredArtifact> = runtimeArtifactRegistry,
+  ) {
     resetDocument(
-      clampNodesToArtifactMinimums(workspace.board.nodes, runtimeArtifactRegistry),
+      clampNodesToArtifactMinimums(workspace.board.nodes, registry),
       workspace.board.selectedNodeId,
     );
     setViewport(workspace.board.viewport);
     setThemeMode(workspace.board.themeMode);
     setSnapToGrid(workspace.board.snapToGrid);
+    setViewTitle(workspace.title);
+    setWorkspaceRevision(workspace.revision);
   }
 
   useEffect(() => {
@@ -214,13 +265,22 @@ export function CanvasWorkspace({
     window.requestAnimationFrame(() => stageRef.current?.focus({ preventScroll: true }));
   }, [presentationMode]);
 
-  const { cancelPendingSave, resumeRecovery, suppressRecovery } = useWorkspaceAutosave({
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 900px)");
+    const update = () => setCompactOverlay(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  const { cancelPendingSave, flushPendingSave, resumeRecovery, skipNextSave, suppressRecovery } = useWorkspaceAutosave({
     workspace: workspaceSnapshot,
     skipInitialSave,
     onSaving: () => setStatus("Saving locally"),
-    onSaved: (mode) => {
-      setStorageMode(mode);
-      setStatus(artifactIssueStatus ?? (mode === "indexeddb" ? "Saved locally" : "Saved in browser fallback"));
+    onSaved: ({ storage, workspace }) => {
+      workspaceSnapshotRef.current = workspace;
+      setWorkspaceRevision(workspace.revision);
+      setStorageMode(storage);
+      setStatus(artifactIssueStatus ?? (storage === "indexeddb" ? "Saved locally" : "Saved in browser fallback"));
     },
     onError: setStatus,
   });
@@ -284,8 +344,9 @@ export function CanvasWorkspace({
   }
 
   async function importWorkspace(file: File) {
-    cancelPendingSave();
     try {
+      await flushPendingSave();
+      cancelPendingSave();
       const imported = parseWorkspace(await file.text());
       const unavailableArtifactIds = [...new Set(
         imported.board.nodes
@@ -299,6 +360,7 @@ export function CanvasWorkspace({
       }
       const importedWorkspace = {
         ...imported,
+        revision: workspaceSnapshotRef.current.revision,
         templateId: initialWorkspace.templateId,
         title: viewTitle,
         templateVersion: template.version,
@@ -311,9 +373,11 @@ export function CanvasWorkspace({
           nodes: clampNodesToArtifactMinimums(importedWorkspace.board.nodes, runtimeArtifactRegistry),
         },
       };
-      applyWorkspace(workspace);
-      const mode = await saveWorkspace(workspace);
-      setStorageMode(mode);
+      const saved = await saveWorkspace(workspace);
+      skipNextSave();
+      workspaceSnapshotRef.current = saved.workspace;
+      applyWorkspace(saved.workspace);
+      setStorageMode(saved.storage);
       setStatus("Workspace backup restored");
     } catch (error) {
       setStatus(error instanceof Error ? `Import failed: ${error.message}` : "Workspace import failed");
@@ -348,9 +412,15 @@ export function CanvasWorkspace({
   }
 
   function toggleViews() {
+    const restoringFocus = sidebarOpen;
     setArtifactLibraryOpen(false);
     setDraggingCatalogItemId("");
     void onToggleSidebar();
+    if (restoringFocus) {
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLButtonElement>('[data-testid="sidebar-toggle"]')?.focus();
+      });
+    }
   }
 
   function toggleArtifactLibrary() {
@@ -368,26 +438,6 @@ export function CanvasWorkspace({
         document.querySelector<HTMLButtonElement>('[data-testid="artifact-library-toggle"]')?.focus();
       });
     }
-  }
-
-  function validatePreparedArtifact(node: CanvasNode, artifact: RegisteredArtifact) {
-    const validation = validateArtifactPayload(node, artifact);
-    if (!validation.ok) throw new Error(validation.message);
-    const sizes = [artifact.defaultSize, artifact.minSize ?? artifact.defaultSize];
-    let renderChecks = 0;
-    for (const mode of ["light", "dark"] as const) {
-      for (const size of sizes) {
-        const props = { data: node.data, config: node.config, size, theme: themeFor(mode) };
-        if (artifact.renderer === "chart-kit") {
-          buildChartKitOption(artifact.buildChart(props), props);
-          renderChecks += 1;
-        } else if (artifact.renderer === "echarts") {
-          assertSupportedRawEChartsOption(artifact.buildOption(props));
-          renderChecks += 1;
-        }
-      }
-    }
-    return renderChecks;
   }
 
   function addCatalogItem(item: ArtifactCatalogItem, clientPoint?: { x: number; y: number }) {
@@ -433,7 +483,7 @@ export function CanvasWorkspace({
 
   useCanvasShortcuts({
     artifactLibraryOpen,
-    disabled: agentDialogOpen,
+    disabled: agentDialogOpen || artifactInstallBusy,
     presentationMode,
     selectedNodeIds,
     onCopy: copySelection,
@@ -473,57 +523,247 @@ export function CanvasWorkspace({
   }
 
   async function installBundle(value: unknown, options: { viewId?: string } = {}) {
-    const { artifact, bundle } = await prepareArtifactBundle(value, runtimeArtifactRegistry);
-    const targetViewId = options.viewId ?? initialWorkspace.templateId;
-    const stageRect = stageRef.current?.getBoundingClientRect();
-    const stageSize = stageRect ? { width: stageRect.width, height: stageRect.height } : undefined;
+    if (!beginArtifactInstall()) throw new Error("Another artifact installation is already in progress");
+    try {
+      const { artifact, bundle } = await prepareArtifactBundle(value, runtimeArtifactRegistry);
+      const targetViewId = options.viewId ?? initialWorkspace.templateId;
+      const stageRect = stageRef.current?.getBoundingClientRect();
+      const stageSize = stageRect ? { width: stageRect.width, height: stageRect.height } : undefined;
 
-    if (targetViewId === initialWorkspace.templateId) {
-      const node = createBundleNode(bundle, artifact, nodes, viewport, stageSize);
+      if (targetViewId === initialWorkspace.templateId) {
+        await flushPendingSave();
+        const currentWorkspace = workspaceSnapshotRef.current;
+        const node = createBundleNode(
+          bundle,
+          artifact,
+          currentWorkspace.board.nodes,
+          currentWorkspace.board.viewport,
+          stageSize,
+        );
+        validatePreparedArtifact(node, artifact);
+        const nextNodes = [...currentWorkspace.board.nodes, node];
+        const workspace = {
+          ...currentWorkspace,
+          board: createBoardState({
+            nodes: nextNodes,
+            viewport: currentWorkspace.board.viewport,
+            selectedNodeId: node.id,
+            themeMode: currentWorkspace.board.themeMode,
+            snapToGrid: currentWorkspace.board.snapToGrid,
+          }),
+        };
+        cancelPendingSave();
+        const committed = await commitWorkspaceWithArtifactPackage(workspace, bundle);
+        skipNextSave();
+        workspaceSnapshotRef.current = committed.workspace;
+        const nextRegistry = { ...runtimeArtifactRegistryRef.current, [artifact.id]: artifact };
+        runtimeArtifactRegistryRef.current = nextRegistry;
+        setRuntimeArtifactRegistry(nextRegistry);
+        setPersonalBundles((current) => [...current.filter((entry) => entry.artifactId !== bundle.artifactId), bundle]);
+        commitDocument(() => ({
+          nodes: committed.workspace.board.nodes,
+          selectedNodeIds: committed.workspace.board.selectedNodeId
+            ? [committed.workspace.board.selectedNodeId]
+            : [],
+        }));
+        setViewport(committed.workspace.board.viewport);
+        setThemeMode(committed.workspace.board.themeMode);
+        setSnapToGrid(committed.workspace.board.snapToGrid);
+        setViewTitle(committed.workspace.title);
+        setWorkspaceRevision(committed.workspace.revision);
+        setStorageMode(committed.storage);
+        setStatus(`Installed ${artifact.title}`);
+        return { artifactId: artifact.id, nodeId: node.id, viewId: targetViewId };
+      }
+
+      const target = await loadWorkspaceById(targetViewId);
+      if (!target) throw new Error(`Unknown canvas view: ${targetViewId}`);
+      const node = createBundleNode(
+        bundle,
+        artifact,
+        target.workspace.board.nodes,
+        target.workspace.board.viewport,
+        stageSize,
+      );
       validatePreparedArtifact(node, artifact);
-      const nextNodes = [...nodes, node];
       const workspace = {
-        ...workspaceSnapshot,
-        board: createBoardState({ nodes: nextNodes, viewport, selectedNodeId: node.id, themeMode, snapToGrid }),
+        ...target.workspace,
+        updatedAt: new Date().toISOString(),
+        board: { ...target.workspace.board, nodes: [...target.workspace.board.nodes, node], selectedNodeId: node.id },
       };
-      cancelPendingSave();
-      const mode = await commitWorkspaceWithArtifactPackage(workspace, bundle);
+      await commitWorkspaceWithArtifactPackage(workspace, bundle);
       setRuntimeArtifactRegistry((current) => ({ ...current, [artifact.id]: artifact }));
       setPersonalBundles((current) => [...current.filter((entry) => entry.artifactId !== bundle.artifactId), bundle]);
-      commitDocument(() => ({ nodes: nextNodes, selectedNodeIds: [node.id] }));
-      setStorageMode(mode);
-      setStatus(`Installed ${artifact.title}`);
       return { artifactId: artifact.id, nodeId: node.id, viewId: targetViewId };
+    } finally {
+      finishArtifactInstall();
     }
-
-    const target = await loadWorkspaceById(targetViewId);
-    if (!target) throw new Error(`Unknown canvas view: ${targetViewId}`);
-    const node = createBundleNode(
-      bundle,
-      artifact,
-      target.workspace.board.nodes,
-      target.workspace.board.viewport,
-      stageSize,
-    );
-    validatePreparedArtifact(node, artifact);
-    const workspace = {
-      ...target.workspace,
-      updatedAt: new Date().toISOString(),
-      board: { ...target.workspace.board, nodes: [...target.workspace.board.nodes, node], selectedNodeId: node.id },
-    };
-    await commitWorkspaceWithArtifactPackage(workspace, bundle);
-    setRuntimeArtifactRegistry((current) => ({ ...current, [artifact.id]: artifact }));
-    setPersonalBundles((current) => [...current.filter((entry) => entry.artifactId !== bundle.artifactId), bundle]);
-    return { artifactId: artifact.id, nodeId: node.id, viewId: targetViewId };
   }
 
   async function installBundleFile(file: File) {
     try {
       await installBundle(parseArtifactBundle(await file.text()));
-      setAgentDialogOpen(false);
+      closeAgentDialog();
+      return null;
     } catch (error) {
-      setStatus(error instanceof Error ? `Install failed: ${error.message}` : "Artifact install failed");
+      const message = error instanceof Error ? `Install failed: ${error.message}` : "Artifact install failed";
+      setStatus(message);
+      return message;
     }
+  }
+
+  useEffect(() => {
+    const installer: RelayLiveInstaller = {
+      viewId: initialWorkspace.templateId,
+      refreshArtifacts: refreshInstalledArtifactRuntime,
+      install: async (
+        values: unknown[],
+        placement: RelayPlacementContext,
+        identity: RelayDeliveryIdentity,
+      ) => {
+        if (!beginArtifactInstall()) throw new Error("Another artifact installation is already in progress");
+        try {
+          await flushPendingSave();
+          const stageRect = stageRef.current?.getBoundingClientRect();
+          let prepared;
+          let baseWorkspace;
+          do {
+            if (identity.signal.aborted) throw new DOMException("Build Session is no longer active", "AbortError");
+            baseWorkspace = workspaceSnapshotRef.current;
+            prepared = await prepareRelayDelivery(
+              values,
+              baseWorkspace,
+              runtimeArtifactRegistryRef.current,
+              {
+                stageSize: stageRect
+                  ? { width: stageRect.width, height: stageRect.height }
+                  : placement.stageSize,
+              },
+            );
+          } while (baseWorkspace !== workspaceSnapshotRef.current);
+          if (identity.signal.aborted) throw new DOMException("Build Session is no longer active", "AbortError");
+          cancelPendingSave();
+          const artifactIds = prepared.artifacts.map((artifact) => artifact.id);
+          const nodeIds = prepared.nodes.map((node) => node.id);
+          let committed;
+          try {
+            committed = await commitWorkspaceWithArtifactPackages(prepared.workspace, prepared.bundles, {
+              id: relayReceiptId(identity.sessionId, identity.deliveryId),
+              deliveryId: identity.deliveryId,
+              sessionId: identity.sessionId,
+              targetViewId: initialWorkspace.templateId,
+              artifactIds,
+              nodeIds,
+              installedAt: new Date().toISOString(),
+            }, { signal: identity.signal });
+          } catch (error) {
+            if (error instanceof WorkspaceDeletedError) {
+              throw new RelayDeliveryRejectedError("Target canvas view no longer exists");
+            }
+            throw error;
+          }
+          skipNextSave();
+          workspaceSnapshotRef.current = committed.workspace;
+          const deliveredRegistry = Object.fromEntries(
+            prepared.artifacts.map((artifact) => [artifact.id, artifact]),
+          );
+          runtimeArtifactRegistryRef.current = {
+            ...runtimeArtifactRegistryRef.current,
+            ...deliveredRegistry,
+          };
+          setRuntimeArtifactRegistry((current) => ({ ...current, ...deliveredRegistry }));
+          setPersonalBundles((current) => {
+            const deliveredIds = new Set(prepared.bundles.map((bundle) => bundle.artifactId));
+            return [...current.filter((bundle) => !deliveredIds.has(bundle.artifactId)), ...prepared.bundles];
+          });
+          const deliveredNodeIds = new Set(nodeIds);
+          const baselineNodes = clampNodesToArtifactMinimums(
+            committed.workspace.board.nodes.filter((node) => !deliveredNodeIds.has(node.id)),
+            runtimeArtifactRegistryRef.current,
+          );
+          const committedNodes = clampNodesToArtifactMinimums(
+            committed.workspace.board.nodes,
+            runtimeArtifactRegistryRef.current,
+          );
+          const baselineSelectedNodeId = baseWorkspace.board.selectedNodeId &&
+            baselineNodes.some((node) => node.id === baseWorkspace.board.selectedNodeId)
+            ? baseWorkspace.board.selectedNodeId
+            : "";
+          commitExternalDocument({
+            nodes: baselineNodes,
+            selectedNodeIds: baselineSelectedNodeId ? [baselineSelectedNodeId] : [],
+          }, {
+            nodes: committedNodes,
+            selectedNodeIds: committed.workspace.board.selectedNodeId
+              ? [committed.workspace.board.selectedNodeId]
+              : [],
+          });
+          setViewport(committed.workspace.board.viewport);
+          setThemeMode(committed.workspace.board.themeMode);
+          setSnapToGrid(committed.workspace.board.snapToGrid);
+          setViewTitle(committed.workspace.title);
+          setWorkspaceRevision(committed.workspace.revision);
+          setStorageMode(committed.storage);
+          setStatus(
+            `Installed ${prepared.artifacts.length} artifact${prepared.artifacts.length === 1 ? "" : "s"}`,
+          );
+          return {
+            artifactIds,
+            nodeIds,
+          };
+        } finally {
+          finishArtifactInstall();
+        }
+      },
+    };
+    onRegisterRelayInstaller(installer);
+    return () => onRegisterRelayInstaller(null);
+  }, [
+    beginArtifactInstall,
+    cancelPendingSave,
+    commitExternalDocument,
+    finishArtifactInstall,
+    flushPendingSave,
+    initialWorkspace.templateId,
+    onRegisterRelayInstaller,
+    refreshInstalledArtifactRuntime,
+    setPersonalBundles,
+    setRuntimeArtifactRegistry,
+    skipNextSave,
+  ]);
+
+  function openBuildSession() {
+    const stageRect = stageRef.current?.getBoundingClientRect();
+    relay.requestSession({
+      targetViewId: initialWorkspace.templateId,
+      targetViewTitle: viewTitle,
+      stageSize: stageRect
+        ? { width: stageRect.width, height: stageRect.height }
+        : { width: window.innerWidth, height: window.innerHeight },
+    });
+    setArtifactLibraryOpen(false);
+    openAgentDialog();
+  }
+
+  function openAgentDialog() {
+    agentDialogReturnFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    setAgentDialogOpen(true);
+  }
+
+  function closeAgentDialog() {
+    setAgentDialogOpen(false);
+    window.requestAnimationFrame(() => {
+      const returnTarget = agentDialogReturnFocusRef.current;
+      const targetIsUsable = returnTarget?.isConnected &&
+        !returnTarget.closest("[inert]") &&
+        returnTarget.getClientRects().length > 0;
+      if (targetIsUsable) returnTarget.focus({ preventScroll: true });
+      else document.querySelector<HTMLButtonElement>('[data-testid="artifact-library-toggle"]')
+        ?.focus({ preventScroll: true });
+      agentDialogReturnFocusRef.current = null;
+    });
   }
 
   useEffect(() => {
@@ -556,9 +796,12 @@ export function CanvasWorkspace({
 
   async function deleteView(viewId: string) {
     const removingActiveView = viewId === initialWorkspace.templateId;
-    if (removingActiveView) suppressRecovery();
     try {
-      await onDeleteView(viewId, removingActiveView ? workspaceSnapshot : undefined);
+      if (removingActiveView) {
+        await flushPendingSave();
+        suppressRecovery();
+      }
+      await onDeleteView(viewId, removingActiveView ? workspaceSnapshotRef.current : undefined);
     } catch (error) {
       if (removingActiveView) resumeRecovery();
       setStatus(error instanceof Error ? `Delete failed: ${error.message}` : "Canvas deletion failed");
@@ -567,9 +810,10 @@ export function CanvasWorkspace({
 
   async function duplicateView(viewId: string) {
     try {
+      if (viewId === initialWorkspace.templateId) await flushPendingSave();
       await onDuplicateView(
         viewId,
-        viewId === initialWorkspace.templateId ? workspaceSnapshot : undefined,
+        viewId === initialWorkspace.templateId ? workspaceSnapshotRef.current : undefined,
       );
     } catch (error) {
       setStatus(error instanceof Error ? `Duplicate failed: ${error.message}` : "Canvas duplication failed");
@@ -581,20 +825,34 @@ export function CanvasWorkspace({
       className={`app-shell canvas-app-shell ${sidebarOpen ? "sidebar-open" : ""} ${presentationMode ? "presentation-mode" : ""}`}
       data-theme={themeMode}
       data-presentation={presentationMode}
+      aria-busy={artifactInstallBusy}
     >
-      <div className="canvas-sidebar-slot" aria-hidden={!sidebarOpen} inert={!sidebarOpen}>
+      <div className="canvas-sidebar-slot" aria-hidden={!sidebarOpen} inert={!sidebarOpen || artifactInstallBusy}>
         <CanvasSidebar
           activeViewId={initialWorkspace.templateId}
+          open={sidebarOpen}
           views={previewViews}
-          onCreateView={onCreateView}
+          onCreateView={() => {
+            onCreateView();
+            if (compactOverlay) void onToggleSidebar();
+          }}
           onClose={toggleViews}
-          onDeleteView={(id) => void deleteView(id)}
-          onDuplicateView={(id) => void duplicateView(id)}
+          onDeleteView={(id) => {
+            if (compactOverlay) void onToggleSidebar();
+            void deleteView(id);
+          }}
+          onDuplicateView={(id) => {
+            if (compactOverlay) void onToggleSidebar();
+            void duplicateView(id);
+          }}
           onReorderView={onReorderView}
-          onSelectView={onSelectView}
+          onSelectView={(id) => {
+            if (compactOverlay) void onToggleSidebar();
+            onSelectView(id);
+          }}
         />
       </div>
-      <section className="workspace">
+      <section className="workspace" inert={artifactInstallBusy || (compactOverlay && (sidebarOpen || artifactLibraryOpen))}>
         <CanvasToolbar
           importInputRef={importInputRef}
           status={status}
@@ -606,7 +864,7 @@ export function CanvasWorkspace({
           canUndo={canUndo}
           themeMode={themeMode}
           snapToGrid={snapToGrid}
-          onBuildArtifact={() => { setArtifactLibraryOpen(false); setAgentDialogOpen(true); }}
+          onBuildArtifact={openBuildSession}
           onEnterPresentation={onEnterPresentation}
           onExportWorkspace={exportWorkspace}
           onImportData={importData}
@@ -653,7 +911,7 @@ export function CanvasWorkspace({
           selectionRect={canvasInteractions.selectionRect}
         />
       </section>
-      <div className={`artifact-library-slot ${artifactLibraryOpen ? "open" : ""}`} aria-hidden={!artifactLibraryOpen} inert={!artifactLibraryOpen}>
+      <div className={`artifact-library-slot ${artifactLibraryOpen ? "open" : ""}`} aria-hidden={!artifactLibraryOpen} inert={!artifactLibraryOpen || artifactInstallBusy}>
         <ArtifactLibrary
           builtIn={artifactCatalog.builtIn}
           canvasTheme={canvasTheme}
@@ -661,16 +919,19 @@ export function CanvasWorkspace({
           personal={artifactCatalog.personal}
           registry={runtimeArtifactRegistry}
           onAdd={addCatalogItem}
-          onBuildArtifact={() => { setArtifactLibraryOpen(false); setAgentDialogOpen(true); }}
+          onBuildArtifact={openBuildSession}
           onClose={() => closeArtifactLibrary(true)}
           onDragEnd={() => setDraggingCatalogItemId("")}
           onDragStart={(item) => setDraggingCatalogItemId(item.id)}
         />
       </div>
       <AgentHandoffDialog
+        installBusy={artifactInstallBusy}
         open={agentDialogOpen}
         viewId={initialWorkspace.templateId}
-        onClose={() => setAgentDialogOpen(false)}
+        relay={relay}
+        onClose={closeAgentDialog}
+        onOpen={openAgentDialog}
         onInstallBundle={installBundleFile}
       />
     </main>

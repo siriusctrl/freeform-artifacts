@@ -49,7 +49,7 @@ export function createArtifactNode(
   };
 }
 
-function nodesOverlap(first: CanvasNode, second: CanvasNode, gap: number) {
+export function nodesOverlap(first: CanvasNode, second: CanvasNode, gap: number) {
   return first.x < second.x + second.width + gap &&
     first.x + first.width + gap > second.x &&
     first.y < second.y + second.height + gap &&

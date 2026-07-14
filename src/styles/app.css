@@ -1046,9 +1046,9 @@
 
 .agent-dialog {
   width: min(720px, calc(100vw - 32px));
-  max-height: min(760px, calc(100vh - 32px));
+  max-height: min(760px, calc(100dvh - 32px));
   display: grid;
-  grid-template-rows: auto minmax(260px, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   gap: 16px;
   padding: 20px;
   color: var(--text);
@@ -1081,6 +1081,160 @@
   margin: 0;
 }
 
+.relay-session-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 48px;
+  padding: 8px 11px;
+  color: var(--muted);
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.relay-session-indicator {
+  position: fixed;
+  bottom: 18px;
+  right: 14px;
+  z-index: 30;
+  max-width: min(430px, calc(100vw - 28px));
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px 7px 11px;
+  color: var(--muted);
+  background: var(--panel-glass);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px var(--shadow);
+  backdrop-filter: blur(12px);
+  font-size: 11.5px;
+}
+
+.relay-session-indicator-copy {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.relay-session-indicator-copy strong,
+.relay-session-indicator-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relay-session-indicator-copy strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 640;
+}
+
+.relay-indicator-action {
+  padding: 3px 1px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 620;
+}
+
+.relay-indicator-end {
+  color: var(--muted);
+}
+
+.presentation-mode .relay-session-indicator {
+  display: none;
+}
+
+.artifact-library-slot.open + .relay-session-indicator {
+  display: none;
+}
+
+.relay-status-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--muted);
+  border-radius: 50%;
+}
+
+.relay-session-state > div:not(.relay-turnstile) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.relay-session-state strong {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 640;
+}
+
+.relay-session-state span:not(.relay-status-dot),
+.relay-session-state time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relay-session-state time {
+  font: 11px/1.2 var(--font-mono), monospace;
+}
+
+.relay-connected .relay-status-dot {
+  background: #2c9963;
+}
+
+.relay-error .relay-status-dot,
+.relay-expired .relay-status-dot {
+  background: #bd603f;
+}
+
+.relay-delivery-outcome {
+  grid-column: 1 / -1;
+  padding-top: 7px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.relay-session-state .relay-delivery-outcome strong,
+.relay-session-state .relay-delivery-outcome span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.relay-delivery-rejected .relay-delivery-outcome strong,
+.relay-delivery-rejected .relay-delivery-outcome span {
+  color: #a64f34;
+}
+
+.relay-retry-action {
+  grid-column: 2 / -1;
+  justify-self: start;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 620;
+}
+
+.relay-turnstile {
+  grid-column: 1 / -1;
+  min-height: 0;
+}
+
 .agent-dialog-title h2 {
   font-size: 18px;
   font-weight: 650;
@@ -1099,6 +1253,32 @@
   background: var(--stage-bg);
   border: 1px solid var(--line);
   border-radius: 6px;
+}
+
+.agent-dialog-feedback {
+  min-height: 16px;
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.agent-dialog-feedback span {
+  margin-right: 8px;
+}
+
+.agent-dialog-feedback button {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 620;
+}
+
+.agent-dialog-feedback.error {
+  color: #a64f34;
 }
 
 .agent-instruction {
@@ -1137,4 +1317,71 @@
 .dialog-primary {
   min-width: 168px;
   height: 40px;
+}
+
+@media (max-width: 900px) {
+  .relay-session-indicator {
+    bottom: 70px;
+  }
+}
+
+@media (max-width: 700px) {
+  .dialog-backdrop {
+    padding: 8px;
+  }
+
+  .agent-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .relay-session-state {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .relay-session-state time {
+    grid-column: 2;
+  }
+
+  .relay-session-indicator {
+    right: 8px;
+    max-width: calc(100vw - 16px);
+  }
+
+  .agent-dialog-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .agent-dialog-actions .secondary-action,
+  .agent-dialog-actions .dialog-primary {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding-inline: 10px;
+  }
+}
+
+@media (max-height: 500px) {
+  .dialog-backdrop {
+    align-items: start;
+    overflow: auto;
+    padding: 8px;
+  }
+
+  .agent-dialog {
+    max-height: calc(100dvh - 16px);
+    grid-template-rows: auto auto minmax(72px, 1fr) auto auto;
+    gap: 8px;
+    overflow: auto;
+    padding: 10px;
+  }
+
+  .agent-dialog-feedback {
+    margin-top: -2px;
+  }
 }

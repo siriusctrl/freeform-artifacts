@@ -166,6 +166,10 @@ export function useCanvasInteractions({
   }, [onMutationCommit]);
 
   useEffect(() => {
+    if (disabled && dragRef.current) endDrag();
+  }, [disabled, endDrag]);
+
+  useEffect(() => {
     document.body.classList.toggle("dragging-canvas", Boolean(activeDragType));
     return () => document.body.classList.remove("dragging-canvas");
   }, [activeDragType]);

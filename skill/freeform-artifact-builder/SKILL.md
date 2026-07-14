@@ -12,11 +12,35 @@ canvas.
 
 Do not write code until the delivery mode is known.
 
+### Browser Relay
+
+Use this mode when the instruction contains `Delivery mode: BROWSER_RELAY` and
+provides a relay URL, session id, upload token, encryption key, and target view
+id from an explicit in-product **Build with AI** session.
+
+- Final deliverable: one or more self-contained `.freeform-artifact.json`
+  bundles delivered with `scripts/deliver.mjs` into the named browser-local
+  view.
+- Write every bundle outside the application source tree. Do not edit, commit,
+  or deploy the application repository.
+- Treat the upload token and encryption key as temporary credentials. Pass them
+  through stdin after launching the delivery script with `--credentials-stdin`;
+  prefer the harness's pipe-backed process API, while the script provides
+  hidden raw input when only a PTY is available. Never put them in process
+  arguments, a shell pipeline, logs, the final report, commits, or a bundle.
+- One command may deliver up to 12 bundles atomically. The session-scoped upload
+  capability may be reused for later delivery commands until the displayed
+  expiry; every command creates a new idempotency id.
+- Do not change `--view-id` after the user navigates. The session remains bound
+  to the view named in the handoff.
+- Follow [references/browser-relay.md](references/browser-relay.md) and
+  [references/artifact-bundle.md](references/artifact-bundle.md).
+
 ### Browser View Bundle
 
-Use this mode when the instruction contains `Delivery mode:
-BROWSER_VIEW_BUNDLE`, comes from the in-product **Build with AI** dialog, names a
-target view id, or asks to add an artifact without changing the deployed app.
+Use this offline/fallback mode when the instruction contains `Delivery mode:
+BROWSER_VIEW_BUNDLE`, explicitly asks for a bundle file, or asks to add an
+artifact without changing the deployed app but provides no live relay session.
 
 - Final deliverable: one self-contained `.freeform-artifact.json` bundle, or the
   artifact installed into the named browser-local view.
@@ -41,8 +65,9 @@ artifact to ship with that deployment.
 - Run the complete repository verification chain before handoff.
 
 If neither mode is clear, ask one delivery question before creating files. Never
-silently convert a browser-view request into a repository change or a
-self-deployed artifact into a personal bundle.
+silently convert a relay request into a repository change, a browser-view
+request into a self-deployed change, or a self-deployed artifact into a personal
+bundle.
 
 ## Authoring Workflow
 
@@ -63,16 +88,19 @@ self-deployed artifact into a personal bundle.
 
 ## Quality Gate
 
-For a Browser View Bundle:
+For Browser Relay or a Browser View Bundle:
 
 1. Confirm `window.__FREEFORM_AGENT__.capabilities` supports the requested chart.
 2. Run the non-persisting `validateArtifact(bundle)` preflight. It checks bundle
    shape, payload validation, renderer capability, and Chart Kit/ECharts option
    generation at default/minimum size in light/dark mode.
-3. Install only after preflight succeeds.
+3. In Browser Relay, deliver the complete selection with `scripts/deliver.mjs`;
+   the target browser owns final preflight and installation. With direct browser
+   control, install only after preflight succeeds.
 4. Inspect the installed card at default and minimum size in both themes. Test
    longest labels, largest values, empty data, and nearby-card composition.
-5. Return the bundle when the same browser profile cannot be controlled.
+5. Return the bundle file only for the offline Browser View Bundle path. Do not
+   fall back from a failed live relay delivery without telling the user.
 
 For a Self-Deployed Repo, run `npm run check`, `npm run verify:ui`, `npm run
 verify:preview`, and `npm run verify:proof`. Inspect the GIF, internal contact

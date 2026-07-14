@@ -21,6 +21,10 @@ function sameNodes(first: CanvasNode[], second: CanvasNode[]) {
   );
 }
 
+function sameNodeValue(first: CanvasNode, second: CanvasNode) {
+  return first === second || JSON.stringify(first) === JSON.stringify(second);
+}
+
 function keepExistingSelection(nodeIds: string[], nodes: CanvasNode[]) {
   const existingIds = new Set(nodes.map((node) => node.id));
   return [...new Set(nodeIds)].filter((id) => existingIds.has(id));
@@ -77,6 +81,53 @@ export function useCanvasDocumentHistory(initialNodes: CanvasNode[], initialSele
     applyDocument(next);
   }, [applyDocument, recordSnapshot]);
 
+  const commitExternalDocument = useCallback((
+    baseline: CanvasDocumentSnapshot,
+    next: CanvasDocumentSnapshot,
+  ) => {
+    const local = documentRef.current;
+    const localById = new Map(local.nodes.map((node) => [node.id, node]));
+    const externalById = new Map(baseline.nodes.map((node) => [node.id, node]));
+    const externallyChanged = new Set<string>();
+    const externallyAdded: CanvasNode[] = [];
+
+    for (const localNode of local.nodes) {
+      const externalNode = externalById.get(localNode.id);
+      if (!externalNode || !sameNodeValue(localNode, externalNode)) externallyChanged.add(localNode.id);
+    }
+    for (const externalNode of baseline.nodes) {
+      if (!localById.has(externalNode.id)) externallyAdded.push(externalNode);
+    }
+
+    const rebase = (snapshot: CanvasDocumentSnapshot): CanvasDocumentSnapshot => {
+      const nodes = snapshot.nodes.flatMap((node) => {
+        if (!externallyChanged.has(node.id)) return [node];
+        const externalNode = externalById.get(node.id);
+        return externalNode ? [externalNode] : [];
+      });
+      const existingIds = new Set(nodes.map((node) => node.id));
+      for (const node of externallyAdded) {
+        if (!existingIds.has(node.id)) nodes.push(node);
+      }
+      return {
+        nodes,
+        selectedNodeIds: keepExistingSelection(snapshot.selectedNodeIds, nodes),
+      };
+    };
+
+    transactionRef.current = null;
+    pastRef.current = [
+      ...pastRef.current.map(rebase).slice(-(HISTORY_LIMIT - 1)),
+      {
+        nodes: baseline.nodes,
+        selectedNodeIds: keepExistingSelection(baseline.selectedNodeIds, baseline.nodes),
+      },
+    ];
+    futureRef.current = [];
+    applyDocument(next);
+    refreshHistoryState();
+  }, [applyDocument, refreshHistoryState]);
+
   const beginTransaction = useCallback(() => {
     transactionRef.current ??= documentRef.current;
   }, []);
@@ -124,6 +175,7 @@ export function useCanvasDocumentHistory(initialNodes: CanvasNode[], initialSele
     canRedo: futureRef.current.length > 0,
     canUndo: pastRef.current.length > 0,
     commitDocument,
+    commitExternalDocument,
     commitTransaction,
     nodes: document.nodes,
     redo,

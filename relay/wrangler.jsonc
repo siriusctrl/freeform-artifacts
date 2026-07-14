@@ -1,0 +1,47 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "freeform-artifact-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-13",
+  "vars": {
+    "ALLOWED_ORIGINS": "https://siriusctrl.github.io",
+    "ENVIRONMENT": "production",
+    "RELAY_ENABLED": "true"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BUILD_SESSIONS",
+        "class_name": "BuildSession"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BuildSession"]
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "SESSION_CREATION_LIMITER",
+      "namespace_id": "26071301",
+      "simple": {
+        "limit": 8,
+        "period": 60
+      }
+    },
+    {
+      "name": "SESSION_UPLOAD_LIMITER",
+      "namespace_id": "26071302",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

@@ -1,9 +1,10 @@
 import { ArrowDown, ArrowUp, Copy, EllipsisVertical, GripVertical, Plus, Trash2, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { WorkspacePreviewNode, WorkspaceSummary } from "../../workspaces/types";
 
 interface CanvasSidebarProps {
   activeViewId: string;
+  open: boolean;
   views: WorkspaceSummary[];
   onClose: () => void;
   onCreateView: () => void;
@@ -66,6 +67,7 @@ function ViewPreview({ view }: { view: WorkspaceSummary }) {
 
 export function CanvasSidebar({
   activeViewId,
+  open,
   views,
   onClose,
   onCreateView,
@@ -75,6 +77,7 @@ export function CanvasSidebar({
   onSelectView,
 }: CanvasSidebarProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const sidebarRef = useRef<HTMLElement | null>(null);
   const [menuViewId, setMenuViewId] = useState("");
   const [draggedViewId, setDraggedViewId] = useState("");
   const [dropViewId, setDropViewId] = useState("");
@@ -95,6 +98,35 @@ export function CanvasSidebar({
     };
   }, [menuViewId]);
 
+  useEffect(() => {
+    if (!open) return;
+    window.requestAnimationFrame(() => {
+      sidebarRef.current?.querySelector<HTMLButtonElement>(`[data-testid="view-${CSS.escape(activeViewId)}"]`)?.focus({ preventScroll: true });
+    });
+  }, [activeViewId, open]);
+
+  function trapFocus(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = [...(sidebarRef.current?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    ) ?? [])].filter((element) => !element.closest('[aria-hidden="true"]'));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable.at(-1)!;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   const draggedIndex = views.findIndex((view) => view.id === draggedViewId);
 
   function dropClassFor(viewId: string, index: number) {
@@ -105,7 +137,7 @@ export function CanvasSidebar({
   return (
     <>
       <button type="button" className="sidebar-backdrop" aria-label="Close views" onClick={onClose} />
-      <aside className="canvas-sidebar" aria-label="Views" data-testid="canvas-sidebar">
+      <aside ref={sidebarRef} className="canvas-sidebar" aria-label="Views" data-testid="canvas-sidebar" onKeyDown={trapFocus}>
         <header>
           <span>Views</span>
           <div className="sidebar-header-actions">

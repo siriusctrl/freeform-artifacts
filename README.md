@@ -39,6 +39,18 @@ Run the app:
 npm run dev
 ```
 
+To exercise **Build with AI** locally, run the relay emulator in another
+terminal:
+
+```sh
+npm run relay:dev:test
+```
+
+The development client uses Cloudflare's always-pass Turnstile test key and the
+emulator-only `test-turnstile-pass` token. The relay accepts it only when both
+the browser origin and actual Worker request URL are loopback; production and
+public preview URLs never accept that bypass.
+
 Open the local URL:
 
 ```text
@@ -135,11 +147,15 @@ Current controls:
   and `Escape` to return without changing the saved viewport, or use the compact
   on-canvas navigation and exit controls.
 - Open **Build with AI** from the desktop top bar or the Artifact Library footer
-  and give its instruction to your coding agent. The
-  prompt explicitly selects Browser View Bundle delivery, installs the project
-  skill, asks the agent to learn what artifact you want, validates the bundle
-  without persistence, and then installs it into the named local view. Otherwise
-  install the returned `.freeform-artifact.json` from the dialog.
+  to open a private Build Session bound to the current view for about 30 minutes.
+  Copy its instruction to a coding agent. The agent installs the project skill,
+  asks what you want, generates and checks one or more bundles, then uses the
+  included delivery script to upload encrypted ciphertext. The browser receives
+  it over its own WebSocket, validates the entire selection, and installs it in
+  one local transaction. The session can accept later deliveries from the same
+  conversation. **Install offline bundle** remains the offline fallback.
+  Build Session capabilities stay in page memory only; reloading or closing the
+  page ends the browser side of that session and requires a new click.
 
 The canvas stores nodes in world coordinates. The viewport stores screen offset
 and scale. Rendering converts world coordinates into a single transformed DOM
@@ -177,11 +193,13 @@ installs the public project skill with an interactive agent choice:
 npx skills add siriusctrl/freeform-artifacts --skill freeform-artifact-builder
 ```
 
-The generated instruction includes `Delivery mode: BROWSER_VIEW_BUNDLE` and the
-target view id. After skill installation, it tells the agent to ask what the
-user wants to build and clarify its data, visual form, and layout. It then asks
-for one self-contained trusted bundle with `artifactId`, ESM `moduleSource`,
-and initial node data, while explicitly forbidding application repo changes.
+The generated instruction includes `Delivery mode: BROWSER_RELAY`, a fixed
+target view id, short-lived upload capability, browser-generated AES-GCM key,
+and the exact `scripts/deliver.mjs` command. After skill installation, it tells
+the agent to ask what the user wants to build and clarify its data, visual form,
+and layout. One delivery may contain several self-contained trusted bundles
+with `artifactId`, ESM `moduleSource`, and initial node data, while explicitly
+forbidding application repo changes.
 Bundle code is stored once per browser origin in IndexedDB; the installed node
 belongs only to the target local view. Artifact ids are immutable package
 identities: installing different code under an existing id is rejected instead
@@ -189,9 +207,33 @@ of silently changing cards in other views. Installed packages also appear under
 **Artifacts > Yours**, shared by every local view in that browser profile, so a
 deleted node can be placed again without reinstalling its bundle.
 
-### Runtime Artifact Bundle
+### Browser Relay
 
-Use this for normal AI-created artifacts. An agent with browser control calls:
+Use the in-product handoff for normal remote agent work. The relay is transport
+only: it stores capability hashes and bounded pending ciphertext in one
+short-lived SQLite Durable Object. It cannot decrypt bundles and never stores
+canvas or package state. The browser owns full-selection validation, grid-aware
+placement, atomic persistence, and acknowledgement.
+
+The session remains bound to the view selected at creation even if the user
+navigates elsewhere. Each delivery has an idempotency UUID; an IndexedDB receipt
+prevents duplicate nodes when a post-commit acknowledgement is lost. During an
+ambiguous upload, the agent uploader privately retains only the authenticated
+encrypted envelope so a later `--delivery-id` retry is byte-identical; it
+deletes the entry on a definitive result and never caches tokens, keys, or
+plaintext bundles.
+
+Browser-local Views use revision-checked saves and a unique generation for each
+View deletion. A stale tab cannot overwrite a delivered dashboard, revive a
+deleted View, or apply an older Undo to a later deletion; edits still waiting in the autosave window are flushed
+before a live install. Editing surfaces are briefly inert through the atomic
+commit so no new mutation can be lost in that boundary, and the complete
+delivery remains one Undo step.
+
+### Runtime Artifact Bundle (offline/direct fallback)
+
+Use this for same-browser automation or as the offline fallback. An agent with
+browser control calls:
 
 ```js
 await page.evaluate(
@@ -205,8 +247,36 @@ await page.evaluate(
 );
 ```
 
-Without browser control, choose **Install bundle** in the Build with AI dialog.
-Bundle modules are trusted code and are not sandboxed.
+Without browser control or an active relay session, choose **Install offline bundle** in
+the Build with AI dialog. Bundle modules are trusted code and are not sandboxed.
+
+### Relay development and deployment
+
+The independently deployable relay lives in `relay/`:
+
+```sh
+npm run relay:types
+npm run relay:check
+npm run relay:test
+npm run relay:dev:test
+```
+
+Production deployment requires a Cloudflare account with a registered
+`workers.dev` subdomain and a Turnstile widget. Keep `TURNSTILE_SECRET` and the
+session-locator HMAC key `RELAY_ROUTING_SECRET` as Worker secrets, never
+Wrangler vars or repository files:
+
+```sh
+npx wrangler secret put TURNSTILE_SECRET --config relay/wrangler.jsonc
+npx wrangler secret put RELAY_ROUTING_SECRET --config relay/wrangler.jsonc
+npm run relay:deploy
+```
+
+`RELAY_ENABLED` is the kill switch. The committed production allowlist contains
+only the GitHub Pages origin; local origins are explicit command-line overrides
+in the development and proof scripts. The
+relay uses Durable Objects, Workers Rate Limiting, and Turnstile—no D1, KV, or
+R2.
 
 ### Repo-Compiled TSX
 
@@ -439,7 +509,7 @@ Implemented:
 - Auto-discovered repo-generated TSX artifacts and base-aware trusted runtime
   ESM loading through `artifacts/generated/manifest.json`.
 - GitHub Pages deployment under `/freeform-artifacts/`.
-- Playwright UI smoke test.
+- Playwright UI smoke test, including real encrypted relay deliveries.
 - Browser proof GIF recorder.
 - Lightweight proof frame checks and production preview verification.
 - Light/dark theme support.
@@ -458,11 +528,7 @@ Implemented:
 
 TODO:
 
-- Add the proposed short-lived Artifact Delivery Relay so a remote agent can
-  deliver one or more validated bundles into a browser-local view without
-  controlling the browser or requiring a manual file upload. This is waiting on
-  a Cloudflare account and `workers.dev` registration; see ADR-0025.
-- Add multi-select and z-order controls.
+- Add explicit z-order controls.
 - Add sandbox strategy before loading untrusted generated code.
 - Add file/API import for arbitrary database query result JSON.
 - Add richer visual diff thresholds beyond the current blank-frame checks.
