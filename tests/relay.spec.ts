@@ -40,7 +40,7 @@ async function openBuildSession(page: Page) {
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.getByTestId("build-artifact").click();
-  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
   await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: new URL(page.url()).origin,
@@ -282,7 +282,7 @@ test("one session accepts atomic, repeated, and multi-tab-safe deliveries", asyn
   await expect(compactSession.locator('[role="status"]')).toHaveAttribute("aria-live", "polite");
   await expect(compactSession.getByRole("button", { name: "End" })).toBeVisible();
   await page.getByTestId("relay-session-reopen").click();
-  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
   await page.getByTestId("copy-agent-instruction").click();
   expect((await page.evaluate(() => navigator.clipboard.readText())).includes(sessionId)).toBe(true);
   await page.getByTitle("Close", { exact: true }).click();
@@ -584,6 +584,52 @@ test("host placement keeps full-view fallbacks visible, staggered, and on top", 
   expect(nodes[1].zIndex).toBeGreaterThan(nodes[0].zIndex);
 });
 
+test("host placement centers a readable multi-artifact grid when the selection fits", async ({ page }, testInfo) => {
+  const session = await openBuildSession(page);
+  await page.getByTitle("Close", { exact: true }).click();
+  const stage = page.getByTestId("canvas-stage");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await stage.dispatchEvent("wheel", { deltaX: 1_800, deltaY: 1_200 });
+    await page.waitForTimeout(150);
+  }
+  await expect.poll(async () => page.evaluate(() => {
+    const state = window.__FREEFORM_STATE__!;
+    const rect = document.querySelector<HTMLElement>('[data-testid="canvas-stage"]')!.getBoundingClientRect();
+    const bounds = {
+      left: -state.viewport.x / state.viewport.scale,
+      right: (rect.width - state.viewport.x) / state.viewport.scale,
+      top: -state.viewport.y / state.viewport.scale,
+      bottom: (rect.height - state.viewport.y) / state.viewport.scale,
+    };
+    return state.nodes.filter((node) =>
+      node.x < bounds.right && node.x + node.width > bounds.left &&
+      node.y < bounds.bottom && node.y + node.height > bounds.top).length;
+  })).toBe(0);
+
+  const first = agentArtifactBundle("relay-grid-one");
+  const second = agentArtifactBundle("relay-grid-two");
+  await runDelivery(testInfo, session, [first, second]);
+  await expect(page.getByTestId("relay-session-indicator")).toContainText("Installed 2 artifacts");
+  const placement = await page.evaluate((artifactIds) => {
+    const state = window.__FREEFORM_STATE__!;
+    const rect = document.querySelector<HTMLElement>('[data-testid="canvas-stage"]')!.getBoundingClientRect();
+    const nodes = state.nodes.filter((node) => artifactIds.includes(node.artifactId));
+    const bounds = {
+      left: -state.viewport.x / state.viewport.scale,
+      right: (rect.width - state.viewport.x) / state.viewport.scale,
+      top: -state.viewport.y / state.viewport.scale,
+      bottom: (rect.height - state.viewport.y) / state.viewport.scale,
+    };
+    return { bounds, nodes };
+  }, [first.artifactId, second.artifactId]);
+  expect(placement.nodes).toHaveLength(2);
+  expect(nodesOverlapWithGap(placement.nodes[0], placement.nodes[1])).toBe(false);
+  expect(placement.nodes.every((node) =>
+    node.x >= placement.bounds.left && node.x + node.width <= placement.bounds.right &&
+    node.y >= placement.bounds.top && node.y + node.height <= placement.bounds.bottom)).toBe(true);
+  expect(placement.nodes.every((node) => node.x % 38 === 0 && node.y % 38 === 0)).toBe(true);
+});
+
 test("a bad artifact rejects the complete multi-artifact delivery atomically", async ({ page }, testInfo) => {
   const session = await openBuildSession(page);
   const valid = agentArtifactBundle("relay-atomic-valid");
@@ -599,11 +645,12 @@ test("a bad artifact rejects the complete multi-artifact delivery atomically", a
   const initialCount = await page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length);
   const accepted = await runDelivery(testInfo, session, [valid, invalid]);
   expect(accepted.accepted).toBe(true);
-  await expect(page.getByTestId("relay-transport-state")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-transport-state")).toContainText("Live delivery ready");
   await expect(page.getByTestId("relay-transport-state")).not.toContainText("Delivery rejected");
   const outcome = page.getByTestId("relay-delivery-outcome");
   await expect(outcome).toContainText("Delivery rejected. Nothing was installed.");
-  await expect(outcome).toContainText("category count");
+  await expect(outcome).toContainText("different number of values and categories");
+  await expect(outcome).toContainText("Last delivery");
   await expect(outcome.getByText("Delivery rejected. Nothing was installed.", { exact: true })).toHaveCSS("white-space", "normal");
   expect(await readArtifactPackage(page, valid.artifactId)).toBeUndefined();
   expect(await readArtifactPackage(page, invalid.artifactId)).toBeUndefined();
@@ -612,7 +659,7 @@ test("a bad artifact rejects the complete multi-artifact delivery atomically", a
   const compactOutcome = page.getByTestId("relay-session-indicator");
   await expect(compactOutcome).toContainText("Delivery rejected. Nothing was installed.");
   await compactOutcome.getByRole("button", { name: "Open details" }).click();
-  await expect(page.getByTestId("relay-delivery-outcome")).toContainText("category count");
+  await expect(page.getByTestId("relay-delivery-outcome")).toContainText("different number of values and categories");
 });
 
 test("an ACK lost after commit replays the receipt without installing a duplicate node", async ({ page, context }, testInfo) => {
@@ -653,6 +700,21 @@ test("a session remains bound to its original view after navigation", async ({ p
   const otherViewId = await page.evaluate(() => window.__FREEFORM_AGENT__!.activeViewId);
   expect(otherViewId).not.toBe(session.targetViewId);
   await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(0);
+  await page.getByTestId("relay-session-reopen").click();
+  await expect(page.getByTestId("agent-instruction")).toContainText(`Target Freeform view id: ${session.targetViewId}`);
+  await expect(page.getByTestId("agent-instruction")).not.toContainText(`Target Freeform view id: ${otherViewId}`);
+  const offlineBundle = agentArtifactBundle("offline-bound-view-card");
+  await page.getByTestId("artifact-bundle-file").setInputFiles({
+    name: "offline-bound-view-card.freeform-artifact.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(offlineBundle)),
+  });
+  await expect(page.getByRole("heading", { name: "Build with AI" })).toBeVisible();
+  await expect(page.locator(".agent-dialog-feedback")).toContainText("Installed offline-bound-view-card.freeform-artifact.json into Market overview");
+  await expect(page.getByTestId("open-installed-view")).toContainText("Open Market overview");
+  await expect.poll(async () => page.evaluate(() => window.__FREEFORM_STATE__!.nodes.length)).toBe(0);
+  await page.getByTitle("Close", { exact: true }).click();
+  await expect(page.getByTestId("relay-session-reopen")).toBeFocused();
 
   const bundle = agentArtifactBundle("relay-bound-view-card");
   await runDelivery(testInfo, session, [bundle]);
@@ -664,7 +726,8 @@ test("a session remains bound to its original view after navigation", async ({ p
   await page.getByTestId("sidebar-toggle").click();
   await page.getByTestId(`view-${session.targetViewId}`).click();
   await expect.poll(async () => page.evaluate((id) => window.__FREEFORM_STATE__!.artifactIds.includes(id), bundle.artifactId)).toBe(true);
-  await expect(page.getByText("Installed without a deploy")).toBeVisible();
+  await expect.poll(async () => page.evaluate((id) => window.__FREEFORM_STATE__!.artifactIds.includes(id), offlineBundle.artifactId)).toBe(true);
+  await expect(page.getByText("Installed without a deploy")).toHaveCount(2);
 });
 
 test("deleting the target during delivery rejects it without resurrecting the view", async ({ page, context }, testInfo) => {
@@ -781,7 +844,7 @@ test("a pending encrypted delivery is replayed after the browser reconnects", as
   expect(browserSocket).not.toBeNull();
   blockConnections = true;
   (browserSocket as WebSocketRoute | null)?.close({ code: 1012, reason: "Playwright interruption" });
-  await expect(page.getByTestId("relay-session-status")).toContainText("Reconnecting");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Restoring live delivery");
   const bundle = agentArtifactBundle("relay-reconnect-card");
   const accepted = await runDelivery(testInfo, session, [bundle]);
   expect(accepted.duplicate).toBe(false);
@@ -790,7 +853,7 @@ test("a pending encrypted delivery is replayed after the browser reconnects", as
   await expect.poll(async () => page.evaluate((id) => window.__FREEFORM_STATE__!.artifactIds.includes(id), bundle.artifactId)).toBe(true);
   blockConnections = true;
   (browserSocket as WebSocketRoute | null)?.close({ code: 1012, reason: "Second Playwright interruption" });
-  await expect(page.getByTestId("relay-transport-state")).toContainText("Reconnecting");
+  await expect(page.getByTestId("relay-transport-state")).toContainText("Restoring live delivery");
   await expect(page.getByTestId("relay-transport-state")).not.toContainText("Installed 1 artifact");
   await expect(page.getByTestId("relay-delivery-outcome")).toContainText("Installed 1 artifact");
 });
@@ -805,10 +868,11 @@ test("an expired session clears stale copy feedback and its browser handoff", as
   await expect(page.getByTestId("copy-agent-instruction")).toContainText("Copied");
   expect(browserSocket).not.toBeNull();
   (browserSocket as WebSocketRoute | null)?.send(JSON.stringify({ version: 2, type: "expired" }));
-  await expect(page.getByTestId("relay-session-status")).toContainText("Expired");
-  await expect(page.getByTestId("copy-agent-instruction")).toBeDisabled();
-  await expect(page.getByTestId("copy-agent-instruction")).toContainText("Copy instruction");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live session expired");
+  await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
+  await expect(page.getByTestId("copy-agent-instruction")).toContainText("Copy build brief");
   await expect(page.getByTestId("copy-agent-instruction")).not.toContainText("Copied");
+  await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_VIEW_BUNDLE");
   await expect(page.getByTestId("agent-instruction")).not.toContainText(session.uploadToken);
 });
 
@@ -826,7 +890,7 @@ test("a terminal relay protocol error can be reopened and explicitly retried", a
     type: "error",
     code: "invalid_message",
   }));
-  await expect(page.getByTestId("relay-session-status")).toContainText("Needs attention");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery unavailable");
   await expect(page.getByTestId("relay-transport-state")).toContainText(
     "Relay rejected the browser protocol: invalid_message",
   );
@@ -834,19 +898,19 @@ test("a terminal relay protocol error can be reopened and explicitly retried", a
   await page.getByTitle("Close", { exact: true }).click();
   await page.getByTestId("build-artifact").click();
   await expect.poll(() => browserSockets.length).toBe(2);
-  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
 
   browserSockets[1]?.send(JSON.stringify({
     version: 1,
     type: "ready",
   }));
-  await expect(page.getByTestId("relay-session-status")).toContainText("Needs attention");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery unavailable");
   await expect(page.getByTestId("relay-transport-state")).toContainText(
     "Relay sent an invalid protocol message",
   );
   await page.getByRole("button", { name: "Retry connection" }).click();
   await expect.poll(() => browserSockets.length).toBe(3);
-  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
 });
 
 test("an old session-creation protocol response fails closed before retry", async ({ page }) => {
@@ -883,15 +947,16 @@ test("an old session-creation protocol response fails closed before retry", asyn
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.getByTestId("build-artifact").click();
-  await expect(page.getByTestId("relay-session-status")).toContainText("Needs attention");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery unavailable");
   await expect(page.getByTestId("relay-transport-state")).toContainText(
     "Relay returned an invalid Build Session response",
   );
-  await expect(page.getByTestId("copy-agent-instruction")).toBeDisabled();
+  await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
+  await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_VIEW_BUNDLE");
 
-  await page.getByRole("button", { name: "Retry verification" }).click();
+  await page.getByRole("button", { name: "Retry live delivery" }).click();
   await expect.poll(() => creationAttempt).toBe(2);
-  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
 });
 
 test("a browser without Web Locks fails closed before creating a Build Session", async ({ page }) => {
@@ -907,14 +972,16 @@ test("a browser without Web Locks fails closed before creating a Build Session",
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.getByTestId("build-artifact").click();
 
-  await expect(page.getByTestId("relay-session-status")).toContainText("Needs attention");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery unavailable");
   await expect(page.getByTestId("relay-transport-state")).toContainText(
     "Build Sessions need this browser's cross-tab locking support",
   );
-  await expect(page.getByTestId("copy-agent-instruction")).toBeDisabled();
+  await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
+  await expect(page.getByTestId("agent-instruction")).toContainText("Delivery mode: BROWSER_VIEW_BUNDLE");
+  await expect(page.getByTestId("agent-instruction")).not.toContainText("--credentials-stdin");
   expect(creationAttempts).toBe(0);
 
-  await page.getByRole("button", { name: "Retry verification" }).click();
+  await page.getByRole("button", { name: "Retry live delivery" }).click();
   await expect(page.getByTestId("relay-transport-state")).toContainText(
     "Build Sessions need this browser's cross-tab locking support",
   );
@@ -968,10 +1035,10 @@ test("session creation failure can be retried and a stale target cannot win the 
   await page.goto("/");
   await page.getByTestId("canvas-stage").waitFor({ state: "visible" });
   await page.getByTestId("build-artifact").click();
-  await expect(page.getByTestId("relay-session-status")).toContainText("Needs attention");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery unavailable");
   await expect(page.getByTestId("relay-session-status")).toContainText("Build Sessions are temporarily unavailable. Try again shortly.");
   await expect(page.getByTestId("relay-session-status")).not.toContainText("temporarily_unavailable");
-  await page.getByRole("button", { name: "Retry verification" }).click();
+  await page.getByRole("button", { name: "Retry live delivery" }).click();
   await expect.poll(() => creationAttempt).toBe(2);
   await page.getByTitle("Close", { exact: true }).click();
   await page.getByTestId("sidebar-toggle").click();
@@ -985,7 +1052,7 @@ test("session creation failure can be retried and a stale target cannot win the 
   } finally {
     releaseStaleCreation();
   }
-  await expect(page.getByTestId("relay-session-status")).toContainText("Relay connected");
+  await expect(page.getByTestId("relay-session-status")).toContainText("Live delivery ready");
   await expect(page.getByTestId("copy-agent-instruction")).toBeEnabled();
   await expect(page.getByTestId("agent-instruction")).toContainText(`Target Freeform view id: ${latestViewId}`);
 });

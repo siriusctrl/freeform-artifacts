@@ -54,7 +54,9 @@ artifact without changing the deployed app but provides no live relay session.
   deploy.
 - Follow [references/artifact-bundle.md](references/artifact-bundle.md).
 - Call `window.__FREEFORM_AGENT__.validateArtifact(bundle)` before
-  `installArtifact(bundle, { viewId })` when browser control is available.
+  `installArtifact(bundle, { viewId, viewIncarnationId })` when browser control
+  is available. Resolve both values from `listViews()`; never omit the
+  incarnation when naming a target view.
 
 ### Self-Deployed Repo
 

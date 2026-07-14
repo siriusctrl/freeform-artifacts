@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "check:frontend": "tsc --noEmit && vite build",
     "check": "npm run check:frontend && npm run test:frontend-unit && npm run test:skill && npm run relay:check && npm run relay:test",
-    "test:frontend-unit": "vitest run tests/relay-connection.test.ts --environment node",
+    "test:frontend-unit": "vitest run tests/relay-connection.test.ts tests/handoff.test.ts --environment node",
     "test:skill": "node --test tests/deliver-core.test.mjs",
     "relay:types": "wrangler types --config relay/wrangler.jsonc relay/worker-configuration.d.ts",
     "relay:types:check": "wrangler types --config relay/wrangler.jsonc relay/worker-configuration.d.ts --check",

@@ -35,11 +35,12 @@ function loadTurnstile() {
 
 interface TurnstileGateProps {
   siteKey: string;
+  theme: "light" | "dark";
   onError: (message: string) => void;
   onToken: (token: string) => void;
 }
 
-export function TurnstileGate({ siteKey, onError, onToken }: TurnstileGateProps) {
+export function TurnstileGate({ siteKey, theme, onError, onToken }: TurnstileGateProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -65,6 +66,8 @@ export function TurnstileGate({ siteKey, onError, onToken }: TurnstileGateProps)
           action: RELAY_TURNSTILE_ACTION,
           appearance: "interaction-only",
           execution: "execute",
+          size: "flexible",
+          theme,
           callback: (token) => finish(() => onToken(token)),
           "error-callback": () => finish(() => onError("Secure session verification failed; try Build with AI again")),
           "expired-callback": () => finish(() => onError("Secure session verification expired; try Build with AI again")),
@@ -83,7 +86,7 @@ export function TurnstileGate({ siteKey, onError, onToken }: TurnstileGateProps)
       if (fallbackTimeout !== undefined) window.clearTimeout(fallbackTimeout);
       if (widgetId && window.turnstile) window.turnstile.remove(widgetId);
     };
-  }, [onError, onToken, siteKey]);
+  }, [onError, onToken, siteKey, theme]);
 
   return <div ref={containerRef} className="relay-turnstile" data-testid="relay-turnstile" />;
 }
@@ -95,6 +98,8 @@ declare global {
       action: string;
       appearance: "interaction-only";
       execution: "execute";
+      size: "flexible";
+      theme: "light" | "dark";
       callback: (token: string) => void;
       "error-callback": () => void;
       "expired-callback": () => void;

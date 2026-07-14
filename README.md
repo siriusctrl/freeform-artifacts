@@ -147,15 +147,19 @@ Current controls:
   and `Escape` to return without changing the saved viewport, or use the compact
   on-canvas navigation and exit controls.
 - Open **Build with AI** from the desktop top bar or the Artifact Library footer
-  to open a private Build Session bound to the current view for about 30 minutes.
-  Copy its instruction to a coding agent. The agent installs the project skill,
-  asks what you want, generates and checks one or more bundles, then uses the
-  included delivery script to upload encrypted ciphertext. The browser receives
-  it over its own WebSocket, validates the entire selection, and installs it in
-  one local transaction. The session can accept later deliveries from the same
-  conversation. Build Sessions require browser Web Locks so delivery and
-  cross-tab deletion share one safe commit boundary; unsupported browsers fail
-  before session creation. **Install offline bundle** remains the offline fallback.
+  and copy the build brief immediately; artifact generation no longer waits for
+  browser verification or relay connection. The capability-free brief asks the
+  agent to keep validated bundle files while automatic delivery connects in the
+  background. When the private, roughly 30-minute, target-bound Build Session is
+  ready, copy the live-delivery step into the same conversation and the agent
+  reuses those exact bundles. This remains safe after reopening the dialog or
+  manually copying the preparation brief. If the relay stays unavailable,
+  choose **Install from agent** and install each returned bundle file instead.
+  If you navigated elsewhere, the dialog confirms the original destination and
+  offers an **Open** action after installation. The browser validates live
+  selections completely and installs them in one local transaction. Build
+  Sessions require browser Web Locks so delivery and cross-tab deletion share one
+  safe commit boundary; unsupported browsers keep the file workflow available.
   Build Session capabilities stay in page memory only; reloading or closing the
   page ends the browser side of that session and requires a new click.
 
@@ -259,12 +263,19 @@ await page.evaluate(
 );
 
 await page.evaluate(
-  ({ bundle, viewId }) => window.__FREEFORM_AGENT__.installArtifact(bundle, { viewId }),
-  { bundle, viewId },
+  ({ bundle, viewId, viewIncarnationId }) => window.__FREEFORM_AGENT__.installArtifact(
+    bundle,
+    { viewId, viewIncarnationId },
+  ),
+  { bundle, viewId, viewIncarnationId },
 );
 ```
 
-Without browser control or an active relay session, choose **Install offline bundle** in
+Resolve both target values with `listViews()`. Explicit targets are
+incarnation-bound: passing `viewId` without its matching `viewIncarnationId` is
+rejected, so deleting and restoring a View cannot silently retarget an install.
+
+Without browser control or an active relay session, choose **Install from agent** in
 the Build with AI dialog. Bundle modules are trusted code and are not sandboxed.
 
 ### Relay development and deployment

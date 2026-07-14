@@ -29,6 +29,7 @@ export async function configureProofBrowserContext(context, { relayUrl, appUrl }
     }
     state.sessionCreationAttempts += 1;
     if (state.sessionCreationAttempts > 1) {
+      await new Promise((resolve) => setTimeout(resolve, 900));
       await route.continue();
       return;
     }
@@ -52,14 +53,26 @@ export async function configureProofBrowserContext(context, { relayUrl, appUrl }
   });
   await context.addInitScript(() => {
     let callback;
+    let challenge;
     window.turnstile = {
-      render: (_container, options) => {
+      render: (container, options) => {
         callback = options.callback;
+        window.__proofTurnstileOptions = { size: options.size, theme: options.theme };
+        challenge = document.createElement("iframe");
+        challenge.dataset.testid = "proof-turnstile-challenge-frame";
+        challenge.title = "Cloudflare test security challenge";
+        challenge.srcdoc = "<!doctype html><title>Security check</title><button>Verify browser</button>";
+        challenge.style.width = "100%";
+        challenge.style.height = "65px";
+        challenge.style.border = "0";
+        container.append(challenge);
         return "proof-turnstile";
       },
-      execute: () => window.setTimeout(() => callback?.("test-turnstile-pass"), 850),
+      execute: () => window.setTimeout(() => callback?.("test-turnstile-pass"), 3_000),
       remove: () => {
         callback = undefined;
+        challenge?.remove();
+        challenge = undefined;
       },
     };
   });
@@ -105,6 +118,9 @@ export async function installProofOverlay(page) {
         box-shadow: 0 0 0 3px rgba(82,196,218,.55); transform: translate(-30px,-30px); }
       @media (max-width: 700px) {
         .proof-step { left: 12px; top: 8px; max-width: calc(100vw - 24px); padding: 6px 9px; font-size: 11px; }
+      }
+      @media (max-height: 500px) {
+        .proof-step { display: none; }
       }
     `;
     overlay.append(style);

@@ -1,4 +1,5 @@
 import { RelayDeliveryRejectedError } from "./installDelivery";
+import { formatArtifactValidationMessage } from "../artifacts/validationMessage";
 import { decryptRelayDelivery } from "./crypto";
 import {
   RELAY_PROTOCOL_VERSION,
@@ -317,7 +318,7 @@ export class RelayConnection {
           this.options.events.onDeliveryOutcome({
             kind: "rejected",
             summary: "Delivery rejected. Nothing was installed.",
-            detail: error.message,
+            detail: formatArtifactValidationMessage(error.message),
           });
           this.sendAck(delivery.deliveryId, "rejected");
           return;

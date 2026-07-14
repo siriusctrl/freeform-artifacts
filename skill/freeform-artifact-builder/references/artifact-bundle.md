@@ -5,7 +5,7 @@ and should not change or redeploy the application repository.
 
 For a copied `Delivery mode: BROWSER_RELAY` handoff, deliver one or more bundles
 with `../scripts/deliver.mjs` as described in
-[browser-relay.md](browser-relay.md). The manual **Install offline bundle** action below
+[browser-relay.md](browser-relay.md). The manual **Install from agent** action below
 remains the offline fallback.
 
 ```json
@@ -56,12 +56,17 @@ await page.evaluate(
 );
 
 await page.evaluate(
-  ({ bundle, viewId }) => window.__FREEFORM_AGENT__.installArtifact(bundle, { viewId }),
-  { bundle, viewId },
+  ({ bundle, viewId, viewIncarnationId }) => window.__FREEFORM_AGENT__.installArtifact(
+    bundle,
+    { viewId, viewIncarnationId },
+  ),
+  { bundle, viewId, viewIncarnationId },
 );
 ```
 
-Use `window.__FREEFORM_AGENT__.listViews()` to resolve a target id. If the agent
+Use `window.__FREEFORM_AGENT__.listViews()` to resolve both the target `id` and
+`incarnationId`. An explicit `viewId` without its matching `viewIncarnationId`
+is rejected so deletion and restoration cannot silently retarget an install. If the agent
 cannot control the same browser profile and no Browser Relay session was
 provided, return a `.freeform-artifact.json` file for the dialog's **Install
 bundle** action. Never commit a personal-view bundle to the application branch.

@@ -5,6 +5,17 @@ selected when the user clicked **Build with AI**. The relay stores only
 ciphertext for a short time; the browser decrypts, validates, lays out, and
 persists the delivery.
 
+## Progressive handoff
+
+Freeform may first provide `Delivery mode: BROWSER_VIEW_BUNDLE` while its live
+delivery route is still being verified. Start authoring from that brief and keep
+the exact validated bundle files; do not wait for relay setup and do not upload
+without a capability-bearing handoff. If the same conversation later receives
+`Delivery mode: BROWSER_RELAY` for the same View id and incarnation, treat it as
+a delivery continuation: reuse the existing bundles, run the pinned launcher
+verification, and deliver them without restarting discovery or regeneration.
+If no live handoff arrives, return the files for **Install from agent**.
+
 ## Deliver
 
 First generate and inspect one or more `.freeform-artifact.json` files outside

@@ -71,6 +71,47 @@ function visibleTopLeftRange(
   };
 }
 
+function centeredSnappedStart(minimum: number, maximum: number, size: number, gridSize: number) {
+  const snappedMinimum = Math.ceil(minimum / gridSize) * gridSize;
+  const snappedMaximum = Math.floor((maximum - size) / gridSize) * gridSize;
+  if (snappedMinimum > snappedMaximum) return null;
+  const centered = Math.round(((minimum + maximum - size) / 2) / gridSize) * gridSize;
+  return Math.min(snappedMaximum, Math.max(snappedMinimum, centered));
+}
+
+function preferredDeliveryPositions(
+  prepared: RelayPreparedArtifacts,
+  bounds: ReturnType<typeof visibleBounds>,
+  gridSize: number,
+) {
+  if (prepared.artifacts.length <= 1) return [];
+  const maximumWidth = Math.max(...prepared.artifacts.map((artifact) => artifact.defaultSize.width));
+  const maximumHeight = Math.max(...prepared.artifacts.map((artifact) => artifact.defaultSize.height));
+  const cellWidth = Math.ceil((maximumWidth + gridSize) / gridSize) * gridSize;
+  const cellHeight = Math.ceil((maximumHeight + gridSize) / gridSize) * gridSize;
+  const availableWidth = bounds.right - bounds.left;
+  const availableHeight = bounds.bottom - bounds.top;
+  const maximumColumns = Math.min(
+    prepared.artifacts.length,
+    Math.max(1, Math.floor((availableWidth + gridSize) / cellWidth)),
+  );
+
+  for (let columns = maximumColumns; columns >= 1; columns -= 1) {
+    const rows = Math.ceil(prepared.artifacts.length / columns);
+    const groupWidth = (columns - 1) * cellWidth + maximumWidth;
+    const groupHeight = (rows - 1) * cellHeight + maximumHeight;
+    if (groupWidth > availableWidth || groupHeight > availableHeight) continue;
+    const startX = centeredSnappedStart(bounds.left, bounds.right, groupWidth, gridSize);
+    const startY = centeredSnappedStart(bounds.top, bounds.bottom, groupHeight, gridSize);
+    if (startX === null || startY === null) continue;
+    return prepared.artifacts.map((_, index) => ({
+      x: startX + (index % columns) * cellWidth,
+      y: startY + Math.floor(index / columns) * cellHeight,
+    }));
+  }
+  return [];
+}
+
 function moveNodeToViewportFallback(
   node: CanvasNode,
   fallbackIndex: number,
@@ -134,8 +175,8 @@ export function placePreparedRelayArtifacts(
 ): PreparedRelayDelivery {
   const targetNodes = [...workspace.board.nodes];
   const addedNodes: CanvasNode[] = [];
-  const fallbackNodes: CanvasNode[] = [];
   const bounds = visibleBounds(workspace, placement.stageSize);
+  const preferredPositions = preferredDeliveryPositions(prepared, bounds, CANVAS_GRID_SIZE);
   let fallbackCount = 0;
   for (let index = 0; index < prepared.artifacts.length; index += 1) {
     const artifact = prepared.artifacts[index];
@@ -145,7 +186,7 @@ export function placePreparedRelayArtifacts(
       artifact,
       targetNodes,
       workspace.board.viewport,
-      { stageSize: placement.stageSize },
+      { stageSize: placement.stageSize, position: preferredPositions[index] },
     );
     node = { ...node, x: snapToGrid(node.x), y: snapToGrid(node.y) };
     const openPosition = moveNodeToNearestOpenPosition(node, targetNodes, CANVAS_GRID_SIZE, bounds);
@@ -154,9 +195,8 @@ export function placePreparedRelayArtifacts(
     if (hasCompleteOpening) {
       node = openPosition;
     } else {
-      node = moveNodeToViewportFallback(node, fallbackCount, fallbackNodes, bounds, CANVAS_GRID_SIZE);
+      node = moveNodeToViewportFallback(node, fallbackCount, addedNodes, bounds, CANVAS_GRID_SIZE);
       fallbackCount += 1;
-      fallbackNodes.push(node);
     }
     try {
       validatePreparedArtifact(node, artifact);

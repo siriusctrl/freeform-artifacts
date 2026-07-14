@@ -64,9 +64,10 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
 - canvas zoom then applies the same second scale to the complete node;
 - theme toggle switches light/dark mode;
 - importing sample query rows runs transforms and updates artifacts;
-- Build with AI creates a Turnstile-verified, target-view-incarnation-bound
-  session and an immediately copyable, agent-neutral Browser Relay instruction
-  without changing board state until a delivery is installed;
+- Build with AI immediately exposes an agent-neutral, capability-free Browser
+  View Bundle brief while Turnstile and relay setup continue independently,
+  then upgrades the same conversation to a target-view-incarnation-bound
+  Browser Relay handoff without changing board state;
 - centered-title rename, smoothly animated Views navigation, data-derived
   previews, create/switch, persistent reorder, board-only duplication,
   bidirectional drag/menu ordering, live-snapshot duplicate/delete Undo,
@@ -92,6 +93,14 @@ This starts the Vite dev server and uses Playwright Chromium to verify:
   after reload;
 - Browser bundle capability discovery and non-persisting Chart Kit preflight at
   default/minimum size in both themes;
+- Build with AI slow-path preparation during verification/error/unsupported
+  browser states, responsive theme-matched Turnstile UI, realistic challenge
+  height without short-landscape overlap, iframe keyboard focus, duplicate-free
+  file-input accessibility, immediate pending-close cancellation during delayed
+  server cleanup, deferred clipboard generations, same-bundle live continuation, and
+  original-View file installation after navigation;
+- same-browser explicit-target installation rejecting missing or stale View
+  incarnations, including delete-and-restore reuse of the same View id;
 - Build with AI prompt selection of Browser Relay delivery, including reusable
   session-scoped upload capability, multi-bundle command, fixed target view, and
   the prohibition on self-deployed source files;

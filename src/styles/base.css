@@ -75,6 +75,7 @@ button {
   --metric-delta-bg: #dff4ee;
   --metric-delta-text: #006e63;
   --alert: #ef4444;
+  --alert-text: #a64f34;
   --alert-soft: rgb(239 68 68 / 16%);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -114,6 +115,7 @@ button {
   --metric-delta-bg: rgb(53 200 220 / 14%);
   --metric-delta-text: #73e5f1;
   --alert: #ff5a5f;
+  --alert-text: #ff8a70;
   --alert-soft: rgb(255 90 95 / 18%);
 }
 

@@ -718,28 +718,123 @@ try {
   const darkSankeyColors = [...new Set(await sankeyNodeColors(page))];
   verifyUx("dark mode supplies a distinct six-color Sankey palette", darkSankeyColors.length === 6 && darkSankeyColors.some((color) => !lightSankeyColors.includes(color)), { lightSankeyColors, darkSankeyColors });
 
-  await showProofStep(page, "Build with AI • open a private 30-minute relay session", 900);
+  await showProofStep(page, "Move to open canvas space • give the generated dashboard room", 500);
+  const relayStageBox = await stage.boundingBox();
+  if (!relayStageBox) throw new Error("Proof lost the canvas stage before Build with AI");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await stage.dispatchEvent("wheel", { deltaX: 1_800, deltaY: 1_200 });
+    await page.waitForTimeout(300);
+    const visibleExistingNodes = await page.evaluate(() => {
+      const state = window.__FREEFORM_STATE__;
+      const stageRect = document.querySelector('[data-testid="canvas-stage"]')?.getBoundingClientRect();
+      if (!stageRect) return Number.POSITIVE_INFINITY;
+      const bounds = {
+        left: -state.viewport.x / state.viewport.scale,
+        right: (stageRect.width - state.viewport.x) / state.viewport.scale,
+        top: -state.viewport.y / state.viewport.scale,
+        bottom: (stageRect.height - state.viewport.y) / state.viewport.scale,
+      };
+      return state.nodes.filter((node) =>
+        node.x < bounds.right && node.x + node.width > bounds.left &&
+        node.y < bounds.bottom && node.y + node.height > bounds.top).length;
+    });
+    if (visibleExistingNodes === 0) break;
+  }
+  const openRelayViewport = await page.evaluate(() => {
+    const state = window.__FREEFORM_STATE__;
+    const stageRect = document.querySelector('[data-testid="canvas-stage"]')?.getBoundingClientRect();
+    if (!stageRect) return null;
+    const bounds = {
+      left: -state.viewport.x / state.viewport.scale,
+      right: (stageRect.width - state.viewport.x) / state.viewport.scale,
+      top: -state.viewport.y / state.viewport.scale,
+      bottom: (stageRect.height - state.viewport.y) / state.viewport.scale,
+    };
+    return {
+      bounds,
+      visibleExistingNodes: state.nodes.filter((node) =>
+        node.x < bounds.right && node.x + node.width > bounds.left &&
+        node.y < bounds.bottom && node.y + node.height > bounds.top).length,
+    };
+  });
+  verifyUx("relay proof starts in an open persisted viewport", openRelayViewport?.visibleExistingNodes === 0, openRelayViewport ?? {});
+  await page.waitForTimeout(650);
+
+  await showProofStep(page, "Build with AI • start now while private delivery connects", 900);
   const beforeHandoff = await page.evaluate(() => window.__FREEFORM_STATE__);
   await page.getByTestId("build-artifact").click();
-  await page.getByTestId("relay-session-status").getByText(/Verifying this Build Session/).waitFor({ state: "visible" });
-  await showProofStep(page, "Browser verification • one consent opens the whole session", 650);
-  await page.getByTestId("relay-session-status").getByText("Needs attention", { exact: true }).waitFor({ state: "visible" });
-  verifyUx("session creation failure stays actionable inside the dialog", await page.getByText("Retry verification", { exact: true }).isVisible());
+  await page.getByTestId("relay-session-status").getByText("Checking this browser", { exact: true }).waitFor({ state: "visible" });
+  verifyUx("Turnstile uses the responsive dark theme inside a dedicated delivery panel", await page.evaluate(() =>
+    window.__proofTurnstileOptions?.size === "flexible" && window.__proofTurnstileOptions?.theme === "dark"));
+  verifyUx("authoring is available before any relay capability exists", await page.getByTestId("copy-agent-instruction").isEnabled() && (await page.getByTestId("agent-instruction").textContent() ?? "").includes("Delivery mode: BROWSER_VIEW_BUNDLE"));
+  await showProofStep(page, "Interactive browser check • short landscape stays scrollable", 350);
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.getByTestId("proof-turnstile-challenge-frame").waitFor({ state: "visible" });
+  const shortChallengeLayout = await page.evaluate(() => {
+    const region = document.querySelector("[data-testid='agent-dialog-scroll-region']");
+    const status = document.querySelector("[data-testid='relay-session-status']")?.getBoundingClientRect();
+    const handoff = document.querySelector(".agent-handoff-content")?.getBoundingClientRect();
+    const frame = document.querySelector("[data-testid='proof-turnstile-challenge-frame']")?.getBoundingClientRect();
+    const actions = document.querySelector(".agent-dialog-actions")?.getBoundingClientRect();
+    return {
+      statusAndBriefDoNotOverlap: Boolean(status && handoff && status.bottom <= handoff.top),
+      challengeInsideStatus: Boolean(status && frame && frame.top >= status.top && frame.bottom <= status.bottom),
+      contentScrolls: region instanceof HTMLElement && region.scrollHeight > region.clientHeight,
+      actionsVisible: Boolean(actions && actions.top >= 0 && actions.bottom <= window.innerHeight + 1),
+    };
+  });
+  verifyUx(
+    "interactive Turnstile height cannot cover the short-landscape build brief or actions",
+    Object.values(shortChallengeLayout).every(Boolean),
+    shortChallengeLayout,
+  );
+  await page.getByTitle("Close", { exact: true }).focus();
+  await page.keyboard.press("Tab");
+  verifyUx(
+    "native challenge frame participates in the dialog focus path",
+    (await page.evaluate(() => document.activeElement?.getAttribute("data-testid"))) === "proof-turnstile-challenge-frame",
+  );
+  await page.waitForTimeout(900);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(450);
+  await showProofStep(page, "Browser check in the background • build brief is ready now", 450);
+  await page.getByTestId("copy-agent-instruction").click();
+  const preparationBrief = await page.evaluate(() => navigator.clipboard.readText());
+  verifyUx("pre-session brief contains no upload capability", preparationBrief.includes("Delivery mode: BROWSER_VIEW_BUNDLE") && !preparationBrief.includes("--credentials-stdin") && !preparationBrief.includes('"uploadToken"'));
+  await page.getByTestId("relay-session-status").getByText("Live delivery unavailable", { exact: true }).waitFor({ state: "visible" });
+  verifyUx("session creation failure stays actionable inside the dialog", await page.getByText("Retry live delivery", { exact: true }).isVisible() && await page.getByTestId("copy-agent-instruction").isEnabled());
   const creationFailureStatus = await page.getByTestId("relay-session-status").innerText();
   verifyUx("session creation failure uses quiet product language", creationFailureStatus.includes("Build Sessions are temporarily unavailable") && !creationFailureStatus.includes("temporarily_unavailable"));
-  await showProofStep(page, "Creation interrupted • retry without leaving the dialog", 800);
-  await page.getByText("Retry verification", { exact: true }).click();
-  await page.getByTestId("relay-session-status").getByText(/Verifying this Build Session/).waitFor({ state: "visible" });
-  await showProofStep(page, "Retry verification • capabilities remain hidden", 550);
-  await page.getByTestId("relay-session-status").getByText("Relay connected", { exact: true }).waitFor({ state: "visible" });
+  await showProofStep(page, "Automatic delivery interrupted • file install still works", 800);
+  await page.getByText("Retry live delivery", { exact: true }).click();
+  await page.getByTestId("relay-session-status").getByText("Checking this browser", { exact: true }).waitFor({ state: "visible" });
+  await showProofStep(page, "Retry in the background • the agent keeps building", 550);
+  await page.getByTestId("relay-session-status").getByText("Opening private delivery", { exact: true }).waitFor({ state: "visible" });
+  const openingInstruction = await page.getByTestId("agent-instruction").textContent() ?? "";
+  verifyUx(
+    "authoring remains copyable while the private session opens",
+    await page.getByTestId("copy-agent-instruction").isEnabled() &&
+      openingInstruction.includes("Delivery mode: BROWSER_VIEW_BUNDLE") &&
+      !openingInstruction.includes("--credentials-stdin"),
+  );
+  await page.getByTestId("copy-agent-instruction").click();
+  const openingBrief = await page.evaluate(() => navigator.clipboard.readText());
+  verifyUx(
+    "opening-session copy stays capability-free",
+    openingBrief.includes("Delivery mode: BROWSER_VIEW_BUNDLE") &&
+      !openingBrief.includes('"uploadToken"'),
+  );
+  await showProofStep(page, "Opening private delivery • build brief stays copyable", 450);
+  await page.getByTestId("relay-session-status").getByText("Live delivery ready", { exact: true }).waitFor({ state: "visible" });
   await page.waitForTimeout(700);
   const instruction = await page.getByTestId("agent-instruction").textContent() ?? "";
-  verifyUx("AI handoff is agent-neutral and asks the agent to discover the request", instruction.includes("Install the project artifact skill for your agent:") && instruction.includes("Ask the user what they want to build") && !instruction.includes("Claude Code"));
+  verifyUx("live delivery supplement reuses work already in progress", instruction.includes("Reuse any completed or in-progress bundles") && instruction.includes("do not restart discovery") && !instruction.includes("Claude Code"));
   verifyUx("AI handoff explicitly selects encrypted Browser Relay delivery", instruction.includes("Delivery mode: BROWSER_RELAY") && instruction.includes("scripts/deliver.mjs") && instruction.includes("Do not create src/artifacts/generated files"));
   verifyUx("AI handoff pins the skill checkout and verifies the launcher before credentials", instruction.includes("fetch --quiet --depth 1") && instruction.includes("rev-parse FETCH_HEAD") && instruction.includes("npx --yes skills@1.5.17") && instruction.includes("Verify the installed delivery launcher") && instruction.includes("integrity verification failed"));
   verifyUx("sensitive relay capabilities stay hidden on screen", instruction.includes("<hidden-upload-capability>") && instruction.includes("<hidden-encryption-key>"));
   verifyUx("AI handoff promises complete browser validation and one atomic commit", instruction.includes('renderer: "chart-kit"') && instruction.includes("atomic package-and-view commit"));
-  verifyUx("Build Session is visibly connected and bound to this view", (await page.getByTestId("relay-session-status").innerText()).includes("Relay connected") && instruction.includes("Market canvas"));
+  verifyUx("Build Session is visibly connected and bound to this view", (await page.getByTestId("relay-session-status").innerText()).includes("Live delivery ready") && instruction.includes("Market canvas"));
+  await page.getByTestId("copy-agent-instruction").getByText("Copy live delivery", { exact: true }).waitFor({ state: "visible" });
   await page.getByTestId("copy-agent-instruction").click();
   await page.getByTestId("copy-agent-instruction").getByText("Copied").waitFor({ state: "visible" });
   verifyUx("AI handoff can be copied", await page.getByTestId("copy-agent-instruction").getByText("Copied").isVisible());
@@ -754,15 +849,15 @@ try {
   if (!activeSocket) throw new Error("Relay proof could not observe the browser WebSocket");
   relayRoutes.delayNextSocket();
   await activeSocket.browserSocket.close({ code: 1012, reason: "Proof reconnect" });
-  await page.getByTestId("relay-session-status").getByText("Reconnecting", { exact: true }).waitFor({ state: "visible" });
+  await page.getByTestId("relay-session-status").getByText("Restoring live delivery", { exact: true }).waitFor({ state: "visible" });
   await showProofStep(page, "Connection interrupted • pending delivery channel reconnects", 750);
-  await page.getByTestId("relay-session-status").getByText("Relay connected", { exact: true }).waitFor({ state: "visible" });
+  await page.getByTestId("relay-session-status").getByText("Live delivery ready", { exact: true }).waitFor({ state: "visible" });
   verifyUx("hibernating WebSocket reconnects without creating a new Build Session", relayRoutes.sessionCreationAttempts === 2 && relayRoutes.routedSockets.length >= 2, {
     sessionCreationAttempts: relayRoutes.sessionCreationAttempts,
     socketConnections: relayRoutes.routedSockets.length,
   });
   const proofBundle = proofArtifactBundle();
-  const outlookBundle = proofArtifactBundle("agent-outlook-card", "Agent Outlook", "Delivered together in one encrypted selection", "Agent Outlook");
+  const outlookBundle = proofArtifactBundle("agent-outlook-card", "Agent Outlook", "Regional workload outlook", "Agent Outlook");
   await page.evaluate(() => {
     const probe = window;
     const originalTransaction = IDBDatabase.prototype.transaction;
@@ -817,6 +912,9 @@ try {
     const otherHighestZ = Math.max(-1, ...nodes
       .filter((node) => !artifactIds.includes(node.artifactId))
       .map((node) => node.zIndex));
+    const overlaps = (left, right) =>
+      left.x < right.x + right.width && left.x + left.width > right.x &&
+      left.y < right.y + right.height && left.y + left.height > right.y;
     return {
       delivered: delivered.length,
       fullyVisible: delivered.every((node) =>
@@ -824,14 +922,16 @@ try {
         node.y >= bounds.top && node.y + node.height <= bounds.bottom),
       snapped: delivered.every((node) => node.x % 38 === 0 && node.y % 38 === 0),
       staggered: new Set(delivered.map((node) => `${node.x}:${node.y}`)).size === delivered.length,
+      nonOverlapping: delivered.every((node) => nodes.every((other) =>
+        node.id === other.id || !overlaps(node, other))),
       onTop: delivered.every((node) => node.zIndex > otherHighestZ) &&
         delivered.every((node, index) => index === 0 || node.zIndex > delivered[index - 1].zIndex),
     };
   }, deliveryResponse.artifactIds);
   verifyUx(
-    "relay host placement keeps fallback cards visible, staggered, snapped, and on top",
+    "relay host placement keeps generated cards visible, separate, snapped, and on top",
     relayPlacement.delivered === 2 && relayPlacement.fullyVisible &&
-      relayPlacement.snapped && relayPlacement.staggered && relayPlacement.onTop,
+      relayPlacement.snapped && relayPlacement.staggered && relayPlacement.nonOverlapping && relayPlacement.onTop,
     relayPlacement,
   );
 
@@ -847,10 +947,10 @@ try {
   const shouldNotInstall = proofArtifactBundle("relay-proof-should-not-install", "Should not install", "Atomic rollback proof");
   deliverProofBundles(relaySession, [shouldNotInstall, brokenProofArtifactBundle()], "relay-invalid");
   await page.getByTestId("relay-delivery-outcome").getByText("Delivery rejected. Nothing was installed.", { exact: true }).waitFor({ state: "visible" });
-  await page.getByTestId("relay-delivery-outcome").getByText(/category count/).waitFor({ state: "visible" });
+  await page.getByTestId("relay-delivery-outcome").getByText(/different number of values and categories/).waitFor({ state: "visible" });
   await page.waitForTimeout(900);
   const afterRejection = await page.evaluate(() => window.__FREEFORM_STATE__);
-  verifyUx("browser preflight rejects an invalid Chart Kit delivery", (await page.getByTestId("relay-session-status").innerText()).includes("category count"));
+  verifyUx("browser preflight rejects an invalid Chart Kit delivery", (await page.getByTestId("relay-session-status").innerText()).includes("different number of values and categories"));
   verifyUx("bad multi-artifact selection leaves no partial dashboard", afterRejection.nodes.length === nodeCountBeforeRejection && !afterRejection.artifactIds.includes("relay-proof-should-not-install"));
 
   const offlineInvalidPath = path.join(outputDir, "offline-invalid.freeform-artifact.json");
@@ -890,15 +990,15 @@ try {
   const latestSocket = relayRoutes.routedSockets.at(-1);
   if (!latestSocket) throw new Error("Relay proof lost the active browser WebSocket");
   await latestSocket.browserSocket.send(JSON.stringify({ version: 2, type: "expired" }));
-  await page.getByTestId("relay-session-status").getByText("Expired", { exact: true }).waitFor({ state: "visible" });
+  await page.getByTestId("relay-session-status").getByText("Live session expired", { exact: true }).waitFor({ state: "visible" });
   const expiredInstruction = await page.getByTestId("agent-instruction").textContent() ?? "";
   verifyUx(
-    "expired session removes capabilities and offers a new session",
-    await page.getByText("Start new session", { exact: true }).isVisible() &&
-      expiredInstruction.includes("This Build Session expired") &&
+    "expired session removes capabilities while authoring remains available",
+    await page.getByText("Start new live session", { exact: true }).isVisible() &&
+      expiredInstruction.includes("Delivery mode: BROWSER_VIEW_BUNDLE") &&
       !expiredInstruction.includes("<hidden-upload-capability>"),
   );
-  await page.getByTestId("copy-agent-instruction").getByText("Copy instruction", { exact: true }).waitFor({ state: "visible" });
+  await page.getByTestId("copy-agent-instruction").getByText("Copy build brief", { exact: true }).waitFor({ state: "visible" });
   verifyUx("expired session clears stale copy confirmation", !(await page.getByTestId("copy-agent-instruction").innerText()).includes("Copied"));
   await showProofStep(page, "Session expired • capabilities disappear and restart stays explicit", 900);
   await page.getByTitle("Close", { exact: true }).click();
@@ -951,9 +1051,9 @@ try {
     { deliveredVisibility, deliveredViewportTarget },
   );
   await showProofStep(page, "Delivered dashboard • frame both encrypted artifacts", 1000);
-  await page.getByText("Installed directly into this view", { exact: true }).waitFor({ state: "visible" });
+  await page.getByText("Regional agent capacity", { exact: true }).waitFor({ state: "visible" });
   await page.waitForTimeout(1300);
-  verifyUx("both healthy relay artifacts render after the dialog closes", await page.getByText("Installed directly into this view").isVisible() && await page.getByText("Delivered together in one encrypted selection").isVisible());
+  verifyUx("both healthy relay artifacts render after the dialog closes", await page.getByText("Regional agent capacity").isVisible() && await page.getByText("Regional workload outlook").isVisible());
   const capacityNode = afterInstall.nodes.find((node) => node.artifactId === "agent-capacity-card");
   if (!capacityNode) throw new Error("Relay capacity artifact node was not installed");
   let installedArtifact = { artifactId: "agent-capacity-card", nodeId: capacityNode.id, viewId: relaySession.targetViewId };
@@ -1043,7 +1143,7 @@ try {
   if (!restoredPersonalNode) throw new Error("Personal artifact did not return from the library");
   installedArtifact = { ...installedArtifact, nodeId: restoredPersonalNode.id };
   verifyUx("personal artifact can be dragged back after node deletion", await page.getByTestId(`node-${restoredPersonalNode.id}`).isVisible(), { restoredPersonalNode });
-  verifyUx("re-added personal artifact keeps its generated content", await page.getByText("Installed directly into this view").isVisible());
+  verifyUx("re-added personal artifact keeps its generated content", await page.getByText("Regional agent capacity").isVisible());
   const restoredPersonalPlacement = await page.evaluate(({ nodeId, original }) => {
     const state = window.__FREEFORM_STATE__;
     const node = state.nodes.find((candidate) => candidate.id === nodeId);
@@ -1077,6 +1177,8 @@ try {
     restoredPersonalPlacement ?? {},
   );
 
+  await page.getByTitle("Reset view").click();
+  await page.getByTestId("node-node-revenue").waitFor({ state: "visible" });
   await showProofStep(page, "Delete built-in card • recover it from Built-in", 650);
   await page.getByTestId("node-node-revenue").click({ position: { x: 100, y: 18 } });
   const beforeDelete = await page.evaluate(() => window.__FREEFORM_STATE__);
